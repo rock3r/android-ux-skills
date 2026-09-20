@@ -14,8 +14,13 @@ enforce it.
 
 A rule is admitted only if all five hold:
 
-1. **Not a restatement.** It is absent from m3.material.io and developer.android.com, or it
-   contradicts what a reader would infer from them.
+1. **Decides something the source leaves open.** Rules may derive from Material guidance or
+   from established craft — most should. What they may not do is restate a *fact* that
+   already has a home: token values, component specs and theming conformance belong to
+   [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill), and a rule that
+   only repeats one is rejected and routed there. A rule earns its place by turning a
+   principle into a decision: naming the surface, the threshold, the default, or the case
+   where the principle inverts.
 2. **Exact.** It names values, symbols or APIs. No adjectives.
 3. **Checkable.** A violating snippet and a compliant neighbour can be written in ≤40 lines.
    A rule with no fixture is not a rule, it is an opinion.
@@ -300,6 +305,38 @@ but the spring-based Expressive system exposes no such pairing, so a codebase th
 to `MotionScheme` loses the asymmetry silently unless it is restated as a rule.
 
 ---
+
+## Provenance
+
+Taste is mostly inherited, not invented. Most rules adapt [Emil Kowalski's animation
+craft](https://github.com/emilkowalski/skills) (MIT) or operationalize Material guidance;
+originating an Android taste canon from scratch is a later luxury. What each rule must add
+is the decision the source leaves open — Emil's values are CSS cubic-béziers and his
+platform has `prefers-reduced-motion`, so his rules transfer as *principles* and have to be
+re-grounded in Compose symbols and Android behaviour.
+
+This table rolls up into each skill's `skill-source.json` attribution, which is required
+wherever upstream material is used.
+
+| Rule | Derived from | What we add |
+|---|---|---|
+| F-001 | d.android.com phases | Applies the phase rule specifically to animated reads |
+| F-002 | Compose `Animatable` docs | Makes it a blocking rule, not an option |
+| F-003 | d.android.com lazy lists | Reclassifies a footnote as a silent-failure rule |
+| F-004 | d.android.com shared elements | Names the wrapping composables that inherit the limit |
+| F-005 | `MotionDurationScale` | Enumerates what bypasses it |
+| T-001 | Original | Navigation defaults as an always-finding |
+| T-002 | Emil — "extend the codebase's tokens" | Re-grounded on `MotionScheme` and MOTION.md |
+| T-003 | Original (token reading) | Corrects an inference the docs invite |
+| T-004 | M3 Expressive-vs-Standard | Turns a disposition into a per-surface rule |
+| T-005 | Emil — reduced motion | Android has no semantic flag; annihilation, not degradation |
+| T-006 | Original (Lottie behaviour) | Makes the marker a shipping requirement |
+| T-007 | M3 "Top level" pattern | States why, and what breaks when peers slide |
+| T-008 | d.android.com predictive back | Recasts a platform change as a motion rule |
+| T-009 | Emil — frequency gate | Transfers wholesale; undocumented on Android |
+| T-010 | Emil + M3 legacy pairings | Notes the spring system silently drops the asymmetry |
+
+Ten of fifteen derive from an existing source. That is the intended ratio for now.
 
 ## Progress
 
