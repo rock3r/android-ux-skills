@@ -276,6 +276,9 @@ changes".
 
 ### T-001 — The `NavHost` default transition is always a finding
 
+**Claim.** A transition nobody chose is not a neutral default. It is most of a second of
+nothing, on every navigation the product has.
+
 **Rule.** Navigation Compose and Navigation 3 default to `fadeIn/fadeOut(tween(700))`. A
 700ms cross-fade on every destination change is never a considered choice; it is the default
 nobody replaced. Destination motion is chosen deliberately or the default is removed.
@@ -288,6 +291,9 @@ flags it, and it is invisible in a screenshot.
 ---
 
 ### T-002 — No bare `tween()`
+
+**Claim.** A product's motion has a single voice or it has none. A duration written at a call
+site is a decision nobody can find again, compare against, or change once.
 
 **Rule.** Every spec resolves to `MaterialTheme.motionScheme`, or to the codebase's token per
 MOTION.md. A literal `tween(300)` is admissible only inside the token definition itself.
@@ -316,6 +322,9 @@ nonetheless only on the 1.5 line; stable is `1.4.0`, and there is no beta as of
 
 ### T-003 — Switching schemes to change a fade changes nothing
 
+**Claim.** How a fade feels is not governed by the motion scheme. Reaching for the scheme to
+fix it produces a change that ships, reviews clean, and does nothing.
+
 **Rule.** Effects springs are byte-identical between Standard and Expressive — `1.0/3800`,
 `1.0/1600`, `1.0/800`. Only *spatial* springs differ. A change of `MotionScheme` motivated by
 how a fade or colour transition feels is a no-op; the intended change is a different spec
@@ -328,6 +337,9 @@ and Expressive".
 ---
 
 ### T-004 — Expressive spatial springs stay off dense data
+
+**Claim.** Bounce on a screen full of numbers reads as instability rather than personality.
+Data should look like it has settled because it is correct, not because it stopped wobbling.
 
 **Rule.** Expressive fast spatial is `dampingRatio 0.6 / stiffness 800` — visibly bouncy. On
 dense data surfaces (tables, transaction lists, dashboards) bounce reads as instability.
@@ -342,6 +354,9 @@ that is expressive in one area and dense in another. Scheme is chosen per surfac
 ---
 
 ### T-005 — Meaning-carrying motion ships a hand-built degraded path
+
+**Claim.** Motion that carries meaning must still carry it when motion is switched off. If
+turning animations off loses information, the information was never in the interface.
 
 **Overridable: no.** A product may choose its own transitions; it may not choose to strand
 users who have asked for no animation.
@@ -364,6 +379,9 @@ graceful degradation has to be written by hand. Nothing in Material's guidance c
 
 ### T-006 — Every Lottie carries a `reduced motion` marker
 
+**Claim.** An animation that has been switched off should still leave something worth looking
+at. Whatever frame it lands on is what that user sees permanently.
+
 **Rule.** With animations disabled, lottie-compose seeks to the **last** frame (or the first
 when speed is negative) unless the composition contains a marker named `reduced motion`. A
 file whose outro clears the canvas therefore renders nothing. Every shipped Lottie defines
@@ -379,6 +397,9 @@ accessibility toggle on, and the fallback is a silent seek rather than an error.
 
 ### T-007 — Peers do not slide
 
+**Claim.** Directional motion asserts an order. Top-level destinations have none, and the
+assertion collapses the first time someone jumps two tabs.
+
 **Rule.** Top-level destinations reached from a navigation bar, rail or drawer are peers, not
 a sequence. Directional motion between them asserts a spatial order that does not exist and
 contradicts itself the moment the user jumps two tabs. Peers cross-fade; hierarchy slides.
@@ -389,6 +410,9 @@ contradicts itself the moment the user jumps two tabs. Peers cross-fade; hierarc
 ---
 
 ### T-008 — Back is seekable or it is broken
+
+**Claim.** Back follows the finger. A transition that only plays on release contradicts the
+preview the system already showed the user, and they saw it first.
 
 **Rule.** From Android 16 / targetSdk 36, predictive back system animations are on by default
 and `onBackPressed` is no longer called. A back transition that only plays on commit cannot
@@ -404,6 +428,9 @@ on completion.
 ---
 
 ### T-009 — Frequency sets the ceiling
+
+**Claim.** The motion that delights once a week is an obstruction forty times a session.
+Nothing about the animation changes; the user's relationship to it does.
 
 **Rule.** Motion cost scales with how often the user sees it.
 
@@ -434,6 +461,9 @@ already settled it, and the gate then measures against theirs.
 ---
 
 ### T-010 — Exits are faster than entrances
+
+**Claim.** Something leaving should not hold attention on its way out. The user has already
+moved on; the interface should agree.
 
 **Rule.** An element leaving should not hold attention. Asymmetric timing is correct by
 default: exit at roughly half the entrance duration.
