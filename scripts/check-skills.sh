@@ -70,7 +70,22 @@ for dir in "$root"/skills/*/; do
     fi
 
     # 10 MiB per skill, measured over what would actually be ingested.
-    bytes="$(find "$dir" -type f ! -name 'skill-source.json' ! -path '*/evals/*' -printf '%s\n' 2>/dev/null | paste -sd+ | bc 2>/dev/null || echo 0)"
+    # Done in Python because `find -printf` and `paste -sd+` are GNU-only and fail
+    # silently on macOS, which would turn this check into a no-op on half the machines
+    # that run it.
+    bytes="$(python3 - "$dir" <<'PY'
+import os, sys
+root = sys.argv[1]
+total = 0
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if d not in (".git", "evals")]
+    for name in filenames:
+        if name == "skill-source.json":
+            continue
+        total += os.path.getsize(os.path.join(dirpath, name))
+print(total)
+PY
+)"
     if [[ "${bytes:-0}" -gt $((10 * 1024 * 1024)) ]]; then
         fail "$skill: ingestible content is ${bytes} bytes, over the 10 MiB limit"
     fi
