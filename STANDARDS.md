@@ -376,8 +376,15 @@ different questions. That is the intended behaviour, not a compromise:
 | Shape | How it resolves |
 |---|---|
 | No standard at all | M3E throughout, proposed for ratification rather than assumed |
-| Heavily customised M3E — M3 components, ripples removed, tokens replaced | Their customisations govern what they touched; **everything they did not customise still resolves to M3E** |
+| Customised M3E, to any degree | Their customisations govern what they touched; **everything they did not customise still resolves to M3E** |
 | Wholly custom system with its own semantics | Their system governs what it covers; where it is silent, M3E fills the gap |
+
+The degree of customisation changes nothing about the mechanism. A product that overrode two
+duration tokens and one that replaced interaction feedback, shape language and every
+transition pattern resolve identically: whatever they specified, theirs; whatever they did
+not, M3E. There is no threshold at which an app stops counting as "M3 with changes" and
+starts counting as "custom" — that distinction does no work here, which is why the ladder
+does not ask the question.
 
 **Gaps are the normal case, not a defect.** Most design systems specify colour, type and
 spacing, and say nothing about motion — a product can have a thoroughly defined visual
