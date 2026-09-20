@@ -292,6 +292,14 @@ a per-component one.
 **Why it is ours.** No Android or Material source states a frequency gate. It is the single
 most load-bearing judgment in motion work and it is entirely undocumented.
 
+**Conflict — Material prevails.** Emil's gate would suppress motion on the highest-frequency
+controls outright. Material specifies press feedback there (ripple) and M3 Expressive argues
+expression *aids* usability, with research reporting faster target identification and the
+age-related gap closing. Material wins: the ripple stays, and the gate governs what is added
+*on top of* the specified state layer, not whether the platform's own feedback survives.
+Emil's restraint still holds where Material is silent, which is everything above the state
+layer.
+
 ---
 
 ### T-010 — Exits are faster than entrances
@@ -308,12 +316,32 @@ to `MotionScheme` loses the asymmetry silently unless it is restated as a rule.
 
 ## Provenance
 
-Taste is mostly inherited, not invented. Most rules adapt [Emil Kowalski's animation
-craft](https://github.com/emilkowalski/skills) (MIT) or operationalize Material guidance;
-originating an Android taste canon from scratch is a later luxury. What each rule must add
-is the decision the source leaves open — Emil's values are CSS cubic-béziers and his
-platform has `prefers-reduced-motion`, so his rules transfer as *principles* and have to be
-re-grounded in Compose symbols and Android behaviour.
+Taste is mostly inherited, not invented. Originating an Android taste canon from scratch is
+a later luxury; what each rule must add now is the decision its source leaves open.
+
+**Material is two separate things, and only one of them is taste.** Its *specs* — token
+values, component anatomy, elevation levels, type scale — are not taste and are not ours:
+they have a home in [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill)
+and a rule that restates one is rejected. Its *taste guidance* — which transition pattern
+suits which relationship, motion used sparingly, expression in service of usability — is
+platform-authoritative and is what we integrate.
+
+Precedence when sources disagree:
+
+1. **Material taste guidance.** This is Android. Where Emil or community craft contradicts
+   it, Material wins.
+2. **Emil Kowalski's animation craft** ([MIT](https://github.com/emilkowalski/skills)) and
+   community practice, filling the large areas Material leaves silent — frequency, when not
+   to animate, interruption, degradation.
+3. **Original**, only where both are silent.
+
+A rule whose sources conflict records the conflict and why Material prevailed, so the
+decision stays auditable rather than becoming folklore.
+
+Inherited rules transfer as *principles*, never as values. Emil's numbers are CSS
+cubic-béziers and his platform has `prefers-reduced-motion`; both have to be re-grounded in
+Compose symbols and Android behaviour, and T-005 shows a case where the principle survives
+but inverts completely.
 
 This table rolls up into each skill's `skill-source.json` attribution, which is required
 wherever upstream material is used.
