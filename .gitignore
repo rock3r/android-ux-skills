@@ -13,3 +13,7 @@
 *.jsonl
 
 .DS_Store
+
+# Python bytecode from local script checks
+__pycache__/
+*.pyc
