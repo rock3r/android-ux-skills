@@ -8,51 +8,50 @@ The rule set every skill in this repository packages. If a rule is not here, no 
 enforce it.
 
 > [!NOTE]
-> **Status: gate met, unreviewed.** Thirty rules — 10 `floor`, 20 `taste`. The bar was 30
-> with at least half classed `taste`; taste is two thirds. Meeting it answers only whether
-> the domain has depth, not whether the taste is any good. That needs human review with
-> veto, and a real cull is the expected outcome rather than a nod.
+> **Status: revision 01, unreviewed by humans.** 32 rules — 10 `floor`, 2 `obligation`,
+> 20 `taste`. Revised after three independent machine reviews (taste, structural,
+> fact-check) which cut three rules, found two internal contradictions, and caught three
+> rules that fire on correct code. [`REVISION-01.md`](REVISION-01.md) records what changed
+> and why. Human review with veto is still outstanding, and remains the only check on
+> whether the taste is any good.
 
 ## Admission criteria
 
-A rule is admitted only if all five hold:
+A rule is admitted only if all six hold:
 
 1. **Decides something the source leaves open.** Rules may derive from Material guidance or
-   from established craft — most should. What they may not do is restate a *fact* that
-   already has a home: token values, component specs and theming conformance belong to
-   [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill), and a rule that
-   only repeats one is rejected and routed there. A rule earns its place by turning a
-   principle into a decision: naming the surface, the threshold, the default, or the case
-   where the principle inverts.
-2. **Exact.** It names values, symbols or APIs. No adjectives.
-3. **Checkable.** A violating snippet and a compliant neighbour can be written in ≤40 lines.
-   A rule with no fixture is not a rule, it is an opinion.
-4. **Pinned.** Every factual claim names the symbol or source it rests on, so staleness is
-   detectable.
-5. **Classed.** Either `floor` or `taste`.
-6. **Marked overridable or not.** `taste` rules default to `Overridable: yes` — a codebase
-   may diverge via an explicit `DECIDED` entry in MOTION.md. `floor` rules and
-   accessibility obligations are `Overridable: no` and hold regardless.
-7. **States its claim before its mechanism** (`taste` rules only). Every taste rule opens
-   with a one-line **Claim**: the perceptual assertion the rule rests on. API names and code
-   follow as the mechanism.
+   established craft — most should. They may not restate a *fact* that already has a home:
+   token values, component specs and theming conformance belong to
+   [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). A rule earns its
+   place by naming the surface, the threshold, the default, or where the principle inverts.
+2. **Exact.** Values, symbols, APIs. No adjectives.
+3. **Checkable, or marked review-only.** Either a violating snippet and compliant neighbour
+   fit in ≤40 lines, or the rule is explicitly marked `Detect: review-only` because the
+   evidence is not in the source. A rule that is neither is an opinion.
+4. **Pinned to a source that actually says it.** Every factual claim names the symbol, file
+   or document it rests on — and that source must contain the claim. A plausible attribution
+   to a named person from a secondary source is a fabrication.
+5. **Classed.** `floor`, `obligation`, or `taste`.
+6. **Re-grounded, not translated.** An inherited rule must have had its claim re-derived from
+   how Android behaves. Keeping the source's mechanism and swapping the nouns produces a web
+   rule wearing Compose symbols — the most common way a rule in this file goes wrong, and
+   invisible to the other five criteria.
 
-   This is not simplification — readers here know Android. It is separation of the two things
-   a taste rule asserts: *this is how it should feel* and *this is how you get it*. Those
-   fail independently, and a rule that cannot state the first without naming the second is
-   usually a `floor` rule wearing the wrong label.
+Taste rules additionally open with a one-line **Claim**: the perceptual assertion, stated
+before the mechanism. *How it should feel* and *how you get it* fail independently.
 
 ## Rule classes
 
-`floor` — mechanical correctness. Wrong regardless of the codebase's conventions, and fires
-identically whether MOTION.md is absent, current or stale.
+`floor` — mechanical correctness. Wrong regardless of conventions. Never overridable.
 
-`taste` — judgment. What a considered interface does, where the docs are silent. These are
-the reason this repository exists; the floor is table stakes carried so the craft layer is
-usable on its own.
+`obligation` — accessibility duty. Never overridable, and **excluded from the taste delta**,
+because a rule that can never yield should not inflate the number meant to prove this
+collection is more than a linter.
 
-Graded and reported **separately**. A healthy taste delta is the product signal; averaging
-the two hides a collection that has degenerated into a linter.
+`taste` — judgment. Overridable by an explicit `DECIDED` entry in the product's MOTION.md
+unless marked otherwise.
+
+Floor and taste are graded and reported **separately, never averaged**.
 
 ---
 
@@ -60,12 +59,11 @@ the two hides a collection that has degenerated into a linter.
 
 ### F-001 — Frame-rate values are read in layout or draw, never composition
 
-**Rule.** A value that changes every frame must be read inside a lambda-form modifier.
-`Modifier.offset(x = animatedDp)`, `Modifier.alpha(v)` and `Modifier.graphicsLayer(scaleX = v)`
-read during composition and recompose the subtree every frame.
+**Rule.** A value changing every frame is read inside a lambda-form modifier.
+`Modifier.offset(x = animatedDp)`, `Modifier.alpha(v)` and `graphicsLayer(scaleX = v)` read
+during composition and recompose the subtree every frame.
 
-**Why not obvious.** The value-form overloads are the ones in most samples and read as the
-"normal" API. Nothing in the signature suggests a phase difference.
+Scope: properties that *have* a lambda form. Layout properties that do not are F-008.
 
 **Violating**
 
@@ -81,53 +79,29 @@ val offsetX by animateDpAsState(if (expanded) 120.dp else 0.dp)
 Row(Modifier.offset { IntOffset(offsetX.roundToPx(), 0) }) { Content() }
 ```
 
-**Pinned.** developer.android.com "Jetpack Compose phases" — the lambda "is invoked during
-the layout phase (specifically, during the layout phase's placement step)".
-Depth: `chrisbanes/skills` → `compose-performance`.
+**Pinned.** developer.android.com "Jetpack Compose phases": the lambda "is invoked during the
+layout phase (specifically, during the layout phase's placement step)". Depth:
+`chrisbanes/skills` → `compose-performance`.
 
 ---
 
 ### F-002 — A value the finger controls is an `Animatable`
 
-**Rule.** Gesture-driven values use `Animatable` with velocity handed to `animateDecay` or a
-velocity-seeded spring. `animate*AsState` on such a value discards velocity, so motion
-visibly restarts at the moment of release.
-
-**Violating**
-
-```kotlin
-var dragged by remember { mutableStateOf(0f) }
-val x by animateFloatAsState(dragged)          // velocity lost on release
-```
-
-**Compliant**
-
-```kotlin
-val x = remember { Animatable(0f) }
-// onDragStopped:
-x.animateDecay(velocity, exponentialDecay())
-```
+**Rule.** Gesture-driven values use `Animatable`, with release velocity carried into
+`animateDecay` or a velocity-seeded spring. `animate*AsState` discards velocity, so motion
+visibly restarts when the finger lifts.
 
 **Pinned.** `androidx.compose.animation.core.Animatable`, `animateDecay`.
+**Detect:** heuristic — needs gesture-flow analysis; expect false positives.
 
 ---
 
 ### F-003 — `animateItem()` requires a stable key
 
-**Rule.** Lazy item animation silently does nothing useful without a stable, `Bundle`-compatible
+**Rule.** Lazy item animation silently misbehaves without a stable, `Bundle`-compatible
 `key`. It fails by producing wrong animations, not by erroring.
 
-**Violating**
-
-```kotlin
-LazyColumn { items(rows) { row -> Row(Modifier.animateItem()) { … } } }
-```
-
-**Compliant**
-
-```kotlin
-LazyColumn { items(rows, key = { it.id }) { row -> Row(Modifier.animateItem()) { … } } }
-```
+See also T-021: a key can be stable and still be wrong.
 
 **Pinned.** developer.android.com: "It is important to provide a key to each item to ensure
 `animateItem()` works as expected."
@@ -136,13 +110,12 @@ LazyColumn { items(rows, key = { it.id }) { row -> Row(Modifier.animateItem()) {
 
 ### F-004 — No shared elements across a View-backed container
 
-**Rule.** `sharedElement` / `sharedBounds` do not work across `AndroidView`, and that
-includes anything wrapping it — `Dialog`, `ModalBottomSheet`. Restructure so the shared
-element lives outside the View-backed container, or drop the continuity.
+**Rule.** `sharedElement` / `sharedBounds` do not work across `AndroidView`, including
+anything wrapping it — `Dialog`, `ModalBottomSheet`. Restructure, or drop the continuity.
 
-**Pinned.** developer.android.com, shared element transitions: "No interoperability between
-Views and Compose is supported. This includes any composable that wraps `AndroidView`, such
-as a `Dialog` or `ModalBottomSheet`." Stable since Compose Animation `1.10.0-alpha05`.
+**Pinned.** developer.android.com: "No interoperability between Views and Compose is
+supported. This includes any composable that wraps `AndroidView`, such as a `Dialog` or
+`ModalBottomSheet`." Stable since Compose Animation `1.10.0-alpha05`.
 
 ---
 
@@ -150,25 +123,25 @@ as a `Dialog` or `ModalBottomSheet`." Stable since Compose Animation `1.10.0-alp
 
 **Rule.** Compose applies `MotionDurationScale` to its own animation APIs. Motion driven by
 `withFrameNanos`, a gesture loop, video, WebView, or `LottieAnimatable.animate()` bypasses it
-and keeps moving when the user has asked for no animation. Such code reads
-`ANIMATOR_DURATION_SCALE` and branches.
+and keeps moving after the user has asked for none. Such code reads the scale and branches —
+**to a static end state, never to nothing**. What that end state must be is O-001.
 
 **Pinned.** `androidx.compose.ui.MotionDurationScale`, honoured since Compose Animation
-`1.2.0-alpha05`; `Settings.Global.ANIMATOR_DURATION_SCALE` ("Setting to 0.0f will cause
-animations to end immediately"). Read with a `SettingNotFoundException` fallback — the key
-can be undefined.
+`1.2.0-alpha05`. `Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause
+animations to end immediately." Read with a `SettingNotFoundException` fallback; the key can
+be undefined. `LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled` but
+never reads it in the implementation, so direct calls bypass the scale regardless.
 
 ---
 
-### F-006 — `animateContentSize` clips its child, shadows included
+### F-006 — `animateContentSize` clips its child
 
-**Rule.** `Modifier.animateContentSize()` always clips the child to its animated bounds. A
-container with elevation, a drop shadow, a ripple that extends past the edge, or a nested
-`AnimatedVisibility` will have them cut. `SizeTransform(clip = false)` on an inner animation
-cannot override an outer `animateContentSize`.
+**Rule.** `Modifier.animateContentSize()` applies `clipToBounds`, so elevation, drop shadows,
+ripples extending past the edge and nested `AnimatedVisibility` are cut. `SizeTransform(clip
+= false)` on an inner animation cannot override an outer `animateContentSize`.
 
-**Why not obvious.** It is the API whose name matches the intent, the clipping is
-undocumented, and the artefact looks like a rendering bug rather than a modifier choice.
+Scope: *unintended* clipping. A deliberate clipped reveal is legitimate — the finding is a
+shadowed or elevated container losing its shadow, not the clip itself.
 
 **Violating**
 
@@ -180,99 +153,121 @@ Card(Modifier.shadow(8.dp).animateContentSize()) { Body() }   // shadow is cut
 
 ```kotlin
 Box(Modifier.shadow(8.dp)) {
-    Card(Modifier.animateContentSize()) { Body() }            // clip stays inside the shadow
+    Card(Modifier.animateContentSize()) { Body() }
 }
 ```
 
-**Pinned.** [issuetracker 225932760](https://issuetracker.google.com/issues/225932760), open.
-Confirmed by Doris Liu (Compose animation) that the clip also consumes ripples and nested
-`AnimatedVisibility`.
+**Pinned.** `clipToBounds` applied in both overloads, `AnimationModifier.kt:69-78`; the KDoc
+does not mention it. [issuetracker 225932760](https://issuetracker.google.com/issues/225932760),
+open and assigned, where the clip is described as by design.
 
 ---
 
 ### F-007 — Motion state that survives rotation must be saveable
 
 **Rule.** `remember` survives recomposition, not Activity recreation. An `Animatable` holding
-a user-visible position — a dismissed sheet offset, a drag position, a step in a sequence —
-is reconstructed at its initial value on rotation, and the UI snaps. Such state is hoisted
-into `rememberSaveable` or re-derived from saved state; it is not left in a bare `remember`.
+a user-visible position is reconstructed at its initial value on rotation, and the UI snaps.
 
-**Why not obvious.** It never reproduces in development, because nobody rotates while
-mid-drag.
+Scope: state a user can see the position of. A decorative one-shot does not qualify.
 
-**Violating**
-
-```kotlin
-val offset = remember { Animatable(0f) }      // resets to 0f on rotation
-LaunchedEffect(Unit) { offset.animateTo(target) }
-```
-
-**Compliant**
-
-```kotlin
-var persisted by rememberSaveable { mutableFloatStateOf(0f) }
-val offset = remember { Animatable(persisted) }
-LaunchedEffect(offset) { snapshotFlow { offset.value }.collect { persisted = it } }
-```
-
-**Pinned.** developer.android.com: on a configuration change "the system recreates the
-activity… Compose recreates the UI"; `remember` does not survive it, `rememberSaveable` does.
+**Pinned.** developer.android.com: on configuration change "the system recreates the
+activity… Compose recreates the UI". `rememberSaveable` survives it; `remember` does not.
 
 ---
 
 ### F-008 — Layout properties have no cheap animated form
 
-**Rule.** `Modifier.padding` has no lambda overload, so animated padding is read during
-composition and remeasures on every frame. The same holds for animated `size`, `width` and
-`height`. Where the intent is positional motion, use `offset { }` or `graphicsLayer`; where a
-real size change is required, accept the cost knowingly and keep the subtree small.
+**Rule.** `Modifier.padding` has no lambda overload, so animated padding reads during
+composition and remeasures every frame. Same for animated `size`, `width`, `height`. Where
+the intent is positional, use `offset { }` or `graphicsLayer`. Where a real size change is
+required, accept the cost knowingly.
 
-**Violating**
-
-```kotlin
-val pad by animateDpAsState(if (selected) 24.dp else 8.dp)
-Row(Modifier.padding(pad)) { WideSubtree() }        // remeasures the subtree each frame
-```
-
-**Compliant**
-
-```kotlin
-val shift by animateDpAsState(if (selected) 16.dp else 0.dp)
-Row(Modifier.offset { IntOffset(0, shift.roundToPx()) }) { WideSubtree() }
-```
-
-**Pinned.** Absence of a lambda overload on `Modifier.padding` in current
-`androidx.compose.foundation.layout`.
+**Pinned.** `Padding.kt:54-144` — four value overloads, no lambda form.
 
 ---
 
 ### F-009 — Feel is not assessed in a debug build
 
-**Rule.** No claim about smoothness, jank or perceived speed is made from a debug build.
-Compose in debug runs the whole UI stack unoptimized and without a baseline profile, and
-Android Studio deployments do not apply one. Assessment happens on a release build with R8
-enabled, on physical hardware.
+**Detect: review-only.** No fixture exists and none can: this governs the provenance of
+evidence, not the content of source. Admitted under criterion 3's explicit exemption.
 
-**Why it is a floor rule.** It invalidates evidence rather than producing a bad frame. A
-timing judgement made in debug is not merely imprecise, it is unrelated to what ships.
+**Rule.** No claim about smoothness, jank or perceived speed comes from a debug build.
+Compose in debug runs the UI stack unoptimized and without a baseline profile, and Android
+Studio deployments do not apply one. Assessment is a release build with R8, on hardware.
 
 **Pinned.** developer.android.com: "You can only reliably measure the performance of a Lazy
-layout when running in release mode and with R8 optimization enabled." Baseline profiles
-improve first-run execution by roughly 30%.
+layout when running in release mode and with R8 optimization enabled."
 
 ---
 
 ### F-010 — `sharedElement` demands identical content; otherwise `sharedBounds`
 
-**Rule.** `sharedElement` expects the same content on both sides. Where the content differs
-visually — different composable, changed text style, italic-to-bold, a colour change — use
-`sharedBounds`. Using `sharedElement` across differing content produces a cross-fade artefact
-that reads as a rendering fault.
+**Detect: review-only.** Deciding whether content is "the same" is semantic.
+
+**Rule.** `sharedElement` expects the same content on both sides. Where it differs visually —
+different composable, changed text style, italic to bold, a colour change — use
+`sharedBounds`. The wrong choice produces a cross-fade artefact that reads as a fault.
 
 **Pinned.** developer.android.com: "`sharedBounds()` is for content that is visually
 different but should share the same area between states, whereas `sharedElement()` expects
-the content to be the same", and for `Text`, "`sharedBounds()` is preferred to support font
+the content to be the same"; for `Text`, "`sharedBounds()` is preferred to support font
 changes".
+
+---
+
+## Obligation
+
+Accessibility duties. Never overridable. **Excluded from the taste delta.**
+
+### O-001 — Meaning must have a static carrier
+
+**Overridable: no.**
+
+**Claim.** Motion that carries meaning must still carry it when motion is switched off.
+
+**Rule.** Android's "Remove animations" writes `0.0f` to all three animation scales. This is
+annihilation, not reduction — a shared-element transition becomes a teleport, a positional
+reveal a jump cut. **There is no substitute animation**, because a substitute is snapped too.
+
+So the requirement is not a lighter animation. It is that **the destination at rest shows the
+relationship the motion would have shown**: the moved item visible in place, the expanded
+state legible without having seen it expand, the origin still indicated. If switching
+animation off loses information, the information was only ever in the motion.
+
+A Lottie's reduced-motion still frame is the model for the whole class, not a special case:
+whatever frame remains must read as a complete, meaningful still (see O-002).
+
+**Why the web model does not transfer.** `prefers-reduced-motion` is a *preference*, and the
+documented response is gentler motion. Android exposes a scale, and its accessible value is
+zero. `ValueAnimator.areAnimatorsEnabled()` (API 26+) gives a boolean, not a preference, and
+is also set by battery saving on some devices.
+
+**Pinned.** AOSP `RemoveAnimationsPreference.kt:118-131` writes `0.0f` to
+`WINDOW_ANIMATION_SCALE`, `TRANSITION_ANIMATION_SCALE` and `ANIMATOR_DURATION_SCALE`.
+Settings → Accessibility → Colour and motion; deep link `g.co/android/animations`.
+
+---
+
+### O-002 — Every Lottie has a readable disabled frame
+
+**Overridable: no.**
+
+**Claim.** An animation that has been switched off should still leave something worth looking
+at. Whatever frame it lands on is what that user sees permanently.
+
+**Rule.** With animations disabled, lottie-compose seeks to the **last** frame — or the first
+when speed is negative — unless the composition contains a marker named `reduced motion`. A
+file whose outro clears the canvas therefore renders nothing.
+
+The requirement is the *outcome*: the disabled frame reads as a complete still. A marker is
+the mechanism where the last frame does not already satisfy it; a file whose final frame is
+the resting state needs no marker.
+
+This is the only place Lottie reduced-motion behaviour is specified. F-005 governs the
+scale bypass; O-001 governs what the still must convey.
+
+**Pinned.** `LottieDrawable.java:99-112` — the four accepted marker spellings;
+`:864-891` — `setFrame(speed < 0 ? minFrame : maxFrame)`.
 
 ---
 
@@ -280,511 +275,438 @@ changes".
 
 ### T-001 — The `NavHost` default transition is always a finding
 
-**Claim.** A transition nobody chose is not a neutral default. It is most of a second of
-nothing, on every navigation the product has.
+**Claim.** A transition nobody chose is not a neutral default. Seven hundred milliseconds of
+two scrollables ghosting through each other, on every navigation the product has.
 
-**Rule.** Navigation Compose and Navigation 3 default to `fadeIn/fadeOut(tween(700))`. A
-700ms cross-fade on every destination change is never a considered choice; it is the default
-nobody replaced. Destination motion is chosen deliberately or the default is removed.
+**Rule.** The finding is the **spec, not the pattern**. A cross-fade between top-level
+destinations is correct (T-011); a 700ms one is not. Destination motion is chosen
+deliberately, or the default is replaced.
 
-**Why it survives review.** It looks intentional because it is smooth and consistent. Nothing
-flags it, and it is invisible in a screenshot.
+Precedence with T-002: report as T-001. An untouched default is one defect, not two.
 
-**Pinned.** Navigation Compose / Navigation3 default enter/exit transitions.
-
----
-
-### T-002 — No bare `tween()`
-
-**Claim.** A product's motion has a single voice or it has none. A duration written at a call
-site is a decision nobody can find again, compare against, or change once.
-
-**Rule.** Every spec resolves to `MaterialTheme.motionScheme`, or to the codebase's token per
-MOTION.md. A literal `tween(300)` is admissible only inside the token definition itself.
-
-**Why.** This is the rule that makes every other timing rule enforceable — once specs live at
-symbols, consistency is checkable and a retune is one edit.
-
-**Violating**
-
-```kotlin
-animateFloatAsState(target, animationSpec = tween(300))
-```
-
-**Compliant**
-
-```kotlin
-animateFloatAsState(target, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec())
-```
-
-**Pinned.** `MotionScheme` is **not** experimental — the opt-in was removed in androidx
-`8ada756` ("Graduate MotionScheme from experimental"), shipped `1.5.0-alpha15`. It is
-nonetheless only on the 1.5 line; stable is `1.4.0`, and there is no beta as of
-`1.5.0-alpha28`. API stability and artifact maturity are independent here.
+**Pinned.** `DefaultNavTransitions.android.kt:35-47`; Navigation 3
+`NavDisplay.android.kt:32-48`, `DEFAULT_TRANSITION_DURATION_MILLISECOND = 700`.
 
 ---
 
-### T-003 — Switching schemes to change a fade changes nothing
+### T-002 — No bare `tween()` or `spring()` at a call site
 
-**Claim.** How a fade feels is not governed by the motion scheme. Reaching for the scheme to
-fix it produces a change that ships, reviews clean, and does nothing.
+**Claim.** Numbers written where they are used read as accident. A product's motion has one
+voice or none, and a value nobody can find again is a decision nobody made.
 
-**Rule.** Effects springs are byte-identical between Standard and Expressive — `1.0/3800`,
-`1.0/1600`, `1.0/800`. Only *spatial* springs differ. A change of `MotionScheme` motivated by
-how a fade or colour transition feels is a no-op; the intended change is a different spec
-within the same scheme.
+**Rule.** Every spec resolves to `MaterialTheme.motionScheme` or to the product's own token.
+Literal `tween(…)` and literal `spring(…)` are admissible only inside a token definition.
 
-**Pinned.** `ExpressiveMotionTokens.kt` and `StandardMotionTokens.kt`; `MotionScheme.kt`
-comments the shared values as "Common effects damping and stiffness values for both Standard
-and Expressive".
+`MotionScheme` exposes no durations. Keyframes and timed reveals therefore resolve to a
+codebase token, never to the scheme — that is not an exemption from the rule.
 
----
-
-### T-004 — Expressive spatial springs stay off dense data
-
-**Claim.** Bounce on a screen full of numbers reads as instability rather than personality.
-Data should look like it has settled because it is correct, not because it stopped wobbling.
-
-**Rule.** Expressive fast spatial is `dampingRatio 0.6 / stiffness 800` — visibly bouncy. On
-dense data surfaces (tables, transaction lists, dashboards) bounce reads as instability.
-Standard spatial (`0.9/1400`, `0.9/700`, `0.9/300`) there; Expressive elsewhere.
-
-**Why it is ours.** Google's guidance is "Expressive for most situations, Standard for
-utilitarian products" — a disposition, not a decision rule, and it offers nothing for an app
-that is expressive in one area and dense in another. Scheme is chosen per surface, not per app.
-
-**Pinned.** Token values as T-003.
+**Pinned.** `MotionScheme` carries only `@Immutable`; the opt-in was removed in androidx
+`8ada756` ("Graduate MotionScheme from experimental"), shipped `1.5.0-alpha15`. It exists
+only on the 1.5 line: stable is `1.4.0`, and there is no beta as of `1.5.0-alpha28`. API
+stability and artifact maturity are independent.
 
 ---
 
-### T-005 — Meaning-carrying motion ships a hand-built degraded path
+### T-004 — Expressive spatial springs stay off elements read as data
 
-**Claim.** Motion that carries meaning must still carry it when motion is switched off. If
-turning animations off loses information, the information was never in the interface.
+**Claim.** Bounce on a number reads as instability, not personality. A value should look
+settled because it is correct, not because it stopped wobbling.
 
-**Overridable: no.** A product may choose its own transitions; it may not choose to strand
-users who have asked for no animation.
+**Rule.** Expressive fast spatial is `dampingRatio 0.6 / stiffness 800` — visibly bouncy.
+Keep it off elements whose *position is read as information*: rows, bars, plotted points,
+figures. It remains correct on the containers around them — the sheet, the FAB, the card
+over the table. The distinction is per element, not per screen.
 
-**Rule.** Android's "Remove animations" accessibility toggle **zeroes** the animation scales.
-It does not reduce or simplify; it annihilates. A shared-element transition becomes a
-teleport, a positional reveal becomes a jump cut. Any animation carrying meaning — spatial
-relationship, causality, continuity — ships an explicit degraded path: a cross-fade in place
-of a slide, a static frame in place of a Lottie.
+Effects springs are identical across both schemes (`1.0/3800`, `1.0/1600`, `1.0/800`), so
+changing scheme to alter a fade or colour transition does nothing; only spatial differs.
 
-**Why it is ours.** There is no `prefers-reduced-motion` equivalent to branch on and no
-semantic API like iOS's `isReduceMotionEnabled`. The platform gives an intensity value, so
-graceful degradation has to be written by hand. Nothing in Material's guidance covers it.
-
-**Pinned.** Settings → Accessibility → Colour and motion → "Remove animations"
-(`g.co/android/animations`), which writes `0.0f` to `WINDOW_ANIMATION_SCALE`,
-`TRANSITION_ANIMATION_SCALE` and `ANIMATOR_DURATION_SCALE`.
+**Pinned.** `ExpressiveMotionTokens.kt:21-33`, `StandardMotionTokens.kt:19-31` — the three
+effects pairs are textually identical in both files. M3 guidance: Expressive "should be used
+for most situations, particularly hero moments and key interactions", Standard "should be
+used for utilitarian products".
 
 ---
 
-### T-006 — Every Lottie carries a `reduced motion` marker
-
-**Claim.** An animation that has been switched off should still leave something worth looking
-at. Whatever frame it lands on is what that user sees permanently.
-
-**Rule.** With animations disabled, lottie-compose seeks to the **last** frame (or the first
-when speed is negative) unless the composition contains a marker named `reduced motion`. A
-file whose outro clears the canvas therefore renders nothing. Every shipped Lottie defines
-that marker at a frame that reads as a complete, meaningful still.
-
-**Why it is ours.** The failure is invisible in development — it only appears with the
-accessibility toggle on, and the fallback is a silent seek rather than an error.
-
-**Pinned.** `LottieDrawable` marker lookup (`reduced motion` / `reduced_motion` /
-`reduced-motion` / `reducedmotion`), else `setFrame(speed < 0 ? minFrame : maxFrame)`.
-
----
-
-### T-007 — Peers do not slide
-
-**Claim.** Directional motion asserts an order. Top-level destinations have none, and the
-assertion collapses the first time someone jumps two tabs.
-
-**Rule.** Top-level destinations reached from a navigation bar, rail or drawer are peers, not
-a sequence. Directional motion between them asserts a spatial order that does not exist and
-contradicts itself the moment the user jumps two tabs. Peers cross-fade; hierarchy slides.
-
-**Pinned.** M3 "Top level" transition pattern (formerly "fade through"); MDC-Android
-`MaterialFadeThrough` versus `MaterialSharedAxis`.
-
----
-
-### T-008 — Back is seekable or it is broken
+### T-008 — Custom back is seekable or it is broken
 
 **Claim.** Back follows the finger. A transition that only plays on release contradicts the
-preview the system already showed the user, and they saw it first.
+preview the system already showed, and the user saw that first.
 
-**Rule.** From Android 16 / targetSdk 36, predictive back system animations are on by default
-and `onBackPressed` is no longer called. A back transition that only plays on commit cannot
-follow the user's finger, so the gesture preview and the transition disagree. Back animations
-are driven by progress — `PredictiveBackHandler` with `SeekableTransitionState` — not fired
-on completion.
+**Rule.** Scope: **back you implement yourself** — sheets, overlays, hand-rolled containers,
+any `BackHandler {}` popping state. `NavHost` already seeks correctly with no app code, and
+flagging it is a false positive.
 
-**Pinned.** developer.android.com: for apps targeting Android 16+ on an Android 16+ device,
-"`onBackPressed` is not called and `KeyEvent.KEYCODE_BACK` is not dispatched anymore".
-`androidx.activity.compose.PredictiveBackHandler`;
-`androidx.compose.animation.core.SeekableTransitionState`.
+Custom back is driven by progress: `PredictiveBackHandler` with `SeekableTransitionState`.
+
+**Pinned.** `NavHost.kt` ~L823-940 installs its own handler and calls
+`SeekableTransitionState.seekTo(progress, previousEntry)`. developer.android.com: for apps
+targeting Android 16+ on an Android 16+ device, "`onBackPressed` is not called and
+`KeyEvent.KEYCODE_BACK` is not dispatched anymore".
 
 ---
 
 ### T-009 — Frequency sets the ceiling
 
+**Detect: review-only.** Usage frequency is not in the source.
+
 **Claim.** The motion that delights once a week is an obstruction forty times a session.
 Nothing about the animation changes; the user's relationship to it does.
 
-**Rule.** Motion cost scales with how often the user sees it.
+**Rule.**
 
 | Frequency | Ceiling |
 |---|---|
-| 100+ per day (list press, toggles) | None, or imperceptible — ≤150ms |
-| Tens per day (sheets, menus) | Standard spec from the scheme |
-| Occasional (navigation, mode change) | Standard spec; continuity matters most |
+| 100+ per day | The platform state layer only |
+| Tens per day | Fast tier from the scheme |
+| Occasional | Default tier; continuity matters most |
 | Rare or first-run | Delight permitted |
 
-An icon toggle a user hits forty times a session is not a place for a spring with visible
-settle. Replacing the ripple with a custom press treatment is a product-wide decision, never
-a per-component one.
+**The platform state layer always survives the gate.** M3E's press treatment — including its
+spring shape morph — is rung 1 of the resolution ladder, and the default fallback cannot fail
+the default rule. The ceiling governs what is added *on top of* the state layer. Replacing
+the state layer itself is a product-wide decision belonging in MOTION.md.
 
 **Why it is ours.** No Android or Material source states a frequency gate. It is the single
 most load-bearing judgment in motion work and it is entirely undocumented.
 
-**Sources disagree; here is where the default landed.** Emil's gate would suppress motion on
-the highest-frequency controls outright. M3 specifies press feedback there, and M3
-Expressive argues expression *aids* usability, reporting faster target identification and a
-closing age-related gap. The default keeps the state layer: the gate governs what is added
-*on top of* it, not whether the platform's own feedback survives. Emil's restraint applies
-above the state layer, where M3 says nothing.
-
-This is a default, not a verdict. A team whose standard defines its own press language has
-already settled it, and the gate then measures against theirs.
-
 ---
 
-### T-010 — Exits are faster than entrances
+### T-010 — Exits use fewer properties, not shorter durations
 
 **Claim.** Something leaving should not hold attention on its way out. The user has already
-moved on; the interface should agree.
+moved on.
 
-**Rule.** An element leaving should not hold attention. Asymmetric timing is correct by
-default: exit at roughly half the entrance duration.
+**Rule.** On Android, asymmetry is expressed as **tier and property count, not a duration
+ratio**: enter with spatial *and* effects; exit with effects only — M3's own position is that
+exits are usually just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec`
+in, `fastEffectsSpec` out.
 
-**Why it is ours in spite of looking like Material.** Material encodes the asymmetry in its
-*legacy* token pairings — emphasized-decelerate 400ms in, emphasized-accelerate 200ms out —
-but the spring-based Expressive system exposes no such pairing, so a codebase that has moved
-to `MotionScheme` loses the asymmetry silently unless it is restated as a rule.
+Does not apply to gesture dismissals, which complete on velocity, or to predictive-back exits,
+which the system times.
+
+**Why the ratio was wrong.** "Half the entrance" is one legacy pairing (emphasized 400/200)
+promoted to law; M2 standard was 225/195, M3 standard 250/200. Under springs there is no
+duration to halve — which is why the earlier claim that the spring system silently drops the
+asymmetry was false. It lives in the tier choice.
 
 ---
 
 ### T-011 — The pattern states the relationship
 
-**Claim.** Motion between screens tells the user how those screens are related. The wrong
-pattern asserts a relationship that does not exist, and users trust it over the layout.
+**Detect: review-only.** Relationship intent is not in the source.
 
-**Rule.** Choose the pattern from the relationship, not from what looks good:
+**Claim.** Motion between screens tells the user how they are related. The wrong pattern
+asserts a relationship that does not exist, and users trust it over the layout.
+
+**Rule.** Direction promises **order**. A gesture is optional — a Next/Back wizard is ordered
+and correctly directional without being swipeable.
 
 | Relationship | Pattern |
 |---|---|
 | One element becomes the next screen | Container transform |
-| Parent to child, deeper into a hierarchy | Forward and backward |
-| Peers in an ordered set, usually swipeable | Lateral |
-| Unrelated top-level destinations | Top level |
+| Parent to child in a hierarchy | Forward and backward |
+| Ordered peers | Lateral |
+| **Unordered top-level destinations** — nav bar, rail, drawer | **Top level: cross-fade** |
 | A component appearing in place | Enter and exit |
 
-A lateral slide between two things the user cannot swipe between is a promise the interface
-does not keep.
+"Peer" means *unordered*. Top-level destinations have no order to promise: system back
+returns to the start destination regardless of history, and a deep link has no origin at all,
+so there is no source of truth for a direction. A swipeable `TabRow` + `Pager` is an ordered
+set and is lateral — correct, and out of scope here.
 
 **Pinned.** M3 transition patterns. Older vocabulary still live in code:
 `MaterialContainerTransform`, `MaterialSharedAxis`, `MaterialFadeThrough` in MDC-Android.
 
 ---
 
-### T-012 — Anything a user can start, they can change their mind about
+### T-012 — Never gate input on an animation finishing
 
-**Claim.** Motion that ignores input until it finishes makes the interface feel like it is
-not listening. The user is never waiting for an animation to grant them permission.
+**Claim.** Motion that ignores input until it completes makes the interface feel like it is
+not listening. The user never waits for an animation to grant permission.
 
-**Rule.** Motion is interruptible and reversible mid-flight. Re-targeting starts from the
-current value and velocity, not from the origin.
+**Rule.** Input remains live throughout. The violating forms are structural, not spec:
+`enabled = !isAnimating` guards, `snapTo()` before `animateTo()` discarding current position,
+and `delay()`-sequenced `LaunchedEffect` chains that cannot be interrupted partway.
 
-**Mechanism.** `Animatable.animateTo` cancels the in-flight animation and continues from
-where it is. A spring retargets carrying velocity. A `tween` restarted on a new target jumps
-to a stale start value, which is why fixed durations read badly on anything interactive.
+**Not a violation:** a `tween` retargeted mid-flight. Compose continues from the current
+value; its defect is spending a full duration on a small remaining distance, which is a spec
+question, not an interruption one.
 
-**Pinned.** `androidx.compose.animation.core.Animatable`, `spring`.
+**Pinned.** `Animatable.animateTo` cancels the in-flight animation and continues from its
+current value.
 
 ---
 
 ### T-013 — Stagger has a total budget, not a per-item delay
 
-**Claim.** A cascade reads as one gesture up to a point. Past it, the user is watching a
-queue, and the last item to arrive feels late rather than choreographed.
+**Detect: review-only.** Item count is runtime data.
 
-**Rule.** Budget the whole sequence, not the gap between items. When item count would exceed
-the budget, animate the first few and place the rest — do not stretch the sequence or shrink
-the delay to fit. Default budget where the product has not set one: the sequence completes
-within the duration of a single standard transition.
+**Claim.** A cascade reads as one gesture up to a point. Past it the user is watching a queue,
+and the last arrival feels late rather than choreographed.
 
-**Why it is ours.** Stagger delay is the parameter every implementation exposes and the
-wrong thing to tune. Nothing in Material or Android guidance bounds the total.
+**Rule.** Budget the sequence, not the gap. Default where the product has not set one:
+**~300ms total**, the effects settle. Beyond the budget, cap the *count* — items past the cap
+share the final staggered delay rather than extending the sequence.
 
----
+Never place later items before earlier ones: "animate the first few, place the rest" read
+literally inverts the order, which is worse than the queue it avoids.
 
-### T-014 — Refreshed data is not a state change
-
-**Claim.** A list whose contents update in the background is not telling the user anything.
-Animating it converts an update they did not ask for into an interruption they must watch.
-
-**Rule.** Motion marks changes the user caused or needs to notice. Poll results, cache fills,
-sync completions and background refreshes land without animation, even when the diff is
-large. An item the user just created is a different case and may animate.
+Viewport only, first entrance only, never on scroll.
 
 ---
 
-### T-015 — Haptics land on commitment, not on contact
+### T-016 — Unanchored surfaces expand; they do not scale from centre
 
-**Claim.** A haptic asserts that something happened. Firing one when a drag begins asserts it
-before anything has, and the user learns to distrust the signal.
+**Claim.** A surface scaling up from its own centre reads as flying toward the viewer. That
+asserts a depth change M3 deliberately reduced.
 
-**Rule.** Haptics fire at the moment of commitment — the threshold crossed, the item
-dropped, the selection taken — not at gesture start, and never on scroll.
+**Rule.** Scope: **unanchored** full-surface scale from centre. A surface anchored to its
+origin — a menu growing from its trigger, a container transform — scales correctly, because
+it reads as emerging *from* the source rather than approaching the viewer.
 
-**Mechanism.** `LocalHapticFeedback.current.performHapticFeedback(...)` at the commit branch.
-
----
-
-### T-016 — Surfaces expand; they do not scale up
-
-**Claim.** A surface that scales up reads as flying toward the viewer. That asserts a depth
-change, and M3 deliberately reduced how much depth the system uses.
-
-**Rule.** Dialogs, sheets and menus expand and collapse along an axis from their origin.
-`scaleIn`/`scaleOut` on a surface is off-language on M3 unless the product's own standard
-says otherwise.
-
-**Pinned.** M3 enter-and-exit guidance: Android expands or collapses on an axis rather than
-scaling, because scale implies an elevation change that does not match M3's reduced
-elevation model.
+**Pinned.** M3 enter-and-exit: Android expands or collapses on an axis rather than scaling,
+because scale implies an elevation change inconsistent with M3's reduced elevation model.
+Counter-case that defines the scope: `DropdownMenuContent` scales 0.8→1.0 with FastSpatial
+from its anchor, `Menu.kt` ~L1827-1855.
 
 ---
 
 ### T-017 — A screen introduces itself once
 
-**Claim.** Entrance motion says "this is new". Replaying it when the user comes back from a
-detail screen says something new arrived when nothing did, and it makes navigating back feel
-slower than it is.
+**Claim.** Entrance motion says "this is new". Replaying it on return from a detail screen
+says something arrived when nothing did, and makes going back feel slower than it is.
 
-**Rule.** Entrance animations play on first entry to a destination, not on every return to
-composition. State that records "already entered" survives the back navigation.
+**Rule.** Entrance animations play on first entry to a destination, not on every re-entry to
+composition.
 
 **Mechanism.** `LaunchedEffect(Unit)` re-runs whenever the composable re-enters composition,
-which includes popping back to it. The flag belongs in `rememberSaveable` or in the
-destination's own state holder.
+including popping back to it. The "already entered" flag belongs in `rememberSaveable` or the
+destination's state holder.
 
 ---
 
-### T-018 — Platform overscroll stays unless the product replaced it deliberately
+### T-018 — Platform overscroll stays unless deliberately replaced
 
-**Claim.** The stretch at the end of a list is what an Android user expects, and it is one of
-the strongest signals that an app is native rather than ported.
+**Claim.** The stretch at the end of a list is what an Android user expects, and one of the
+strongest signals that an app is native rather than ported.
 
-**Rule.** Do not replace or disable the platform overscroll effect to install a custom bounce.
-Replacing it is a product-wide decision belonging in MOTION.md, never a per-screen choice.
+**Rule.** Do not disable or replace the platform overscroll effect to install a custom bounce.
+Per-component replacement is permitted with a stated reason — a pager carousel setting
+`overscrollEffect = null` is legitimate. Replacing it product-wide belongs in MOTION.md.
 
 **Pinned.** Stretch overscroll is platform behaviour from Android 12 (API 31).
 
 ---
 
-### T-019 — Skeletons promise a layout you must actually have
+### T-019 — Skeletons match structure; indicators have a floor
 
-**Claim.** A skeleton says "content of this shape is arriving". If the real content does not
-match, the promise breaks and the screen jumps — worse than having shown nothing.
+**Detect: review-only.** Comparing a skeleton to the eventual layout is semantic.
 
-**Rule.** Skeletons where the resulting layout is known ahead of the data — a list of uniform
-rows, a known form. An indeterminate indicator where it is not. Never a skeleton whose shape
-is a guess.
+**Claim.** A skeleton promises content of a shape. If the real content does not match
+structurally, the promise breaks and the screen jumps.
+
+**Rule.** The bar is *structural* match, not exact match — a heterogeneous feed may ship an
+approximate card skeleton and it works, because the structure holds. Where the structure is
+unknown, an indeterminate indicator.
+
+Either way, apply a **delay before showing and a minimum visible duration**, so a fast
+response does not produce a flash. An indicator that appears and vanishes within 80ms is
+worse than no indicator.
 
 **Pinned.** M3 lists skeleton loaders as a distinct transition pattern.
 
 ---
 
-### T-020 — One screen, one timing system
+### T-020 — One event, one scheme and one tier
 
-**Claim.** Elements that move together but are timed differently read as unrelated. The
-viewer cannot say why the screen feels incoherent, only that it does.
+**Claim.** Elements moving together but timed differently read as unrelated. The viewer
+cannot say why the screen feels incoherent, only that it does.
 
-**Rule.** Motion that a user perceives as a single event uses one timing system throughout.
-A `tween`-driven pane transition alongside spring-driven content inside it is the common
-form, and it is visible even at correct individual values.
+**Rule.** Motion perceived as a single event uses one **scheme and tier** throughout — not
+necessarily one spec, since spatial and effects springs properly differ within a tier. The
+common defect is a pane transition on one tier with content on another.
 
-**Why it is ours.** Both halves pass review independently. The defect only exists in the
-relationship, which is why it survives code review and shows up in a recording.
+Precedence with T-012: T-012 governs whether input is gated; T-020 governs coherence. A
+uniform screen that blocks input is still a T-012 finding.
+
+Does not apply across the app/platform boundary — system transitions are not yours.
+
+---
+
+### T-021 — Keys identify content, not position
+
+**Claim.** A list whose items re-animate on every insertion is telling the user everything
+changed, when one thing did.
+
+**Rule.** `key = { it }` on an index, or any key derived from position, is stable and wrong:
+inserting one item shifts every subsequent key and re-animates the whole list. Keys are
+derived from item identity.
+
+F-003 catches a *missing* key. This catches a present one that lies.
+
+---
+
+### T-022 — Content tracks the keyboard, it does not jump
+
+**Claim.** The keyboard animates in. Content that arrives in its final position partway
+through reads as a glitch rather than a response.
+
+**Rule.** Content follows the animated `WindowInsets.ime` value rather than repositioning on
+a visibility callback. The violating form is a boolean "keyboard visible" driving a layout
+change.
+
+**Pinned.** `WindowInsets.ime`, `Modifier.imePadding()`.
+
+---
+
+### T-023 — Motion starts on the input frame
+
+**Claim.** Perceived speed is set by when feedback begins, not when work finishes. Motion
+that waits for a response makes a fast system feel slow.
+
+**Rule.** Motion begins on the frame the input arrives, not the frame the result does. A
+transition that can start before data lands, starts — the destination arrives in a loading
+state rather than the origin holding still.
+
+**Why it is ours.** Nothing in Material or Android guidance connects motion timing to
+perceived performance, and it is the highest-yield judgment in app motion.
+
+---
+
+### T-024 — Back plays the inverse of forward
+
+**Claim.** Reversal is how a user builds a model of where things live. An exit that is not
+the inverse of its entrance breaks the model, and predictive back now shows it happening.
+
+**Rule.** If forward enters from the right, back exits to the right. Enter-from-right paired
+with exit-by-fade was survivable when back was instantaneous; with predictive back rendering
+the reversal live under the user's finger, it is visibly wrong.
+
+---
+
+### T-025 — Where a gesture exists, motion follows the finger
+
+**Claim.** Continuous, velocity-carrying gesture motion is the single strongest signal of a
+native app. Fired transitions where a gesture was available is what ported apps feel like.
+
+**Rule.** Where a gesture is available, prefer velocity-continuous motion over a fired
+transition: a sheet that drags rather than only animating closed on tap, a pane that follows
+rather than snapping. This is a posture, not a per-site check.
+
+---
+
+### T-026 — One hero motion per event
+
+**Claim.** When everything moves, nothing is emphasised. The thing that moves should be the
+thing that changed.
+
+**Rule.** One element leads an event; the rest support it or hold still. Six individually
+correct springs firing at once satisfy every other rule in this file and still produce a
+screen nobody can read.
+
+**Why it is ours.** Every other rule governs motion in isolation. This is the only one about
+how much motion an event may contain at all.
 
 ---
 
 ## Provenance
 
-Taste is mostly inherited, not invented. Originating an Android taste canon from scratch is
-a later luxury; what each rule must add now is the decision its source leaves open.
+Taste is mostly inherited, not invented. What each rule adds is the decision its source
+leaves open.
 
-**Material is two separate things, and only one of them is taste.** Its *specs* — token
-values, component anatomy, elevation levels, type scale — are not taste and are not ours:
-they have a home in [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill)
-and a rule that restates one is rejected. Its *taste guidance* — which transition pattern
-suits which relationship, motion used sparingly, expression in service of usability — is
-what we integrate, as the default for a product that has not chosen otherwise.
+**Material is two things, and only one is taste.** Its *specs* — token values, component
+anatomy, elevation, type scale — are not ours and belong to
+[`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). Its *taste guidance* —
+which pattern suits which relationship, motion used sparingly, expression in service of
+usability — is what we integrate, as the default for a product that has not chosen otherwise.
 
 ### Whose standard we serve
 
 **The product's own — whatever that is.** These skills help a team hold to the motion
-language *they* chose, and help them choose one when they haven't. They do not argue an app
-toward Material.
+language *they* chose, and choose one when they have not. They do not argue an app toward
+Material.
 
-"Their own" covers every case equally: M3 adopted wholesale, M3 extended with product
-tokens, a wholly custom design system, or a corporate design language the Android app
-inherits. A team that chose M3 has a standard that happens to be Material — which is not the
-same as us applying Material to them, and the difference shows the moment they want to
-depart from it. A custom system is a destination, not a deviation requiring defence.
+"Their own" covers every case equally: M3 adopted wholesale, M3 extended, a wholly custom
+system, or an inherited corporate language. A team that chose M3 has a standard that happens
+to be Material — not the same as us applying Material to them, and the difference shows the
+moment they want to depart from it.
 
-Two different jobs follow, and they should not be confused:
-
-- **A standard exists** → our job is fidelity to it. Not improvement, not modernization, not
-  M3 conformance. Inconsistency with their standard is the finding; disagreement with our
-  taste is not.
-- **No standard exists** → our job is to help them decide, then hold them to it. The
-  pragmatic M3 Expressive default below is a *proposal a human ratifies*, never something
-  applied silently. An agent that picks a motion language on a team's behalf and starts
-  enforcing it has invented a standard, not served one.
+- **A standard exists** → fidelity to it. Not improvement, not modernization, not M3
+  conformance. Inconsistency with their standard is the finding; disagreement with our taste
+  is not.
+- **No standard exists** → help them decide, then hold them to it. The M3E default is a
+  *proposal a human ratifies*, never applied silently.
 
 ### Resolution is per decision, not per codebase
 
-The question is never "is this an M3 app or a custom one". It is, for **this specific
-decision**, has the team said anything? Resolve each decision independently down this
-ladder, stopping at the first rung that speaks:
+For **this decision**, has the team said anything? Stop at the first rung that speaks:
 
-0. **The product's standard**, as `DECIDED` in MOTION.md or in a design system it points to.
-1. **Pragmatic M3 Expressive** — Android's own language, in the form that survives contact
-   with a real app rather than the maximal expression of the spec.
-2. **Craft** — [Emil Kowalski's animation work](https://github.com/emilkowalski/skills)
-   (MIT) and community practice — covering what M3 leaves silent: frequency, when not to
-   animate, interruption, degradation.
-3. **Original**, only where all of the above are silent.
+0. The product's standard — `DECIDED` in MOTION.md, or a design system it points to
+1. Pragmatic M3 Expressive
+2. Craft — [Emil Kowalski's animation work](https://github.com/emilkowalski/skills) (MIT) and
+   community practice, covering what M3 leaves silent
+3. Ask
 
-Because resolution happens per decision, the same codebase draws from different rungs for
-different questions. That is the intended behaviour, not a compromise:
+The same codebase draws from different rungs for different questions. A product that
+customised three things follows its own standard for those three and M3E elsewhere. There is
+no *threshold* of customisation at which resolution changes.
 
-| Shape | How it resolves |
-|---|---|
-| No standard at all | M3E throughout, proposed for ratification rather than assumed |
-| Customised M3E, to any degree | Their customisations govern what they touched; **everything they did not customise still resolves to M3E** |
-| Wholly custom system with its own semantics | Their system governs what it covers; where it is silent, M3E fills the gap |
+**One signal matters, to the fallback rather than to resolution.** An app with no
+`androidx.compose.material3` dependency at all — built on Compose Foundation and UI, as
+[Jewel](https://github.com/JetBrains/jewel) is — has declined Material rather than customised
+it. Defaulting it to M3E imports a voice it avoided. Ask once; record the answer.
 
-The degree of customisation changes nothing about the mechanism. A product that overrode two
-duration tokens and one that replaced interaction feedback, shape language and every
-transition pattern resolve identically: whatever they specified, theirs; whatever they did
-not, M3E. There is no *threshold* of customisation at which resolution changes, so the
-ladder never tries to grade how custom an app is.
+**Gaps are normal.** Most design systems specify colour, type and spacing and say nothing
+about motion. That is the condition the fallback exists for, not a finding.
 
-**One signal does matter, but to the fallback rather than to resolution.** An app with no
-`androidx.compose.material3` dependency at all — components built directly on Compose
-Foundation and UI, as [Jewel](https://github.com/JetBrains/jewel) does for the IntelliJ
-design language — has not customised Material, it has declined it. Defaulting such a product
-to M3E motion imports a voice it deliberately avoided.
+**The fallback is overridable**, and **a skill says which rung it used** when a decision
+resolves below rung 0.
 
-This does not move any decision to a different rung. It lowers confidence in rung 1, so the
-skill asks once whether M3E is the wanted fallback instead of assuming it, and records the
-answer in MOTION.md. Rare in practice — most products described as having a custom design
-system still sit on `material3` underneath with heavy theming — but when it is true, it is
-unambiguous and cheap to detect.
+### Two things this does not mean
 
-**Gaps are the normal case, not a defect.** Most design systems specify colour, type and
-spacing, and say nothing about motion — a product can have a thoroughly defined visual
-language and no motion language whatsoever. That is not a finding. It is the condition the
-fallback exists for.
+**An accident is not a standard.** Only `DECIDED` sits at rung 0. A spec recurring across
+thirty files is a copy-paste nobody examined. `OBSERVED` patterns are reported as
+inconsistency, never enforced as doctrine.
 
-**The fallback is itself overridable.** A team may write in MOTION.md that unspecified areas
-should not resolve to M3E — ask instead, or fall back to something else. Noting it there is
-enough; no further justification is wanted.
+**A standard is not a licence to harm users.** `floor` and `obligation` rules hold regardless
+of MOTION.md.
 
-**The skill says which rung it used.** When a decision resolves below rung 0, that is stated
-rather than presented as house style. A product with a strong brand voice may find an M3E
-default reads as foreign even where its written system is silent, and the only way that gets
-corrected is if the fallback is visible. Silently importing Android's voice into a custom
-design system is the failure mode this guards against.
-
-### Two things this ordering does not mean
-
-**An accident is not a standard.** Only `DECIDED` sits at level 0. `tween(300)` recurring
-across thirty files is a copy-paste nobody examined, not a considered departure — treating
-it as one would canonize the accident, which is the failure the provenance tags exist to
-prevent. `OBSERVED` patterns are reported as inconsistency, never enforced as doctrine.
-
-**A standard is not a licence to harm users.** `floor` rules and anything marked
-`Overridable: no` hold regardless of MOTION.md. A team may decide its own motion language;
-it may not decide that frame-rate state read during composition is fine, or that users who
-asked for no animation can be stranded. That carve-out is about correctness and harm, not
-about Material.
-
-Where a MOTION.md entry contradicts M3 without saying so, the skill mentions it **once** —
-the team may simply not know — and then conforms to their standard. It does not re-litigate
-the point on every review.
-
-Inherited rules transfer as *principles*, never as values. Emil's numbers are CSS
-cubic-béziers and his platform has `prefers-reduced-motion`; both have to be re-grounded in
-Compose symbols and Android behaviour, and T-005 shows a case where the principle survives
-but inverts completely.
-
-This table rolls up into each skill's `skill-source.json` attribution, which is required
-wherever upstream material is used.
+### Sources
 
 | Rule | Derived from | What we add |
 |---|---|---|
-| F-001 | d.android.com phases | Applies the phase rule specifically to animated reads |
-| F-002 | Compose `Animatable` docs | Makes it a blocking rule, not an option |
-| F-003 | d.android.com lazy lists | Reclassifies a footnote as a silent-failure rule |
-| F-004 | d.android.com shared elements | Names the wrapping composables that inherit the limit |
+| F-001, F-007, F-008, F-009, F-010 | d.android.com | Applied to motion specifically |
+| F-002, F-003 | Compose docs | Made blocking rather than advisory |
+| F-004 | d.android.com | Names the wrapping composables |
 | F-005 | `MotionDurationScale` | Enumerates what bypasses it |
+| F-006 | Open issue + source | Names the clip and scopes it to unintended cases |
+| O-001 | Emil — reduced motion | **Inverted**: Android annihilates, so the carrier must be static |
+| O-002 | Original (Lottie behaviour) | Makes the disabled frame a shipping requirement |
 | T-001 | Original | Navigation defaults as an always-finding |
-| T-002 | Emil — "extend the codebase's tokens" | Re-grounded on `MotionScheme` and MOTION.md |
-| T-003 | Original (token reading) | Corrects an inference the docs invite |
-| T-004 | M3 Expressive-vs-Standard | Turns a disposition into a per-surface rule |
-| T-005 | Emil — reduced motion | Android has no semantic flag; annihilation, not degradation |
-| T-006 | Original (Lottie behaviour) | Makes the marker a shipping requirement |
-| T-007 | M3 "Top level" pattern | States why, and what breaks when peers slide |
-| T-008 | d.android.com predictive back | Recasts a platform change as a motion rule |
-| T-009 | Emil — frequency gate | Transfers wholesale; undocumented on Android |
-| T-010 | Emil + M3 legacy pairings | Notes the spring system silently drops the asymmetry |
-| F-006 | Original (open issue) | Names the undocumented clip and what it eats |
-| F-007 | d.android.com config changes | Applies recreation semantics to motion state |
-| F-008 | Original (API absence) | `padding` has no lambda form; says what to do instead |
-| F-009 | d.android.com performance | Recasts a measurement caveat as an evidence rule |
-| F-010 | d.android.com shared elements | Turns a note into a selection rule |
-| T-011 | M3 transition patterns | Selects by relationship; maps the old MDC vocabulary |
-| T-012 | Emil — interruptibility | Re-grounded on `Animatable` and spring retargeting |
-| T-013 | Emil — stagger | Budgets the sequence instead of the per-item delay |
-| T-014 | Emil — named purpose | Applies it to background data churn |
-| T-015 | Community practice | Places haptics at commitment, not contact |
-| T-016 | M3 enter and exit | States the depth argument behind expand-not-scale |
-| T-017 | Original | Entrance motion replaying on back navigation |
-| T-018 | Original (platform fidelity) | Overscroll replacement as a product-wide decision |
-| T-019 | M3 skeleton loaders | Conditions the skeleton on knowing the layout |
-| T-020 | Emil — cohesion | Names the mixed-timing form and why review misses it |
+| T-002 | Emil — token discipline | Re-grounded on `MotionScheme`; extends to literal springs |
+| T-004 | M3 Expressive vs Standard | Per-element, not per-surface |
+| T-008 | d.android.com predictive back | Scoped to custom back |
+| T-009 | Emil — frequency gate | State layer survives; ceiling governs additions |
+| T-010 | M3 tier guidance | Tier and property count, not a duration ratio |
+| T-011 | M3 transition patterns | Direction promises order; defines "peer" |
+| T-012 | Emil — interruptibility | Re-grounded: gating input, not spec choice |
+| T-013 | Emil — stagger | Budgets the sequence; fixes ordering |
+| T-016 | M3 enter and exit | Scoped to unanchored centre scale |
+| T-017, T-021 | Original | Compose-specific lifecycle traps |
+| T-018 | Original | Platform fidelity as a product decision |
+| T-019 | M3 skeleton loaders | Structural match, plus indicator floor |
+| T-020 | Emil — cohesion | Scheme and tier, not one spec |
+| T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, gesture posture, restraint |
 
-Nineteen of thirty derive from an existing source. That is the intended ratio for now.
+Eighteen of thirty-two derive from an existing source.
 
 ## Progress
 
-**30 of 30. Floor 10, taste 20.** The gate is met on count and ratio.
+**32 rules — 10 floor, 2 obligation, 20 taste.** Nine review-only, the rest checkable.
 
-What it does not establish is whether the taste is right. Every rule satisfies the admission
-criteria and the set is internally consistent, which is exactly the condition under which a
-consistent mistake is hardest to see. The next step is human review with veto — an engineer
-on the mechanisms, a designer on the claims — and a third of these failing to survive would
-be the process working, not a setback.
+Revision 01 applied three machine reviews. Human review with veto is outstanding and remains
+the only check on whether the taste is right. See [`REVISION-01.md`](REVISION-01.md).
 
-Each rule's violating and compliant snippets are also the first mutation fixtures: inject the
-violation into clean code, keep the compliant neighbour as a must-not-flag case. Writing the
-rules produced the corpus as a by-product.
+Retired ids, not to be reused: **T-003** (restated a token fact), **T-007** (absorbed into
+T-011), **T-014** (claim wrong for background list changes), **T-015** (claim contradicted by
+Android's haptic vocabulary).
