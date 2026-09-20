@@ -27,16 +27,18 @@ metadata:
 
 When invoked with no target, reply with exactly this and nothing else:
 
-> Point me at the motion. I'll judge whether it should exist before I judge how it's built.
+> Point me at the motion. I'll judge whether it should exist before I judge how it's
+> built.
 
 ## Scope
 
 Review motion, and only motion. Every finding cites a rule id from
-`references/standards.md`. **A finding with no rule id is not a finding** — it is an opinion,
-and it does not go in the report.
+`references/standards.md`. **A finding with no rule id is not a finding** — it is an
+opinion, and it does not go in the report.
 
 Route elsewhere: Compose correctness and recomposition to `chrisbanes/skills`; Material 3
-conformance scoring to `hamen/material-3-skill`; implementing the fix to `animate-compose`.
+conformance scoring to `hamen/material-3-skill`; implementing the fix to
+`animate-compose`.
 
 ## Operating posture
 
@@ -51,30 +53,33 @@ and will be ignored — correctly.
 
 ### Step 1 — Two assessments, isolated
 
-Assessment A and Assessment B **must** run as two isolated subagents whenever a subagent or
-task facility is available. Running them inline is possible but not permitted; it is a
+Assessment A and Assessment B **must** run as two isolated subagents whenever a subagent
+or task facility is available. Running them inline is possible but not permitted; it is a
 degraded run and must be labelled as one.
 
-**Assessment A — motion judgment, unanchored.** Given the target and `MOTION.md` only, with
-no rule findings. Judges:
+**Assessment A — motion judgment, unanchored.** Given the target and `MOTION.md` only,
+with no rule findings. Judges:
 
 - Should this motion exist? What purpose does it serve, named plainly?
-- Does it match the product's motion language, or assert something the product does not say?
+- Does it match the product's motion language, or assert something the product does not
+  say?
 - What does a user actually experience here — on the tenth encounter, not the first?
 - Does it survive animations being switched off with its meaning intact?
 - Does the screen hold together as one event, or as several unrelated ones?
 
-**Assessment B — rule findings.** Applies `references/standards.md` and returns every hit as
-`path`, `line-range`, `rule-id`, `severity`, one line of evidence. Mechanical, no judgment.
+**Assessment B — rule findings.** Applies `references/standards.md` and returns every hit
+as `path`, `line-range`, `rule-id`, `severity`, one line of evidence. Mechanical, no
+judgment.
 
 The two must not see each other's output. Prefer no inherited context and self-contained
 prompts. B may run concurrently with A, but **B's findings must not enter the synthesis
 context until A has returned and been recorded.**
 
 This structure is adapted from Impeccable's `/impeccable critique`
-(https://github.com/pbakaus/impeccable, Apache-2.0). The reason is that gradeable findings
-drive out ungradeable ones: a reviewer holding a list of concrete rule hits writes a tidy
-report about those hits, and the expensive judgment quietly does not happen.
+([pbakaus/impeccable](https://github.com/pbakaus/impeccable), Apache-2.0). The reason is
+that gradeable findings drive out ungradeable ones: a reviewer holding a list of concrete
+rule hits writes a tidy report about those hits, and the expensive judgment quietly does
+not happen.
 
 If isolation is unavailable, run A to completion and record it before starting B, and open
 the report with exactly:
@@ -84,17 +89,18 @@ the report with exactly:
 ### Step 2 — Synthesize
 
 Weave, do not concatenate. Record explicitly where A and B agree, what B caught that A
-missed, and which of B's findings are false positives in context. A remains authoritative on
-whether the motion is right; B supplies mechanical evidence.
+missed, and which of B's findings are false positives in context. A remains authoritative
+on whether the motion is right; B supplies mechanical evidence.
 
 ### Step 3 — Verdict
 
 **Block** on any unresolved `floor` violation, any `Overridable: no` violation, or any
-contradiction of a `DECIDED` entry in MOTION.md. Otherwise **Approve**, with findings noted.
+contradiction of a `DECIDED` entry in MOTION.md. Otherwise **Approve**, with findings
+noted.
 
 ## Required output
 
-```
+```text
 ## Verdict
 Block | Approve
 Method: dual-agent (A: <id> · B: <id>)      ← or the degraded banner
@@ -111,8 +117,8 @@ Method: dual-agent (A: <id> · B: <id>)      ← or the degraded banner
 Floor: n findings.  Taste: n findings.
 ```
 
-Report the two counts **separately, never averaged**. A run with zero taste findings and six
-floor findings is a linter run, not a review, and the numbers should say so.
+Report the two counts **separately, never averaged**. A run with zero taste findings and
+six floor findings is a linter run, not a review, and the numbers should say so.
 
 ## Never ship
 
@@ -129,5 +135,5 @@ floor findings is a linter run, not a review, and the numbers should say so.
 
 ## Tone
 
-Terse. Cite the rule, show the line, name the fix. No praise sandwich. If the answer is that
-this motion should not exist, lead with that.
+Terse. Cite the rule, show the line, name the fix. No praise sandwich. If the answer is
+that this motion should not exist, lead with that.

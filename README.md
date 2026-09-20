@@ -38,17 +38,17 @@ questions it has no special knowledge about is worse than one that declines.
 The keystone is a per-repository `MOTION.md` capturing that codebase's motion language.
 One skill generates it; the others read and conform to it.
 
-It holds **decisions, not inventory** — anything a grep can answer is derived on demand and
-never persisted, because counts and path lists rot fastest while still looking
+It holds **decisions, not inventory** — anything a grep can answer is derived on demand
+and never persisted, because counts and path lists rot fastest while still looking
 authoritative.
 
 ### It has two audiences, and they own different halves
 
-A motion language is a design artefact. It has to be approvable and maintainable by whoever
-owns design, and most designers do not read Kotlin — so a file that is a list of
+A motion language is a design artefact. It has to be approvable and maintainable by
+whoever owns design, and most designers do not read Kotlin — so a file that is a list of
 `MaterialTheme.motionScheme.defaultSpatialSpec()` is unmaintainable by the person whose
-decisions it records. But specs must also bind to token *symbols* rather than literal values,
-or the numbers acquire a second home and drift out of sync with the code.
+decisions it records. But specs must also bind to token *symbols* rather than literal
+values, or the numbers acquire a second home and drift out of sync with the code.
 
 Both hold, because each entry carries an **intent** and a **binding**:
 
@@ -59,9 +59,9 @@ Binding  AppMotion.surfaceExpand                           ← engineering owns 
 ```
 
 Design owns the intent line and can change it without reading code. Engineering owns the
-binding and keeps it resolving to something real. A review that disagrees with the intent is
-a design conversation; a binding that no longer resolves is a defect. Neither side needs to
-edit the other's half, and the file stays legible to both.
+binding and keeps it resolving to something real. A review that disagrees with the intent
+is a design conversation; a binding that no longer resolves is a defect. Neither side
+needs to edit the other's half, and the file stays legible to both.
 
 Every entry carries its provenance:
 
@@ -74,44 +74,45 @@ Every entry carries its provenance:
 Without that distinction a skill canonizes accidents: `tween(300)` across thirty files is
 not a decision, it is a copy-paste with a quorum.
 
-It also declares what the product's design system is and what should happen where that system
-is silent. Most design systems specify colour, type and spacing and say nothing about motion,
-so gaps are the normal case rather than a defect — and resolution happens per decision, not
-per codebase. A heavily customised M3 app follows its own customisations where it made them
-and M3 Expressive everywhere it did not; a wholly custom system follows itself where it
-speaks and M3 Expressive where it does not. Teams that would rather be asked than defaulted
-say so here, and that is the end of it.
+It also declares what the product's design system is and what should happen where that
+system is silent. Most design systems specify colour, type and spacing and say nothing
+about motion, so gaps are the normal case rather than a defect — and resolution happens
+per decision, not per codebase. A heavily customised M3 app follows its own customisations
+where it made them and M3 Expressive everywhere it did not; a wholly custom system follows
+itself where it speaks and M3 Expressive where it does not. Teams that would rather be
+asked than defaulted say so here, and that is the end of it.
 
 When a skill resolves a decision from the fallback rather than the product's own standard,
-it says so. A strong brand voice can find an Android default foreign even where its written
-system is silent, and that only gets corrected if the fallback is visible.
+it says so. A strong brand voice can find an Android default foreign even where its
+written system is silent, and that only gets corrected if the fallback is visible.
 
 When a codebase has no coherent motion language at all, the generating skill says so and
-declines to write the file. Establishing one is a design decision with human ownership, not
-something an agent commits quietly.
+declines to write the file. Establishing one is a design decision with human ownership,
+not something an agent commits quietly.
 
 ## Evals
 
 Skills are evaluated with [Pioneer](https://github.com/rock3r/pioneer), which runs every
-case in two arms — `baseline` without the skill and `with-skill` with it. A skill that does
-not beat baseline is decoration, and this is the measurement that says so.
+case in two arms — `baseline` without the skill and `with-skill` with it. A skill that
+does not beat baseline is decoration, and this is the measurement that says so.
 
 Two things the eval corpus is built to avoid:
 
-- **Self-confirmation.** A finding the skill proposed cannot count toward its own recall, so
-  every label records how it was discovered. Rejected findings are kept as well, since they
-  are the precision denominator.
-- **Leakage.** Staged fixture filenames are visible to the agent under test, so no path may
-  describe what it contains. Variants live in separate batteries with identical filenames.
+- **Self-confirmation.** A finding the skill proposed cannot count toward its own recall,
+  so every label records how it was discovered. Rejected findings are kept as well, since
+  they are the precision denominator.
+- **Leakage.** Staged fixture filenames are visible to the agent under test, so no path
+  may describe what it contains. Variants live in separate batteries with identical
+  filenames.
 
 ## Review structure
 
 The review skill forms its motion judgment **before** it sees any mechanical findings, and
 the two are produced in isolation from each other rather than in sequence in one context.
 
-The reason is that gradeable findings drive out ungradeable ones. A reviewer who has already
-been handed a list of concrete rule hits writes a tidy report about those hits, and the
-expensive judgment — whether the motion is right at all — quietly does not happen.
+The reason is that gradeable findings drive out ungradeable ones. A reviewer who has
+already been handed a list of concrete rule hits writes a tidy report about those hits,
+and the expensive judgment — whether the motion is right at all — quietly does not happen.
 
 This structure is taken from [Impeccable](https://github.com/pbakaus/impeccable)'s
 `/impeccable critique` (Paul Bakaus, Apache-2.0), which splits an unanchored design review

@@ -31,7 +31,9 @@ for skill_dir in "$root"/skills/*/; do
     tmp="$(mktemp)"
     trap 'rm -f "$tmp"' EXIT
     printf '%s\n' "$header" > "$tmp"
-    cat "$source_file" >> "$tmp"
+    # Repo-root siblings do not travel with a skill bundle, so a relative link to one is
+    # broken for anyone who installs the skill. Demote those links to plain text.
+    sed -E 's/\[`?([^]`]+)`?\]\((REVISION-[0-9]+\.md|README\.md)\)/\1/g' "$source_file" >> "$tmp"
 
     if $check_only; then
         if ! cmp -s "$tmp" "$target"; then

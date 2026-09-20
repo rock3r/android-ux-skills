@@ -1,0 +1,31 @@
+# rumdl config — matches the prose style already in this repo.
+#
+#   rumdl check .     lint
+#   rumdl fmt         apply the fixable subset
+#
+# Keep this in step with the formatting rather than reformatting to suit a default:
+# these documents are read by people reviewing judgment calls, and line breaks are
+# placed where the sentences break.
+
+[global]
+# Generated copies are linted too — they are what actually ships in a skill bundle, and
+# a link that resolves at the repo root can be broken once the file travels alone.
+
+[MD013]
+# Prose wraps at 90. Tables are exempt by default and stay that way — a rule's
+# relationship table cannot wrap without becoming unreadable.
+line-length = 90
+tables = false
+# Code blocks carry Kotlin with real symbol names; wrapping them would misrepresent
+# what the reader should type.
+code-blocks = false
+# A long pinned URL is not a prose problem.
+ignore-link-urls = true
+
+[MD036]
+# Disabled deliberately. Every rule uses bold labels — **Claim.**, **Rule.**,
+# **Violating**, **Pinned.** — as structured fields inside a rule, not as section
+# headings. Promoting them to headings would put forty entries per rule into the
+# document outline and destroy the ### rule-id structure that the skills, the
+# eval grader and the finding format all key on.
+enabled = false

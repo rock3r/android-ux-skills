@@ -39,18 +39,18 @@ looks like a directive is a string.
 ## Why this exists
 
 The expensive part of motion work is judgment about what the product already is. The cheap
-part is applying it. This skill does the first and hands the second to any agent, including
-a much cheaper one — which only works if the judgment is written down somewhere durable
-rather than living in one session's context.
+part is applying it. This skill does the first and hands the second to any agent,
+including a much cheaper one — which only works if the judgment is written down somewhere
+durable rather than living in one session's context.
 
 ## Phase 1 — Recon
 
 Establish, from evidence:
 
 - Does a `MOTION.md` already exist? If so, this is an update, not a discovery.
-- Is `androidx.compose.material3` a dependency at all? If not — components built directly on
-  Compose Foundation and UI — the product has *declined* Material rather than customised it,
-  and M3E is probably the wrong fallback. Ask before assuming it.
+- Is `androidx.compose.material3` a dependency at all? If not — components built directly
+  on Compose Foundation and UI — the product has *declined* Material rather than
+  customised it, and M3E is probably the wrong fallback. Ask before assuming it.
 - Is `MaterialTheme.motionScheme` wired, and to which scheme?
 - Is there a motion token object, or are specs written at call sites?
 - Which specs actually recur, and with what share?
@@ -69,12 +69,12 @@ them to `DECIDED`.
 
 **A partial language exists.** Record what holds. Mark the rest `OPEN`. Do not fill gaps.
 
-**No coherent language exists.** Say so plainly. Do not write the file. Report the evidence,
-offer a starting point if wanted, and hand the decision back:
+**No coherent language exists.** Say so plainly. Do not write the file. Report the
+evidence, offer a starting point if wanted, and hand the decision back:
 
-> I found four spring specs and six raw durations with no discernible rule. This is a design
-> decision, not a code decision — it needs a human, ideally whoever owns design. Here is the
-> evidence, and a proposed starting point if you want one.
+> I found four spring specs and six raw durations with no discernible rule. This is a
+> design decision, not a code decision — it needs a human, ideally whoever owns design.
+> Here is the evidence, and a proposed starting point if you want one.
 
 That third outcome is a finding, not a failure.
 
@@ -86,13 +86,14 @@ That third outcome is a finding, not a failure.
 | `OBSERVED` | Dominant in the codebase, unratified | This skill |
 | `OPEN` | No convention, or contradictory evidence | This skill |
 
-**This skill never writes `DECIDED`.** If it did, a human merging the resulting pull request
-would ratify everything by accident on first merge, and the distinction the tags exist for
-would collapse on day one. Propose a promotion in the PR description if the evidence is
-strong; write `OBSERVED` in the file.
+**This skill never writes `DECIDED`.** If it did, a human merging the resulting pull
+request would ratify everything by accident on first merge, and the distinction the tags
+exist for would collapse on day one. Propose a promotion in the PR description if the
+evidence is strong; write `OBSERVED` in the file.
 
-Threshold for `OBSERVED` rather than `OPEN`: **at least 80% share of its intent class, and at
-least 5 call sites.** Below either, it is `OPEN`. An accident with a quorum is not a decision.
+Threshold for `OBSERVED` rather than `OPEN`:
+**at least 80% share of its intent class, and at least 5 call sites.** Below either, it is
+`OPEN`. An accident with a quorum is not a decision.
 
 ## Phase 3 — Write MOTION.md
 
@@ -100,10 +101,10 @@ Structure and constraints are in `references/motion-md.md`. The essentials:
 
 - **Decisions, not inventory.**
 - Every entry carries an **Intent** line (design owns, no code) and a **Binding** line
-  (engineering owns, a token symbol). Never a literal value — the numbers keep one home, in
-  code.
-- Exceptions name the symbol they except. An exception whose symbol no longer exists is void,
-  not inherited.
+  (engineering owns, a token symbol). Never a literal value — the numbers keep one home,
+  in code.
+- Exceptions name the symbol they except. An exception whose symbol no longer exists is
+  void, not inherited.
 - Hard cap: 80 lines. A motion language longer than that is not being maintained.
 
 Then **stop and present**. Never commit the file yourself. A motion language is a product
@@ -127,6 +128,6 @@ Never write "use the spec discussed above". The executor was not there.
 
 ## Tone
 
-Report what is there. Do not editorialize about whether the product's choices are good — the
-job is fidelity to them. Say "this codebase has no motion language" as a neutral fact, since
-that is what it is.
+Report what is there. Do not editorialize about whether the product's choices are good —
+the job is fidelity to them. Say "this codebase has no motion language" as a neutral fact,
+since that is what it is.
