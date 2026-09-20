@@ -30,6 +30,14 @@ A rule is admitted only if all five hold:
 6. **Marked overridable or not.** `taste` rules default to `Overridable: yes` — a codebase
    may diverge via an explicit `DECIDED` entry in MOTION.md. `floor` rules and
    accessibility obligations are `Overridable: no` and hold regardless.
+7. **States its claim before its mechanism** (`taste` rules only). Every taste rule opens
+   with a one-line **Claim**: the perceptual assertion the rule rests on. API names and code
+   follow as the mechanism.
+
+   This is not simplification — readers here know Android. It is separation of the two things
+   a taste rule asserts: *this is how it should feel* and *this is how you get it*. Those
+   fail independently, and a rule that cannot state the first without naming the second is
+   usually a `floor` rule wearing the wrong label.
 
 ## Rule classes
 
@@ -146,6 +154,122 @@ and keeps moving when the user has asked for no animation. Such code reads
 `1.2.0-alpha05`; `Settings.Global.ANIMATOR_DURATION_SCALE` ("Setting to 0.0f will cause
 animations to end immediately"). Read with a `SettingNotFoundException` fallback — the key
 can be undefined.
+
+---
+
+### F-006 — `animateContentSize` clips its child, shadows included
+
+**Rule.** `Modifier.animateContentSize()` always clips the child to its animated bounds. A
+container with elevation, a drop shadow, a ripple that extends past the edge, or a nested
+`AnimatedVisibility` will have them cut. `SizeTransform(clip = false)` on an inner animation
+cannot override an outer `animateContentSize`.
+
+**Why not obvious.** It is the API whose name matches the intent, the clipping is
+undocumented, and the artefact looks like a rendering bug rather than a modifier choice.
+
+**Violating**
+
+```kotlin
+Card(Modifier.shadow(8.dp).animateContentSize()) { Body() }   // shadow is cut
+```
+
+**Compliant**
+
+```kotlin
+Box(Modifier.shadow(8.dp)) {
+    Card(Modifier.animateContentSize()) { Body() }            // clip stays inside the shadow
+}
+```
+
+**Pinned.** [issuetracker 225932760](https://issuetracker.google.com/issues/225932760), open.
+Confirmed by Doris Liu (Compose animation) that the clip also consumes ripples and nested
+`AnimatedVisibility`.
+
+---
+
+### F-007 — Motion state that survives rotation must be saveable
+
+**Rule.** `remember` survives recomposition, not Activity recreation. An `Animatable` holding
+a user-visible position — a dismissed sheet offset, a drag position, a step in a sequence —
+is reconstructed at its initial value on rotation, and the UI snaps. Such state is hoisted
+into `rememberSaveable` or re-derived from saved state; it is not left in a bare `remember`.
+
+**Why not obvious.** It never reproduces in development, because nobody rotates while
+mid-drag.
+
+**Violating**
+
+```kotlin
+val offset = remember { Animatable(0f) }      // resets to 0f on rotation
+LaunchedEffect(Unit) { offset.animateTo(target) }
+```
+
+**Compliant**
+
+```kotlin
+var persisted by rememberSaveable { mutableFloatStateOf(0f) }
+val offset = remember { Animatable(persisted) }
+LaunchedEffect(offset) { snapshotFlow { offset.value }.collect { persisted = it } }
+```
+
+**Pinned.** developer.android.com: on a configuration change "the system recreates the
+activity… Compose recreates the UI"; `remember` does not survive it, `rememberSaveable` does.
+
+---
+
+### F-008 — Layout properties have no cheap animated form
+
+**Rule.** `Modifier.padding` has no lambda overload, so animated padding is read during
+composition and remeasures on every frame. The same holds for animated `size`, `width` and
+`height`. Where the intent is positional motion, use `offset { }` or `graphicsLayer`; where a
+real size change is required, accept the cost knowingly and keep the subtree small.
+
+**Violating**
+
+```kotlin
+val pad by animateDpAsState(if (selected) 24.dp else 8.dp)
+Row(Modifier.padding(pad)) { WideSubtree() }        // remeasures the subtree each frame
+```
+
+**Compliant**
+
+```kotlin
+val shift by animateDpAsState(if (selected) 16.dp else 0.dp)
+Row(Modifier.offset { IntOffset(0, shift.roundToPx()) }) { WideSubtree() }
+```
+
+**Pinned.** Absence of a lambda overload on `Modifier.padding` in current
+`androidx.compose.foundation.layout`.
+
+---
+
+### F-009 — Feel is not assessed in a debug build
+
+**Rule.** No claim about smoothness, jank or perceived speed is made from a debug build.
+Compose in debug runs the whole UI stack unoptimized and without a baseline profile, and
+Android Studio deployments do not apply one. Assessment happens on a release build with R8
+enabled, on physical hardware.
+
+**Why it is a floor rule.** It invalidates evidence rather than producing a bad frame. A
+timing judgement made in debug is not merely imprecise, it is unrelated to what ships.
+
+**Pinned.** developer.android.com: "You can only reliably measure the performance of a Lazy
+layout when running in release mode and with R8 optimization enabled." Baseline profiles
+improve first-run execution by roughly 30%.
+
+---
+
+### F-010 — `sharedElement` demands identical content; otherwise `sharedBounds`
+
+**Rule.** `sharedElement` expects the same content on both sides. Where the content differs
+visually — different composable, changed text style, italic-to-bold, a colour change — use
+`sharedBounds`. Using `sharedElement` across differing content produces a cross-fade artefact
+that reads as a rendering fault.
+
+**Pinned.** developer.android.com: "`sharedBounds()` is for content that is visually
+different but should share the same area between states, whereas `sharedElement()` expects
+the content to be the same", and for `Text`, "`sharedBounds()` is preferred to support font
+changes".
 
 ---
 

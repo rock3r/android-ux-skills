@@ -40,8 +40,28 @@ One skill generates it; the others read and conform to it.
 
 It holds **decisions, not inventory** — anything a grep can answer is derived on demand and
 never persisted, because counts and path lists rot fastest while still looking
-authoritative. Specs reference token symbols rather than literal values, so the numbers keep
-a single home in code.
+authoritative.
+
+### It has two audiences, and they own different halves
+
+A motion language is a design artefact. It has to be approvable and maintainable by whoever
+owns design, and most designers do not read Kotlin — so a file that is a list of
+`MaterialTheme.motionScheme.defaultSpatialSpec()` is unmaintainable by the person whose
+decisions it records. But specs must also bind to token *symbols* rather than literal values,
+or the numbers acquire a second home and drift out of sync with the code.
+
+Both hold, because each entry carries an **intent** and a **binding**:
+
+```markdown
+### Sheets and surfaces that expand
+Intent   Settles without bounce. Confident, not playful.   ← design owns this
+Binding  AppMotion.surfaceExpand                           ← engineering owns this
+```
+
+Design owns the intent line and can change it without reading code. Engineering owns the
+binding and keeps it resolving to something real. A review that disagrees with the intent is
+a design conversation; a binding that no longer resolves is a defect. Neither side needs to
+edit the other's half, and the file stays legible to both.
 
 Every entry carries its provenance:
 
