@@ -4,11 +4,10 @@ The rule set every skill in this repository packages. If a rule is not here, no 
 enforce it.
 
 > [!NOTE]
-> **Status: format test.** Fifteen rules written to prove the schema works and that the
-> domain has depth. The gate is 30 with at least half classed `taste`. If that is not
-> reachable in focused work, the honest conclusion is that Android's judgment layer over
-> Material 3 is thin, and this project shrinks to a correctness floor plus MOTION.md
-> conformance — still useful, different pitch.
+> **Status: gate met, unreviewed.** Thirty rules — 10 `floor`, 20 `taste`. The bar was 30
+> with at least half classed `taste`; taste is two thirds. Meeting it answers only whether
+> the domain has depth, not whether the taste is any good. That needs human review with
+> veto, and a real cull is the expected outcome rather than a nod.
 
 ## Admission criteria
 
@@ -446,6 +445,152 @@ to `MotionScheme` loses the asymmetry silently unless it is restated as a rule.
 
 ---
 
+### T-011 — The pattern states the relationship
+
+**Claim.** Motion between screens tells the user how those screens are related. The wrong
+pattern asserts a relationship that does not exist, and users trust it over the layout.
+
+**Rule.** Choose the pattern from the relationship, not from what looks good:
+
+| Relationship | Pattern |
+|---|---|
+| One element becomes the next screen | Container transform |
+| Parent to child, deeper into a hierarchy | Forward and backward |
+| Peers in an ordered set, usually swipeable | Lateral |
+| Unrelated top-level destinations | Top level |
+| A component appearing in place | Enter and exit |
+
+A lateral slide between two things the user cannot swipe between is a promise the interface
+does not keep.
+
+**Pinned.** M3 transition patterns. Older vocabulary still live in code:
+`MaterialContainerTransform`, `MaterialSharedAxis`, `MaterialFadeThrough` in MDC-Android.
+
+---
+
+### T-012 — Anything a user can start, they can change their mind about
+
+**Claim.** Motion that ignores input until it finishes makes the interface feel like it is
+not listening. The user is never waiting for an animation to grant them permission.
+
+**Rule.** Motion is interruptible and reversible mid-flight. Re-targeting starts from the
+current value and velocity, not from the origin.
+
+**Mechanism.** `Animatable.animateTo` cancels the in-flight animation and continues from
+where it is. A spring retargets carrying velocity. A `tween` restarted on a new target jumps
+to a stale start value, which is why fixed durations read badly on anything interactive.
+
+**Pinned.** `androidx.compose.animation.core.Animatable`, `spring`.
+
+---
+
+### T-013 — Stagger has a total budget, not a per-item delay
+
+**Claim.** A cascade reads as one gesture up to a point. Past it, the user is watching a
+queue, and the last item to arrive feels late rather than choreographed.
+
+**Rule.** Budget the whole sequence, not the gap between items. When item count would exceed
+the budget, animate the first few and place the rest — do not stretch the sequence or shrink
+the delay to fit. Default budget where the product has not set one: the sequence completes
+within the duration of a single standard transition.
+
+**Why it is ours.** Stagger delay is the parameter every implementation exposes and the
+wrong thing to tune. Nothing in Material or Android guidance bounds the total.
+
+---
+
+### T-014 — Refreshed data is not a state change
+
+**Claim.** A list whose contents update in the background is not telling the user anything.
+Animating it converts an update they did not ask for into an interruption they must watch.
+
+**Rule.** Motion marks changes the user caused or needs to notice. Poll results, cache fills,
+sync completions and background refreshes land without animation, even when the diff is
+large. An item the user just created is a different case and may animate.
+
+---
+
+### T-015 — Haptics land on commitment, not on contact
+
+**Claim.** A haptic asserts that something happened. Firing one when a drag begins asserts it
+before anything has, and the user learns to distrust the signal.
+
+**Rule.** Haptics fire at the moment of commitment — the threshold crossed, the item
+dropped, the selection taken — not at gesture start, and never on scroll.
+
+**Mechanism.** `LocalHapticFeedback.current.performHapticFeedback(...)` at the commit branch.
+
+---
+
+### T-016 — Surfaces expand; they do not scale up
+
+**Claim.** A surface that scales up reads as flying toward the viewer. That asserts a depth
+change, and M3 deliberately reduced how much depth the system uses.
+
+**Rule.** Dialogs, sheets and menus expand and collapse along an axis from their origin.
+`scaleIn`/`scaleOut` on a surface is off-language on M3 unless the product's own standard
+says otherwise.
+
+**Pinned.** M3 enter-and-exit guidance: Android expands or collapses on an axis rather than
+scaling, because scale implies an elevation change that does not match M3's reduced
+elevation model.
+
+---
+
+### T-017 — A screen introduces itself once
+
+**Claim.** Entrance motion says "this is new". Replaying it when the user comes back from a
+detail screen says something new arrived when nothing did, and it makes navigating back feel
+slower than it is.
+
+**Rule.** Entrance animations play on first entry to a destination, not on every return to
+composition. State that records "already entered" survives the back navigation.
+
+**Mechanism.** `LaunchedEffect(Unit)` re-runs whenever the composable re-enters composition,
+which includes popping back to it. The flag belongs in `rememberSaveable` or in the
+destination's own state holder.
+
+---
+
+### T-018 — Platform overscroll stays unless the product replaced it deliberately
+
+**Claim.** The stretch at the end of a list is what an Android user expects, and it is one of
+the strongest signals that an app is native rather than ported.
+
+**Rule.** Do not replace or disable the platform overscroll effect to install a custom bounce.
+Replacing it is a product-wide decision belonging in MOTION.md, never a per-screen choice.
+
+**Pinned.** Stretch overscroll is platform behaviour from Android 12 (API 31).
+
+---
+
+### T-019 — Skeletons promise a layout you must actually have
+
+**Claim.** A skeleton says "content of this shape is arriving". If the real content does not
+match, the promise breaks and the screen jumps — worse than having shown nothing.
+
+**Rule.** Skeletons where the resulting layout is known ahead of the data — a list of uniform
+rows, a known form. An indeterminate indicator where it is not. Never a skeleton whose shape
+is a guess.
+
+**Pinned.** M3 lists skeleton loaders as a distinct transition pattern.
+
+---
+
+### T-020 — One screen, one timing system
+
+**Claim.** Elements that move together but are timed differently read as unrelated. The
+viewer cannot say why the screen feels incoherent, only that it does.
+
+**Rule.** Motion that a user perceives as a single event uses one timing system throughout.
+A `tween`-driven pane transition alongside spring-driven content inside it is the common
+form, and it is visible even at correct individual values.
+
+**Why it is ours.** Both halves pass review independently. The defect only exists in the
+relationship, which is why it survives code review and shows up in a recording.
+
+---
+
 ## Provenance
 
 Taste is mostly inherited, not invented. Originating an Android taste canon from scratch is
@@ -578,21 +723,34 @@ wherever upstream material is used.
 | T-008 | d.android.com predictive back | Recasts a platform change as a motion rule |
 | T-009 | Emil — frequency gate | Transfers wholesale; undocumented on Android |
 | T-010 | Emil + M3 legacy pairings | Notes the spring system silently drops the asymmetry |
+| F-006 | Original (open issue) | Names the undocumented clip and what it eats |
+| F-007 | d.android.com config changes | Applies recreation semantics to motion state |
+| F-008 | Original (API absence) | `padding` has no lambda form; says what to do instead |
+| F-009 | d.android.com performance | Recasts a measurement caveat as an evidence rule |
+| F-010 | d.android.com shared elements | Turns a note into a selection rule |
+| T-011 | M3 transition patterns | Selects by relationship; maps the old MDC vocabulary |
+| T-012 | Emil — interruptibility | Re-grounded on `Animatable` and spring retargeting |
+| T-013 | Emil — stagger | Budgets the sequence instead of the per-item delay |
+| T-014 | Emil — named purpose | Applies it to background data churn |
+| T-015 | Community practice | Places haptics at commitment, not contact |
+| T-016 | M3 enter and exit | States the depth argument behind expand-not-scale |
+| T-017 | Original | Entrance motion replaying on back navigation |
+| T-018 | Original (platform fidelity) | Overscroll replacement as a product-wide decision |
+| T-019 | M3 skeleton loaders | Conditions the skeleton on knowing the layout |
+| T-020 | Emil — cohesion | Names the mixed-timing form and why review misses it |
 
-Ten of fifteen derive from an existing source. That is the intended ratio for now.
+Nineteen of thirty derive from an existing source. That is the intended ratio for now.
 
 ## Progress
 
-15 of 30. Floor 5, taste 10.
+**30 of 30. Floor 10, taste 20.** The gate is met on count and ratio.
 
-Taste already outnumbers floor two to one, which is the ratio the collection needs to stay
-worth installing.
+What it does not establish is whether the taste is right. Every rule satisfies the admission
+criteria and the set is internally consistent, which is exactly the condition under which a
+consistent mistake is hardest to see. The next step is human review with veto — an engineer
+on the mechanisms, a designer on the claims — and a third of these failing to survive would
+be the process working, not a setback.
 
-Candidates queued, each to be written or rejected against the admission criteria:
-`animateContentSize` clipping its child's shadow (issuetracker 225932760) and its misuse on
-lazy items during scroll; item enter animations firing on first composition; an
-`Animatable` reset by `LaunchedEffect(Unit)` on configuration change; a `tween` pane
-transition mixed with a spring content transition on one screen; `shrinkVertically` reflowing
-content below it; haptics placed at commit points rather than drag start; `scaleIn` dialogs
-being off-language where M3 expands on an axis; porting the Compose `EasingEmphasized` tuple
-to another platform; measuring feel in a debug build.
+Each rule's violating and compliant snippets are also the first mutation fixtures: inject the
+violation into clean code, keep the compliant neighbour as a must-not-flag case. Writing the
+rules produced the corpus as a by-product.

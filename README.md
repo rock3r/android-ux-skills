@@ -104,6 +104,33 @@ Two things the eval corpus is built to avoid:
 - **Leakage.** Staged fixture filenames are visible to the agent under test, so no path may
   describe what it contains. Variants live in separate batteries with identical filenames.
 
+## Review structure
+
+The review skill forms its motion judgment **before** it sees any mechanical findings, and
+the two are produced in isolation from each other rather than in sequence in one context.
+
+The reason is that gradeable findings drive out ungradeable ones. A reviewer who has already
+been handed a list of concrete rule hits writes a tidy report about those hits, and the
+expensive judgment — whether the motion is right at all — quietly does not happen.
+
+This structure is taken from [Impeccable](https://github.com/pbakaus/impeccable)'s
+`/impeccable critique` (Paul Bakaus, Apache-2.0), which splits an unanchored design review
+from deterministic detector evidence, runs them as isolated subagents, and withholds the
+detector output from synthesis until the review has returned. Where isolation is
+unavailable it degrades to instructed ordering and says so in the report. We adopt the
+structure; the rules, guidance and taste are our own, and Impeccable's detectors are
+CSS-shaped with no Android analogue.
+
+## Acknowledgements
+
+- [Emil Kowalski](https://github.com/emilkowalski/skills) (MIT) — the archetypes this
+  collection is built on, and the source of much of its taste.
+- [Impeccable](https://github.com/pbakaus/impeccable) by Paul Bakaus (Apache-2.0) — the
+  anti-anchoring review structure described above.
+- Ivan Morgillo ([hamen](https://github.com/hamen)) — for the idea of an Android design
+  skill collection, and for `material-3-skill`, which owns Material's specs so this
+  repository does not have to.
+
 ## Licence
 
 Apache-2.0.
