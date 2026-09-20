@@ -1,0 +1,15 @@
+# Eval batteries produced by `pioneer eval prepare` — regenerated, never committed
+/batteries/
+/.evals/
+
+# Corpus snapshots materialized from the manifest at run time.
+# Only permissively-licensed excerpts are committed, under evals/files/.
+# Anything fetched lives here and stays out of the repo.
+**/evals/files-fetched/
+
+# Eval run output
+*.stdout
+*.stderr
+*.jsonl
+
+.DS_Store
