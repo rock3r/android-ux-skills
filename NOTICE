@@ -1,0 +1,53 @@
+Android UX Skills
+Copyright 2026 Sebastiano Poggi and contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+-------------------------------------------------------------------------------
+
+This project adapts work from the following sources. Per-skill provenance, including
+the specific files adapted and the commit or fetch date they were taken at, is recorded
+in each skill's skill-source.json.
+
+emilkowalski/skills — MIT License
+https://github.com/emilkowalski/skills
+Copyright (c) Emil Kowalski
+
+    The workflow archetypes this collection is built on — construct, adversarial review,
+    read-only audit producing plans for a cheaper executor — and a substantial part of its
+    motion craft. Adapted as principles and re-grounded in Android behaviour rather than
+    copied; see the Provenance section of STANDARDS.md for which rules derive from it and
+    what each one changes.
+
+pbakaus/impeccable — Apache License 2.0
+https://github.com/pbakaus/impeccable
+Copyright (c) Paul Bakaus
+
+    The anti-anchoring review structure used by review-android-motion: an unanchored
+    design assessment and a deterministic findings assessment, produced in isolation, with
+    the findings withheld from synthesis until the assessment returns. The rules, guidance
+    and detectors are not adapted from it.
+
+-------------------------------------------------------------------------------
+
+The following are cited and linked, not adapted. No code or text is reproduced from them
+beyond short quotations identified as such:
+
+    The Android Open Source Project — Apache License 2.0
+    https://source.android.com
+
+    developer.android.com and m3.material.io documentation
+    Content licensed by Google under CC BY 4.0, code samples under Apache 2.0
+
+Android, Jetpack Compose and Material Design are trademarks of Google LLC. This project
+is not affiliated with, endorsed by, or sponsored by Google LLC.
