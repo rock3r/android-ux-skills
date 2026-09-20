@@ -126,8 +126,8 @@ six floor findings is a linter run, not a review, and the numbers should say so.
 |---|---|
 | A bare `tween(n)` outside a token definition | T-002 |
 | Motion on a 100+/day surface above the ceiling | T-009 |
-| Directional motion between peer destinations | T-007 |
-| Meaning-carrying motion with no degraded path | T-005 |
+| Directional motion between unordered peer destinations | T-011 |
+| Meaning with no static carrier when animation is off | O-001 |
 | `NavHost` left on its default transition | T-001 |
 | Frame-rate state read during composition | F-001 |
 | `animateItem()` with no stable key | F-003 |

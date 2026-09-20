@@ -1,0 +1,89 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Pinned so CI and local runs agree. A linter that disagrees with the machine the
+  # author is on produces arguments rather than fixes.
+  RUMDL_VERSION: "0.2.74"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install rumdl
+        run: |
+          set -euo pipefail
+          v="v${RUMDL_VERSION}"
+          base="https://github.com/rvben/rumdl/releases/download/${v}"
+          asset="rumdl-${v}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL -o rumdl.tar.gz "${base}/${asset}"
+          curl -sSfL -o rumdl.sha256 "${base}/${asset}.sha256"
+          echo "$(awk '{print $1}' rumdl.sha256)  rumdl.tar.gz" | sha256sum -c -
+          tar xzf rumdl.tar.gz
+          sudo install -m755 "$(tar tzf rumdl.tar.gz | grep -m1 'rumdl$')" /usr/local/bin/rumdl
+          rumdl --version
+
+      - name: Markdown lint
+        run: rumdl check .
+
+      - name: Skill references are in sync with STANDARDS.md
+        # The copies under skills/*/references/ are generated. A hand-edit there would be
+        # silently lost on the next sync, so drift is a failure rather than a warning.
+        run: ./scripts/sync-references.sh --check
+
+      - name: Skills satisfy the registry contract
+        # Slugs, frontmatter, SemVer, tag shape, ingestible file set, sidecar validity,
+        # size cap — and that every rule id a skill cites still exists in STANDARDS.md.
+        run: ./scripts/check-skills.sh
+
+      - name: Eval fixtures do not leak their answers
+        # Staged fixture filenames are visible to the agent under test, so a path that
+        # describes what it contains invalidates the run while still producing a score.
+        run: ./scripts/check-fixture-leaks.sh
+
+      - name: Eval controller compiles and grades correctly
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/run-evals.py
+          python3 - <<'PY'
+          import importlib.util, sys
+          spec = importlib.util.spec_from_file_location("ev", "scripts/run-evals.py")
+          ev = importlib.util.module_from_spec(spec)
+          sys.modules["ev"] = ev
+          spec.loader.exec_module(ev)
+
+          found = ev.parse_findings(
+              "prose the model wrote first\n"
+              "FINDINGS\n"
+              "app/Player.kt:61-68 T-001 taste default transition left in place\n"
+              "- app/Feed.kt:88-96 F-001 floor animated offset read in composition\n"
+              "not a finding line\n"
+          )
+          assert len(found) == 2, found
+
+          graded = ev.grade(
+              found,
+              [{"path": "Player.kt", "lines": [61, 68], "rule": "T-001", "class": "taste"},
+               {"path": "Other.kt", "lines": [10, 20], "rule": "T-009", "class": "taste"}],
+              [{"path": "Feed.kt", "lines": [80, 100]}],
+          )
+          # Matched one expected finding, missed one, and flagged a span declared correct.
+          assert graded["taste"]["hit"] == 1, graded
+          assert graded["taste"]["missed"] == 1, graded
+          assert graded["flagged_correct_code"] == 1, graded
+          assert graded["floor"]["false_positive"] == 1, graded
+          print("grader behaves as specified")
+          PY
+
+      - name: Shell scripts parse
+        run: for f in scripts/*.sh; do bash -n "$f"; done

@@ -88,7 +88,7 @@ assuming it. That product declined Material rather than customising it.
    site is a defect (T-002).
 3. Conform to MOTION.md. Deviating from a `DECIDED` entry is a finding against your code,
    not against the file.
-4. Degradation ships with the animation, not after it (T-005).
+4. Degradation ships with the animation, not after it (O-001).
 5. `floor` rules hold regardless of MOTION.md. A product may choose its motion language;
    it may not choose to read frame-rate state during composition.
 
@@ -108,20 +108,19 @@ Apply the frequency gate (T-009). Ceilings, not suggestions:
 ### 2. Name the purpose
 
 Feedback, spatial continuity, state change, preventing a jarring cut, explanation, or rare
-delight. Cannot name one? Do not build it. Background data arriving is not a purpose
-(T-014).
+delight. Cannot name one? Do not build it.
 
 ### 3. Choose the pattern from the relationship
 
 Not from what looks good (T-011). One element becoming the next screen is a container
 transform; parent-to-child is forward and backward; ordered peers are lateral; unrelated
-top-level destinations are top level (T-007); a component appearing in place is enter and
+top-level destinations are top level (T-011); a component appearing in place is enter and
 exit (T-016).
 
 ### 4. Resolve the spec
 
 Through the ladder above. Spatial springs move things; effects springs fade and recolour,
-and are identical across schemes — changing scheme to alter a fade does nothing (T-003).
+and are identical across schemes — changing scheme to alter a fade does nothing (T-004).
 Keep Expressive spatial off dense data (T-004). Exits at roughly half the entrance
 (T-010).
 
@@ -134,9 +133,10 @@ finger (T-008).
 ### 6. Degradation
 
 Animations switched off means *annihilation*, not reduction — a shared element becomes a
-teleport. Meaning-carrying motion ships a hand-built degraded path (T-005). Lottie files
-carry a `reduced motion` marker (T-006). Hand-driven motion reads the duration scale
-itself (F-005).
+teleport, and there is no substitute animation because the substitute is snapped too.
+Meaning must have a static carrier: the destination at rest shows what the motion would
+have shown (O-001). Every Lottie has a readable disabled frame (O-002). Hand-driven motion
+reads the duration scale itself and branches to a static end state (F-005).
 
 ### 7. Phase check
 
