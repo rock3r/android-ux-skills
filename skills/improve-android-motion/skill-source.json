@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "skill": "improve-android-motion",
+  "attribution": "Read-only audit posture, the expensive-judgment/cheap-execution split, and the self-contained plan template adapted from Emil Kowalski's skills (MIT). The refuse-to-invent recon contract is informed by Impeccable's init and document commands by Paul Bakaus (Apache-2.0). MOTION.md, its provenance tags and the resolution ladder are original.",
+  "sources": [
+    {
+      "type": "upstream-skill",
+      "role": "upstream-source",
+      "label": "emilkowalski/skills — improve-animations and PLAN-TEMPLATE",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "MIT",
+      "url": "https://github.com/emilkowalski/skills",
+      "check": {
+        "type": "github",
+        "repository": "emilkowalski/skills",
+        "path": "skills/improve-animations/SKILL.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "upstream-skill",
+      "role": "supporting-reference",
+      "label": "pbakaus/impeccable — init and document, evidence-as-hypothesis and seed mode",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0",
+      "url": "https://github.com/pbakaus/impeccable",
+      "check": {
+        "type": "github",
+        "repository": "pbakaus/impeccable",
+        "path": "skill/reference/init.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "local-original-content",
+      "role": "original-content",
+      "label": "MOTION.md contract and provenance tags",
+      "version": "0.1.0",
+      "versionSource": "frontmatter",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0"
+    }
+  ]
+}

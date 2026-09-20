@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "skill": "animate-compose",
+  "attribution": "Workflow structure and much of the motion craft adapted from Emil Kowalski's skills (MIT). Motion token values from AOSP androidx (Apache-2.0). Material 3 taste guidance from m3.material.io. Android-specific rules and the resolution ladder are original.",
+  "sources": [
+    {
+      "type": "upstream-skill",
+      "role": "upstream-source",
+      "label": "emilkowalski/skills — animate",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "MIT",
+      "url": "https://github.com/emilkowalski/skills",
+      "check": {
+        "type": "github",
+        "repository": "emilkowalski/skills",
+        "path": "skills/animate/SKILL.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "upstream-reference",
+      "role": "supporting-reference",
+      "label": "androidx compose-material3 — MotionScheme graduation and spring token values",
+      "version": "8ada756bb2132fac399365d71d77ada043c5bab4",
+      "versionSource": "gitCommit",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0",
+      "url": "https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3",
+      "check": {
+        "type": "github",
+        "repository": "androidx/androidx",
+        "path": "compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/MotionScheme.kt",
+        "trackingRef": "androidx-main"
+      }
+    },
+    {
+      "type": "upstream-reference",
+      "role": "supporting-reference",
+      "label": "Material 3 — motion, transition patterns, enter and exit",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "unknown",
+      "url": "https://m3.material.io/styles/motion",
+      "check": {
+        "type": "manual",
+        "reason": "Rendered documentation site with no versioned source; token tables are interactive widgets. Re-read on any material3 minor bump."
+      }
+    },
+    {
+      "type": "upstream-reference",
+      "role": "supporting-reference",
+      "label": "developer.android.com — Compose phases, animation, predictive back",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "unknown",
+      "url": "https://developer.android.com/develop/ui/compose/animation",
+      "check": {
+        "type": "manual",
+        "reason": "Unversioned documentation site. Re-read when a rule's pinned API changes stability or a new Android release alters platform behaviour."
+      }
+    },
+    {
+      "type": "local-original-content",
+      "role": "original-content",
+      "label": "Android motion standards — 30 rules",
+      "version": "0.1.0",
+      "versionSource": "frontmatter",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0"
+    }
+  ]
+}

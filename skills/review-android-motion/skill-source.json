@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "skill": "review-android-motion",
+  "attribution": "Adversarial review posture and the block/approve output contract adapted from Emil Kowalski's skills (MIT). The isolated dual-assessment structure that forms design judgment before mechanical findings is adapted from Impeccable's /impeccable critique by Paul Bakaus (Apache-2.0). The rules applied are original.",
+  "sources": [
+    {
+      "type": "upstream-skill",
+      "role": "upstream-source",
+      "label": "emilkowalski/skills — review-animations",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "MIT",
+      "url": "https://github.com/emilkowalski/skills",
+      "check": {
+        "type": "github",
+        "repository": "emilkowalski/skills",
+        "path": "skills/review-animations/SKILL.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "upstream-skill",
+      "role": "supporting-reference",
+      "label": "pbakaus/impeccable — critique, Assessment A/B isolation",
+      "version": "2026-09-20",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0",
+      "url": "https://github.com/pbakaus/impeccable",
+      "check": {
+        "type": "github",
+        "repository": "pbakaus/impeccable",
+        "path": "skill/reference/critique.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "local-original-content",
+      "role": "original-content",
+      "label": "Android motion standards — 30 rules",
+      "version": "0.1.0",
+      "versionSource": "frontmatter",
+      "fetchedAt": "2026-09-20",
+      "license": "Apache-2.0"
+    }
+  ]
+}
