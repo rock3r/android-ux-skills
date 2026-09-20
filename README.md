@@ -54,9 +54,21 @@ Every entry carries its provenance:
 Without that distinction a skill canonizes accidents: `tween(300)` across thirty files is
 not a decision, it is a copy-paste with a quorum.
 
-When a codebase has no coherent motion language, the generating skill says so and declines
-to write the file. Establishing one is a design decision with human ownership, not something
-an agent commits quietly.
+It also declares what the product's design system is and what should happen where that system
+is silent. Most design systems specify colour, type and spacing and say nothing about motion,
+so gaps are the normal case rather than a defect — and resolution happens per decision, not
+per codebase. A heavily customised M3 app follows its own customisations where it made them
+and M3 Expressive everywhere it did not; a wholly custom system follows itself where it
+speaks and M3 Expressive where it does not. Teams that would rather be asked than defaulted
+say so here, and that is the end of it.
+
+When a skill resolves a decision from the fallback rather than the product's own standard,
+it says so. A strong brand voice can find an Android default foreign even where its written
+system is silent, and that only gets corrected if the fallback is visible.
+
+When a codebase has no coherent motion language at all, the generating skill says so and
+declines to write the file. Establishing one is a design decision with human ownership, not
+something an agent commits quietly.
 
 ## Evals
 

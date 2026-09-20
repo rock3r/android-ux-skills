@@ -356,22 +356,43 @@ Two different jobs follow, and they should not be confused:
   applied silently. An agent that picks a motion language on a team's behalf and starts
   enforcing it has invented a standard, not served one.
 
-So the order is:
+### Resolution is per decision, not per codebase
 
-0. **The codebase's own standard**, as `DECIDED` in MOTION.md. This is the thing we serve.
-   Where it departs from M3, it departs from M3; that is the team's call and it has already
-   been made.
-1. **Pragmatic M3 Expressive defaults**, where no standard is established. Android's own
-   design language is the sane starting point for a product that hasn't picked one, and
-   "pragmatic" is load-bearing — the defaults we suggest are the ones that survive contact
-   with a real app, not the maximal expression of the spec.
+The question is never "is this an M3 app or a custom one". It is, for **this specific
+decision**, has the team said anything? Resolve each decision independently down this
+ladder, stopping at the first rung that speaks:
+
+0. **The product's standard**, as `DECIDED` in MOTION.md or in a design system it points to.
+1. **Pragmatic M3 Expressive** — Android's own language, in the form that survives contact
+   with a real app rather than the maximal expression of the spec.
 2. **Craft** — [Emil Kowalski's animation work](https://github.com/emilkowalski/skills)
-   (MIT) and community practice — covering the large areas M3 leaves silent: frequency,
-   when not to animate, interruption, degradation.
+   (MIT) and community practice — covering what M3 leaves silent: frequency, when not to
+   animate, interruption, degradation.
 3. **Original**, only where all of the above are silent.
 
-Where sources disagree and no product standard settles it, the rule records which way it
-went and why, so the default stays auditable rather than becoming folklore.
+Because resolution happens per decision, the same codebase draws from different rungs for
+different questions. That is the intended behaviour, not a compromise:
+
+| Shape | How it resolves |
+|---|---|
+| No standard at all | M3E throughout, proposed for ratification rather than assumed |
+| Heavily customised M3E — M3 components, ripples removed, tokens replaced | Their customisations govern what they touched; **everything they did not customise still resolves to M3E** |
+| Wholly custom system with its own semantics | Their system governs what it covers; where it is silent, M3E fills the gap |
+
+**Gaps are the normal case, not a defect.** Most design systems specify colour, type and
+spacing, and say nothing about motion — a product can have a thoroughly defined visual
+language and no motion language whatsoever. That is not a finding. It is the condition the
+fallback exists for.
+
+**The fallback is itself overridable.** A team may write in MOTION.md that unspecified areas
+should not resolve to M3E — ask instead, or fall back to something else. Noting it there is
+enough; no further justification is wanted.
+
+**The skill says which rung it used.** When a decision resolves below rung 0, that is stated
+rather than presented as house style. A product with a strong brand voice may find an M3E
+default reads as foreign even where its written system is silent, and the only way that gets
+corrected is if the fallback is visible. Silently importing Android's voice into a custom
+design system is the failure mode this guards against.
 
 ### Two things this ordering does not mean
 
