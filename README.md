@@ -1,11 +1,22 @@
 # Android UX Skills
 
-Agent skills for **Android motion and design-engineering craft** — the judgment calls that
-decide whether an interface feels considered or merely functional.
+> [!CAUTION]
+> **This is not an officially supported Google product, and has no affiliation with Google,
+> Android or Material Design.** It is an independent, unofficial project. Where it cites
+> Google's documentation or the AOSP source it says so and links to it; everything else is
+> our own opinion and should be read that way.
 
 > [!WARNING]
-> Pre-alpha. Nothing here is ready to install. The rule set that everything else packages
-> is not written yet.
+> **Work in progress. Nothing here is ready to install or rely on.**
+>
+> The 32 rules in [`STANDARDS.md`](STANDARDS.md) have been fact-checked against primary
+> sources and reviewed by three separate models, but **no human has reviewed them yet** and
+> a substantial cull is expected. The skills, the eval harness and the corpus design are
+> scaffolding around a rule set that is still moving. Names, rule ids and file layout will
+> change.
+
+Agent skills for **Android motion and design-engineering craft** — the judgment calls that
+decide whether an interface feels considered or merely functional.
 
 ## What this is for
 
