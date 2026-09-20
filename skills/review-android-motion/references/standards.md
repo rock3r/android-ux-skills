@@ -40,6 +40,24 @@ A rule is admitted only if all six hold:
 Taste rules additionally open with a one-line **Claim**: the perceptual assertion, stated
 before the mechanism. *How it should feel* and *how you get it* fail independently.
 
+### Material bindings
+
+Six rules reach for a Material mechanism. Each marks it, and states the universal form:
+
+**Material binding** — the part that assumes Material: a token name, a pattern vocabulary, a
+justification from M3's own model.
+
+**Outside Material** — the same claim for a product that does not use Material, with its own
+mechanism substituted.
+
+The split exists because the claims survive a change of design language even when the
+mechanisms do not. A team with a custom design system still wants "direction promises order";
+they need their own transitions mapped to it, not the rule removed. Filtering whole rules
+would discard the judgment to shed the vocabulary.
+
+A checker may drop bindings (`--no-material`) without dropping claims. Only T-004's claim is
+Material-only, and it says so.
+
 ## Rule classes
 
 `floor` — mechanical correctness. Wrong regardless of conventions. Never overridable.
@@ -297,8 +315,12 @@ voice or none, and a value nobody can find again is a decision nobody made.
 **Rule.** Every spec resolves to `MaterialTheme.motionScheme` or to the product's own token.
 Literal `tween(…)` and literal `spring(…)` are admissible only inside a token definition.
 
-`MotionScheme` exposes no durations. Keyframes and timed reveals therefore resolve to a
-codebase token, never to the scheme — that is not an exemption from the rule.
+**Material binding.** `MaterialTheme.motionScheme` as the default token source. It exposes no
+durations, so keyframes and timed reveals resolve to a codebase token rather than the scheme
+— not an exemption from the rule.
+
+**Outside Material.** The product's own token object. The discipline is identical and the
+claim unchanged: the rule is about where numbers live, not whose numbers they are.
 
 **Pinned.** `MotionScheme` carries only `@Immutable`; the opt-in was removed in androidx
 `8ada756` ("Graduate MotionScheme from experimental"), shipped `1.5.0-alpha15`. It exists
@@ -319,6 +341,13 @@ over the table. The distinction is per element, not per screen.
 
 Effects springs are identical across both schemes (`1.0/3800`, `1.0/1600`, `1.0/800`), so
 changing scheme to alter a fade or colour transition does nothing; only spatial differs.
+
+**Material binding.** The whole rule. Expressive-versus-Standard is meaningless without M3
+schemes — this is the one rule whose *claim*, not just its mechanism, assumes Material.
+
+**Outside Material.** The generalisation is: whatever your bounciest spatial spec is, keep it
+off elements whose position is read as information. Worth stating in MOTION.md as your own
+rule rather than inheriting this one.
 
 **Pinned.** `ExpressiveMotionTokens.kt:21-33`, `StandardMotionTokens.kt:19-31` — the three
 effects pairs are textually identical in both files. M3 guidance: Expressive "should be used
@@ -377,9 +406,13 @@ most load-bearing judgment in motion work and it is entirely undocumented.
 moved on.
 
 **Rule.** On Android, asymmetry is expressed as **tier and property count, not a duration
-ratio**: enter with spatial *and* effects; exit with effects only — M3's own position is that
-exits are usually just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec`
-in, `fastEffectsSpec` out.
+ratio**: enter with spatial *and* effects; exit with effects only.
+
+**Material binding.** The tier vocabulary and M3's own position that exits are usually just a
+fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in, `fastEffectsSpec` out.
+
+**Outside Material.** Enter moves *and* fades; exit only fades. The property count is the
+mechanism; the tier names are Material's way of saying it.
 
 Does not apply to gesture dismissals, which complete on velocity, or to predictive-back exits,
 which the system times.
@@ -413,6 +446,12 @@ and correctly directional without being swipeable.
 returns to the start destination regardless of history, and a deep link has no origin at all,
 so there is no source of truth for a direction. A swipeable `TabRow` + `Pager` is an ordered
 set and is lateral — correct, and out of scope here.
+
+**Material binding.** The five pattern names in the table, and the MDC vocabulary below.
+
+**Outside Material.** The five *relationships* are the rule; the names are Material's. Map
+your own transitions onto them and record the mapping in MOTION.md. A design system with a
+sixth relationship Material does not name adds a row — the claim accommodates it.
 
 **Pinned.** M3 transition patterns. Older vocabulary still live in code:
 `MaterialContainerTransform`, `MaterialSharedAxis`, `MaterialFadeThrough` in MDC-Android.
@@ -464,6 +503,13 @@ asserts a depth change M3 deliberately reduced.
 origin — a menu growing from its trigger, a container transform — scales correctly, because
 it reads as emerging *from* the source rather than approaching the viewer.
 
+**Material binding.** The justification — M3 reduced how much depth the system uses, so
+asserting a depth change is off-language *there*.
+
+**Outside Material.** The claim holds anywhere depth is not a primary axis of the design
+language. A system that uses depth heavily and deliberately may find centre-scale correct;
+that is a legitimate `DECIDED` entry, not a violation.
+
 **Pinned.** M3 enter-and-exit: Android expands or collapses on an axis rather than scaling,
 because scale implies an elevation change inconsistent with M3's reduced elevation model.
 Counter-case that defines the scope: `DropdownMenuContent` scales 0.8→1.0 with FastSpatial
@@ -513,11 +559,20 @@ Either way, apply a **delay before showing and a minimum visible duration**, so 
 response does not produce a flash. An indicator that appears and vanishes within 80ms is
 worse than no indicator.
 
+**Material binding.** M3 naming skeleton loaders a distinct transition pattern, which is what
+makes a skeleton the expected form rather than one option.
+
+**Outside Material.** Both halves stand alone: structural match is a property of the promise,
+and the indicator delay-and-minimum is about human perception of flashing, not about Material.
+
 **Pinned.** M3 lists skeleton loaders as a distinct transition pattern.
 
 ---
 
 ### T-020 — One event, one scheme and one tier
+
+**Detect: review-only.** What counts as "one perceived event" is not in the source. A checker
+can compare tiers *within* a single transition block; it cannot decide where an event begins.
 
 **Claim.** Elements moving together but timed differently read as unrelated. The viewer
 cannot say why the screen feels incoherent, only that it does.
