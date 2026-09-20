@@ -27,6 +27,9 @@ A rule is admitted only if all five hold:
 4. **Pinned.** Every factual claim names the symbol or source it rests on, so staleness is
    detectable.
 5. **Classed.** Either `floor` or `taste`.
+6. **Marked overridable or not.** `taste` rules default to `Overridable: yes` — a codebase
+   may diverge via an explicit `DECIDED` entry in MOTION.md. `floor` rules and
+   accessibility obligations are `Overridable: no` and hold regardless.
 
 ## Rule classes
 
@@ -217,6 +220,9 @@ that is expressive in one area and dense in another. Scheme is chosen per surfac
 
 ### T-005 — Meaning-carrying motion ships a hand-built degraded path
 
+**Overridable: no.** A product may choose its own transitions; it may not choose to strand
+users who have asked for no animation.
+
 **Rule.** Android's "Remove animations" accessibility toggle **zeroes** the animation scales.
 It does not reduce or simplify; it annihilates. A shared-element transition becomes a
 teleport, a positional reveal becomes a jump cut. Any animation carrying meaning — spatial
@@ -292,13 +298,15 @@ a per-component one.
 **Why it is ours.** No Android or Material source states a frequency gate. It is the single
 most load-bearing judgment in motion work and it is entirely undocumented.
 
-**Conflict — Material prevails.** Emil's gate would suppress motion on the highest-frequency
-controls outright. Material specifies press feedback there (ripple) and M3 Expressive argues
-expression *aids* usability, with research reporting faster target identification and the
-age-related gap closing. Material wins: the ripple stays, and the gate governs what is added
-*on top of* the specified state layer, not whether the platform's own feedback survives.
-Emil's restraint still holds where Material is silent, which is everything above the state
-layer.
+**Sources disagree; here is where the default landed.** Emil's gate would suppress motion on
+the highest-frequency controls outright. M3 specifies press feedback there, and M3
+Expressive argues expression *aids* usability, reporting faster target identification and a
+closing age-related gap. The default keeps the state layer: the gate governs what is added
+*on top of* it, not whether the platform's own feedback survives. Emil's restraint applies
+above the state layer, where M3 says nothing.
+
+This is a default, not a verdict. A team whose standard defines its own press language has
+already settled it, and the gate then measures against theirs.
 
 ---
 
@@ -324,19 +332,63 @@ values, component anatomy, elevation levels, type scale — are not taste and ar
 they have a home in [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill)
 and a rule that restates one is rejected. Its *taste guidance* — which transition pattern
 suits which relationship, motion used sparingly, expression in service of usability — is
-platform-authoritative and is what we integrate.
+what we integrate, as the default for a product that has not chosen otherwise.
 
-Precedence when sources disagree:
+### Whose standard we serve
 
-1. **Material taste guidance.** This is Android. Where Emil or community craft contradicts
-   it, Material wins.
-2. **Emil Kowalski's animation craft** ([MIT](https://github.com/emilkowalski/skills)) and
-   community practice, filling the large areas Material leaves silent — frequency, when not
-   to animate, interruption, degradation.
-3. **Original**, only where both are silent.
+**The product's own — whatever that is.** These skills help a team hold to the motion
+language *they* chose, and help them choose one when they haven't. They do not argue an app
+toward Material.
 
-A rule whose sources conflict records the conflict and why Material prevailed, so the
-decision stays auditable rather than becoming folklore.
+"Their own" covers every case equally: M3 adopted wholesale, M3 extended with product
+tokens, a wholly custom design system, or a corporate design language the Android app
+inherits. A team that chose M3 has a standard that happens to be Material — which is not the
+same as us applying Material to them, and the difference shows the moment they want to
+depart from it. A custom system is a destination, not a deviation requiring defence.
+
+Two different jobs follow, and they should not be confused:
+
+- **A standard exists** → our job is fidelity to it. Not improvement, not modernization, not
+  M3 conformance. Inconsistency with their standard is the finding; disagreement with our
+  taste is not.
+- **No standard exists** → our job is to help them decide, then hold them to it. The
+  pragmatic M3 Expressive default below is a *proposal a human ratifies*, never something
+  applied silently. An agent that picks a motion language on a team's behalf and starts
+  enforcing it has invented a standard, not served one.
+
+So the order is:
+
+0. **The codebase's own standard**, as `DECIDED` in MOTION.md. This is the thing we serve.
+   Where it departs from M3, it departs from M3; that is the team's call and it has already
+   been made.
+1. **Pragmatic M3 Expressive defaults**, where no standard is established. Android's own
+   design language is the sane starting point for a product that hasn't picked one, and
+   "pragmatic" is load-bearing — the defaults we suggest are the ones that survive contact
+   with a real app, not the maximal expression of the spec.
+2. **Craft** — [Emil Kowalski's animation work](https://github.com/emilkowalski/skills)
+   (MIT) and community practice — covering the large areas M3 leaves silent: frequency,
+   when not to animate, interruption, degradation.
+3. **Original**, only where all of the above are silent.
+
+Where sources disagree and no product standard settles it, the rule records which way it
+went and why, so the default stays auditable rather than becoming folklore.
+
+### Two things this ordering does not mean
+
+**An accident is not a standard.** Only `DECIDED` sits at level 0. `tween(300)` recurring
+across thirty files is a copy-paste nobody examined, not a considered departure — treating
+it as one would canonize the accident, which is the failure the provenance tags exist to
+prevent. `OBSERVED` patterns are reported as inconsistency, never enforced as doctrine.
+
+**A standard is not a licence to harm users.** `floor` rules and anything marked
+`Overridable: no` hold regardless of MOTION.md. A team may decide its own motion language;
+it may not decide that frame-rate state read during composition is fine, or that users who
+asked for no animation can be stranded. That carve-out is about correctness and harm, not
+about Material.
+
+Where a MOTION.md entry contradicts M3 without saying so, the skill mentions it **once** —
+the team may simply not know — and then conforms to their standard. It does not re-litigate
+the point on every review.
 
 Inherited rules transfer as *principles*, never as values. Emil's numbers are CSS
 cubic-béziers and his platform has `prefers-reduced-motion`; both have to be re-grounded in
