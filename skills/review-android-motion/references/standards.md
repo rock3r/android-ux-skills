@@ -138,13 +138,39 @@ supported. This includes any composable that wraps `AndroidView`, such as a `Dia
 
 ---
 
-### F-005 — Hand-driven motion reads the duration scale itself
+### F-005 — Self-timed motion reads the duration scale itself
 
-**Rule.** Compose applies `MotionDurationScale` to its own animation APIs. Motion driven
-by `withFrameNanos`, a gesture loop, video, WebView, or `LottieAnimatable.animate()`
-bypasses it and keeps moving after the user has asked for none. Such code reads the scale
-and branches — **to a static end state, never to nothing**. What that end state must be is
-O-001.
+**Rule.** "Self-timed" means motion whose progress *your own code* advances — a frame
+callback, a timer, a media clock. It is not about whether a finger is involved.
+
+**Compose's animation APIs already handle this and need no change.** `animate*AsState`,
+`AnimatedVisibility`, `AnimatedContent`, `Transition` and `Animatable` all run on the
+Compose animation clock, read `MotionDurationScale`, and finish immediately when the user
+has switched animations off. A gesture-driven `Animatable` is Compose-driven and therefore
+already covered — a finger does not make motion self-timed.
+
+What is not covered, and must read the scale itself:
+
+| Bypasses the scale | Why |
+|---|---|
+| `withFrameNanos` loops | Your code owns the clock |
+| `LottieAnimatable.animate()` called directly | `ignoreSystemAnimationsDisabled` is declared but never read |
+| Video, `WebView`, `SurfaceView` content | Not Compose animations at all |
+| `Animatable` driven from a scope lacking `MotionDurationScale` | `WindowRecomposer` injects it into the recomposer and effect contexts only |
+
+Read it and branch — **to a static end state, never to nothing**. What that end state must
+convey is O-001.
+
+```kotlin
+val resolver = LocalContext.current.contentResolver
+val animationsOff = remember(resolver) {
+    try {
+        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE) == 0f
+    } catch (_: Settings.SettingNotFoundException) {
+        false // the key can be undefined when it has never been set
+    }
+}
+```
 
 **Pinned.** `androidx.compose.ui.MotionDurationScale`, honoured since Compose Animation
 `1.2.0-alpha05`. `Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause
@@ -191,7 +217,11 @@ assigned, where the clip is described as by design.
 holding a user-visible position is reconstructed at its initial value on rotation, and the
 UI snaps.
 
-Scope: state a user can see the position of. A decorative one-shot does not qualify.
+Scope: **touch-driven position, not time-driven progress.** A sheet offset the user dragged
+to, a carousel page they swiped to, a reorder in progress — those are positions the user
+placed, and losing them on rotation is losing their work. A time-driven animation that was
+merely mid-flight does not qualify: restarting or completing it is fine, because the user
+did not put it where it was.
 
 **Pinned.** developer.android.com: on configuration change "the system recreates the
 activity… Compose recreates the UI". `rememberSaveable` survives it; `remember` does not.
@@ -217,6 +247,11 @@ evidence, not the content of source. Admitted under criterion 3's explicit exemp
 **Rule.** No claim about smoothness, jank or perceived speed comes from a debug build.
 Compose in debug runs the UI stack unoptimized and without a baseline profile, and Android
 Studio deployments do not apply one. Assessment is a release build with R8, on hardware.
+
+**The rule is one-directional.** Debug is strictly slower, so motion that is *smooth in
+debug* will be smooth in release — that observation is safe and needs no rerun. What does
+not transfer is the failing direction: jank seen in debug says nothing about the shipped
+build, and a fix made in response to it may be correcting something that was never there.
 
 **Pinned.** developer.android.com: "You can only reliably measure the performance of a
 Lazy layout when running in release mode and with R8 optimization enabled."
@@ -398,10 +433,17 @@ Nothing about the animation changes; the user's relationship to it does.
 | Occasional | Default tier; continuity matters most |
 | Rare or first-run | Delight permitted |
 
-**The platform state layer always survives the gate.** M3E's press treatment — including
-its spring shape morph — is rung 1 of the resolution ladder, and the default fallback
-cannot fail the default rule. The ceiling governs what is added *on top of* the state
-layer. Replacing the state layer itself is a product-wide decision belonging in MOTION.md.
+**"Platform state layer" means the feedback the component already gives you** for hover,
+focus, press and drag — on Material that is the tonal overlay plus ripple that `Button`,
+`ListItem`, `Card` and every other interactive component draw without being asked, together
+with M3 Expressive's press shape morph. On a custom design system it is whatever your
+equivalent is: the thing a component does on touch that you did not write at the call site.
+
+**It always survives the gate.** It is rung 1 of the resolution ladder, and the default
+fallback cannot fail the default rule. The ceiling governs what is added *on top of* the
+state layer. Removing or replacing it is a product-wide decision belonging in MOTION.md —
+and a bare `clickable` with `indication = null` has removed it by accident, which is the
+common form of getting this wrong.
 
 **Why it is ours.** No Android or Material source states a frequency gate. It is the
 single most load-bearing judgment in motion work and it is entirely undocumented.
@@ -569,6 +611,22 @@ structure is unknown, an indeterminate indicator.
 Either way, apply a **delay before showing and a minimum visible duration**, so a fast
 response does not produce a flash. An indicator that appears and vanishes within 80ms is
 worse than no indicator.
+
+**The whole sequence, in order.** Each step exists to remove one kind of flicker:
+
+1. **Delay before showing.** Nothing appears for the first ~150ms. A response that arrives
+   inside that window never shows a placeholder at all.
+2. **Fade the placeholder in.** It should not appear instantly; an abrupt skeleton is its
+   own flash.
+3. **Hold a minimum.** Once shown, it stays for a minimum — its fade-in plus a short
+   dwell — even if content arrives immediately after. A placeholder that vanishes before
+   the eye resolves it reads as a glitch, not as speed.
+4. **Cross-fade to content**, rather than swapping. The structural match means the two
+   frames are nearly aligned, so a short cross-fade reads as the content resolving rather
+   than as one thing being replaced by another.
+
+Skipping step 3 is the common mistake, because it feels like deliberately slowing the app
+down. It is the opposite: it is what stops a fast response from looking broken.
 
 **Material binding.** M3 naming skeleton loaders a distinct transition pattern, which is
 what makes a skeleton the expected form rather than one option.
