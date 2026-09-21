@@ -1,0 +1,70 @@
+{
+  "skill_name": "review-android-motion",
+  "battery": "no-motion-language",
+  "description": "T-001 with no MOTION.md present. Severity should be minor: the value is too long, but nothing has been decided for it to contradict. Also the precision case, which must produce no T-001 finding at all.",
+  "evals": [
+    {
+      "id": 10,
+      "title": "T-001 detection, no motion language",
+      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
+      "files": ["evals/files/c10/AppNavigation.kt"],
+      "expect": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [27, 31],
+          "rule": "T-001",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [45, 71],
+          "note": "DismissibleCard is a correct gesture-driven Animatable with velocity carried into animateDecay. Flagging it is an F-002 or T-012 false positive."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [73, 84],
+          "note": "StatusBanner resolves its spec to the scheme and reads the animated value in a graphicsLayer lambda. Correct under T-002 and F-001."
+        }
+      ],
+      "expectations": [
+        "Flags the NavHost as having no transitions specified, so it inherits the 700ms default",
+        "Reports it as minor, or does not assert a severity beyond a note — nothing has been decided here for it to contradict",
+        "Does NOT flag DismissibleCard's gesture handling",
+        "Does NOT flag StatusBanner's fade",
+        "Does not invent a motion convention the codebase has not established"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "T-001 precision, transitions specified",
+      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
+      "files": ["evals/files/c11/AppNavigation.kt"],
+      "expect": [],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [28, 47],
+          "note": "NavHost specifies all four transitions from product tokens. This is the compliant form and must not be flagged."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [52, 78],
+          "note": "DismissibleCard, as above."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [80, 91],
+          "note": "StatusBanner, as above."
+        }
+      ],
+      "expectations": [
+        "Produces no T-001 finding",
+        "Does not object to the cross-fade itself — unordered top-level destinations cross-fade correctly under T-011",
+        "If it reports anything, it is not about the NavHost transitions"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Run exactly what CI runs, before the push rather than after it.
+#
+# This exists because a push once went out with a known-failing lint: the check ran, printed
+# its failure, and the shell chain carried on to `git push` regardless. Reading output is
+# not a control; exiting non-zero is.
+#
+# Enable with: git config core.hooksPath .githooks
+# Skip once with: git push --no-verify
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+fail=0
+run() {
+    printf '  %-44s' "$1"
+    shift
+    if out="$("$@" 2>&1)"; then
+        echo "ok"
+    else
+        echo "FAILED"
+        sed 's/^/      /' <<<"$out" | head -20
+        fail=1
+    fi
+}
+
+echo "pre-push checks"
+
+if command -v rumdl >/dev/null; then
+    run "markdown lint" rumdl check .
+else
+    echo "  markdown lint                                SKIPPED (rumdl not installed)"
+fi
+
+run "skill references in sync" ./scripts/sync-references.sh --check
+run "registry contract" ./scripts/check-skills.sh
+run "eval fixtures do not leak" ./scripts/check-fixture-leaks.sh
+run "eval controller compiles" python3 -m py_compile scripts/run-evals.py
+
+if [[ $fail -ne 0 ]]; then
+    echo
+    echo "push aborted. Fix the above, or use --no-verify if you mean it." >&2
+    exit 1
+fi
+echo "all clear"

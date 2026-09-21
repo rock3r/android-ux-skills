@@ -1,0 +1,59 @@
+{
+  "skill_name": "review-android-motion",
+  "battery": "established-language",
+  "description": "The same fixtures, with a MOTION.md that DECIDED a destination-change token. T-001 should now be major — not because 700ms got worse, but because this one surface inherits a third-party default while everything else resolves to the product's own token. Case ids and staged filenames are identical to the other batteries so nothing about the variant is visible to the agent.",
+  "evals": [
+    {
+      "id": 10,
+      "title": "T-001 severity escalates against a DECIDED token",
+      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
+      "files": ["evals/files/c10/AppNavigation.kt", "evals/files/m1/MOTION.md"],
+      "expect": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [27, 31],
+          "rule": "T-001",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [45, 71],
+          "note": "MOTION.md names DismissibleCard as the reference implementation for velocity handoff. Flagging it contradicts the file the skill was given."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [73, 84],
+          "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
+        }
+      ],
+      "expectations": [
+        "Flags the NavHost, and cites the DECIDED destination-change entry in MOTION.md",
+        "Treats it as major or equivalent — a contradiction of a settled decision, not a loose value",
+        "Names AppMotion.destinationEnter / destinationExit as what it should bind to, rather than proposing a duration",
+        "Does NOT flag DismissibleCard, which MOTION.md names as the reference",
+        "Does NOT flag StatusBanner"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Compliant against an established language",
+      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
+      "files": ["evals/files/c11/AppNavigation.kt", "evals/files/m1/MOTION.md"],
+      "expect": [],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [28, 47],
+          "note": "Binds to exactly the tokens MOTION.md declares. Conformant."
+        }
+      ],
+      "expectations": [
+        "Produces no finding against the NavHost",
+        "Recognises the bindings as the ones MOTION.md declares"
+      ]
+    }
+  ]
+}

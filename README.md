@@ -66,8 +66,9 @@ Both hold, because each entry carries an **intent** and a **binding**:
 
 ```markdown
 ### Sheets and surfaces that expand
-Intent   Settles without bounce. Confident, not playful.   ← design owns this
-Binding  AppMotion.surfaceExpand                           ← engineering owns this
+
+- **Intent** — settles without bounce. Confident, not playful.   ← design owns this
+- **Binding** — `AppMotion.surfaceExpand`                        ← engineering owns this
 ```
 
 Design owns the intent line and can change it without reading code. Engineering owns the

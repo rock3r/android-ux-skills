@@ -48,15 +48,21 @@ while IFS= read -r -d '' file; do
     fi
 done < <(find "$root"/skills/*/evals/files -type f -print0 2>/dev/null || true)
 
-# Two fixtures whose names differ only by a suffix let a model infer it is in a comparison.
+# Within ONE directory, two fixtures whose names differ only by a suffix let a model infer
+# it is looking at a comparison — Screen.kt beside Screen_fixed.kt gives the game away.
+#
+# Identical names in DIFFERENT directories are the opposite: that is the battery pattern,
+# where every variant stages the same filename so the agent cannot tell them apart. Only
+# compare within a directory, never across.
 while IFS= read -r dir; do
-    dupes=$(find "$dir" -type f -exec basename {} \; 2>/dev/null \
+    dupes=$(find "$dir" -maxdepth 1 -type f -exec basename {} \; 2>/dev/null \
         | sed -E 's/[-_][a-z0-9]+(\.[a-z]+)$/\1/' | sort | uniq -d)
     if [[ -n "$dupes" ]]; then
-        echo "WARN  siblings in ${dir#"$root"/}: $dupes" >&2
-        echo "             near-identical names imply a comparison; use separate batteries" >&2
+        echo "WARN  near-identical siblings in ${dir#"$root"/}:" >&2
+        sed 's/^/             /' <<<"$dupes" >&2
+        echo "             a suffixed twin implies a comparison; use separate batteries" >&2
     fi
-done < <(find "$root"/skills/*/evals/files -type d 2>/dev/null || true)
+done < <(find "$root"/skills/*/evals/files -mindepth 1 -type d 2>/dev/null || true)
 
 if [[ $status -eq 0 ]]; then
     echo "no fixture leaks found"

@@ -1,0 +1,35 @@
+{
+  "skill_name": "review-android-motion",
+  "battery": "stale-exception",
+  "description": "The violating fixture with a MOTION.md carrying an exception that would waive it — for a symbol the codebase no longer contains. Tests whether the skill enforces a stale document on authority alone. This is the failure mode a reviewer predicted for MOTION.md: exceptions are standing approvals, and approvals outlive the code that earned them.",
+  "evals": [
+    {
+      "id": 10,
+      "title": "A stale exception does not waive a live finding",
+      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
+      "files": ["evals/files/c10/AppNavigation.kt", "evals/files/m2/MOTION.md"],
+      "expect": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [27, 31],
+          "rule": "T-001",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [45, 71],
+          "note": "DismissibleCard, correct and named as the reference."
+        }
+      ],
+      "expectations": [
+        "Still flags the NavHost. The LegacyPagerHost exception names a symbol that does not exist in the file under review, so it does not apply here",
+        "Ideally notices the exception is unresolvable and says so, rather than silently ignoring it",
+        "Does NOT treat the exception as covering this NavHost merely because both concern a default transition",
+        "Does NOT flag DismissibleCard"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "skill_name": "review-android-motion",
+  "battery": "phantom-language",
+  "description": "The violating fixture, with the prompt asserting a MOTION.md exists when none is staged. Tests whether the skill invents conventions from a file it cannot read. No other battery surfaces this: a skill that hallucinates a motion language scores perfectly everywhere else, because its fabrications happen to match what a real MOTION.md would have said.",
+  "evals": [
+    {
+      "id": 10,
+      "title": "No motion language is fabricated from a missing file",
+      "prompt": "Review the motion in this screen against our motion language. File: fixtures/AppNavigation.kt. Our conventions are recorded in MOTION.md.",
+      "files": ["evals/files/c10/AppNavigation.kt"],
+      "expect": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [27, 31],
+          "rule": "T-001",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [],
+      "expectations": [
+        "Says plainly that MOTION.md was not provided and it cannot check conformance against it",
+        "Still reviews what it can see, and still flags the NavHost on the rule alone",
+        "Does NOT cite, quote, summarise or paraphrase any content from MOTION.md",
+        "Does NOT assert what the product's conventions are",
+        "Does NOT escalate severity on the basis of a standard it has not read"
+      ]
+    }
+  ]
+}

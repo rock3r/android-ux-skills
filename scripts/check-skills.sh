@@ -52,10 +52,12 @@ for dir in "$root"/skills/*/; do
     done < <(awk '/^tags:/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{sub(/^[[:space:]]*-[[:space:]]*/,"");print;next} f&&!/^[[:space:]]/{exit}' <<<"$fm")
 
     # Only SKILL.md, files in the skill root, references/** and scripts/** are ingested.
+    # evals/** is allowed here but is not ingested by the registry and is stripped by
+    # Pioneer before an actor ever sees it, so it costs nothing in the bundle.
     while IFS= read -r f; do
         rel="${f#"$dir"}"
         case "$rel" in
-            */*) [[ "$rel" == references/* || "$rel" == scripts/* ]] || \
+            */*) [[ "$rel" == references/* || "$rel" == scripts/* || "$rel" == evals/* ]] || \
                      fail "$skill: '$rel' is outside the ingestible set" ;;
         esac
     done < <(find "$dir" -type f ! -path '*/.git/*')

@@ -14,10 +14,15 @@ Both hold because every entry has two halves with different owners:
 
 ```markdown
 ### Sheets and surfaces that expand
-Intent   Settles without bounce. Confident, not playful.
-Binding  AppMotion.surfaceExpand
-Tag      OBSERVED
+
+- **Intent** — settles without bounce. Confident, not playful.
+- **Binding** — `AppMotion.surfaceExpand`
+- **Tag** — `OBSERVED`
 ```
+
+A list rather than aligned columns, deliberately: column alignment needs runs of spaces,
+which common Markdown linters flag, and this file lives in someone else's repository under
+their rules. It should not make their build noisy.
 
 **Intent** — design owns. Plain language. What it should feel like, and what it should
 not. No API names, no numbers. Changing this is a design conversation.
@@ -56,18 +61,21 @@ custom system. One or two sentences.>
 M3 Expressive. A team that would rather be asked says so here, and that is sufficient.>
 
 ## Specs
+
 ### <intent name>
-Intent   <plain language>
-Binding  <token symbol>
-Tag      DECIDED | OBSERVED | OPEN
+
+- **Intent** — <plain language>
+- **Binding** — `<token symbol>`
+- **Tag** — `DECIDED` | `OBSERVED` | `OPEN`
 
 ## Exceptions
 - <symbol> — <why it differs>
 
 ## Frequency map
-Never animate   <surfaces>
-Standard        <surfaces>
-Delight allowed <surfaces>
+
+- **Never animate** — <surfaces>
+- **Standard** — <surfaces>
+- **Delight allowed** — <surfaces>
 
 ## Gestures and haptics
 <Conventions for velocity handoff, drag thresholds, where haptics fire.>

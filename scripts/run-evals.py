@@ -49,14 +49,19 @@ OUTPUT_CONTRACT = """
 Report every finding as one line in exactly this form, and nothing else after the marker:
 
 FINDINGS
-<path>:<start>-<end> <rule-id> <floor|taste> <one line>
+<path>:<start>-<end> <rule-id> <floor|obligation|taste> <minor|major> <one line>
+
+Severity is relative to what this codebase has decided, not intrinsic to the finding:
+contradicting a convention the project has established is major; the same observation with
+no convention established is minor.
 
 Use the rule ids from the standards if you have them. If you have no standards to draw on,
 still use this shape and put your own short identifier in the rule-id column.
 If you find nothing, write FINDINGS and then NONE."""
 
 FINDING_RE = re.compile(
-    r"^(?P<path>[^\s:]+):(?P<start>\d+)-(?P<end>\d+)\s+(?P<rule>\S+)\s+(?P<cls>floor|taste)\b",
+    r"^(?P<path>[^\s:]+):(?P<start>\d+)-(?P<end>\d+)\s+"
+    r"(?P<rule>\S+)\s+(?P<cls>floor|obligation|taste)\s+(?P<sev>minor|major)\b",
     re.IGNORECASE,
 )
 
@@ -68,6 +73,7 @@ class Finding:
     end: int
     rule: str
     cls: str
+    severity: str = ""
 
     def overlaps(self, other: "Finding") -> bool:
         return (
@@ -100,6 +106,7 @@ def parse_findings(text: str) -> list[Finding]:
                     end=int(m["end"]),
                     rule=m["rule"].upper(),
                     cls=m["cls"].lower(),
+                    severity=m["sev"].lower(),
                 )
             )
     return out
@@ -112,12 +119,13 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) ->
     alone would credit a finding that named the right rule in the wrong place.
     """
     exp = [
-        Finding(e["path"], e["lines"][0], e["lines"][1], e["rule"].upper(), e.get("class", "taste"))
+        Finding(e["path"], e["lines"][0], e["lines"][1], e["rule"].upper(),
+                e.get("class", "taste"), e.get("severity", ""))
         for e in expected
     ]
     neg = [Finding(n["path"], n["lines"][0], n["lines"][1], "", "") for n in negatives]
 
-    matched, unmatched = set(), []
+    matched, unmatched, wrong_severity = set(), [], []
     for e in exp:
         hit = next(
             (a for a in actual if a.rule == e.rule and a.overlaps(e) and id(a) not in matched),
@@ -125,6 +133,13 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) ->
         )
         if hit:
             matched.add(id(hit))
+            # Severity is graded separately from detection. Finding the right thing and
+            # misjudging how much it matters is a different failure from missing it, and
+            # in a codebase with an established language it is the more interesting one.
+            if e.severity and hit.severity and hit.severity != e.severity:
+                wrong_severity.append(
+                    {"rule": e.rule, "expected": e.severity, "reported": hit.severity}
+                )
         else:
             unmatched.append(e)
 
@@ -147,6 +162,7 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) ->
     return {
         "floor": counts("floor"),
         "taste": counts("taste"),
+        "wrong_severity": wrong_severity,
         "flagged_correct_code": len(on_negative),
         "total_reported": len(actual),
     }
@@ -179,74 +195,134 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
     return ArmResult(arm=arm, raw=proc.stdout, findings=parse_findings(proc.stdout))
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--skill", required=True)
-    ap.add_argument("--model", default="claude-code/claude-sonnet-4-6")
-    ap.add_argument("--battery", default=None, help="prepared battery dir; prepared if absent")
-    ap.add_argument("--timeout-ms", type=int, default=300_000)
-    ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry) -> dict:
+    """Prepare and run one battery. Each evals*.json in a skill is its own battery.
 
-    skill_dir = ROOT / "skills" / args.skill
-    evals_file = skill_dir / "evals" / "evals.json"
-    if not evals_file.exists():
-        print(f"error: {evals_file} not found", file=sys.stderr)
-        return 1
+    Batteries exist because Pioneer's arms are fixed at baseline/with-skill, so a second
+    factor — MOTION.md absent, established, stale, or claimed-but-missing — cannot be an
+    arm. Expressing it as separate batteries also keeps it invisible to the agent: case
+    ids, prompts and staged filenames are identical across them, and only the file
+    contents differ.
+    """
+    spec = json.loads(spec_path.read_text())
+    name = spec.get("battery", spec_path.stem)
+    battery = ROOT / "batteries" / skill / name
 
-    spec = json.loads(evals_file.read_text())
-    battery = Path(args.battery) if args.battery else ROOT / "batteries" / args.skill
-
-    if not args.dry_run:
+    if not dry:
         if battery.exists():
             shutil.rmtree(battery)
         subprocess.run(
             ["pioneer", "eval", "prepare",
              "--skill", str(skill_dir),
-             "--evals", str(evals_file),
+             "--evals", str(spec_path),
              "--output", str(battery)],
             check=True,
         )
 
-    report = []
+    cases = []
     for case in spec["evals"]:
         cid = case["id"]
         prompt = case["prompt"] + OUTPUT_CONTRACT
         case_dir = battery / "actor-runs" / f"eval-{cid}"
-        print(f"case {cid}: {case.get('title', '')}", file=sys.stderr)
+        print(f"  case {cid}: {case.get('title', '')}", file=sys.stderr)
 
         arms = {
             "baseline": run_arm(case_dir / "baseline", prompt, None,
-                                args.model, args.timeout_ms, args.dry_run),
+                                model, timeout_ms, dry),
             "with-skill": run_arm(case_dir / "with-skill", prompt,
-                                  case_dir / "with-skill" / "skills" / args.skill,
-                                  args.model, args.timeout_ms, args.dry_run),
+                                  case_dir / "with-skill" / "skills" / skill,
+                                  model, timeout_ms, dry),
         }
-        report.append({
+        cases.append({
             "case": cid,
             "title": case.get("title", ""),
             "arms": {
-                name: {"error": a.error, **grade(a.findings, case.get("expect", []),
-                                                 case.get("negatives", []))}
-                for name, a in arms.items()
+                arm: {"error": r.error, **grade(r.findings, case.get("expect", []),
+                                                case.get("negatives", []))}
+                for arm, r in arms.items()
             },
         })
 
-    print(json.dumps(report, indent=2))
+    return {"battery": name, "description": spec.get("description", ""), "cases": cases}
 
-    # The headline number, split so a flat taste delta cannot hide behind the floor.
-    for cls in ("floor", "taste"):
-        base = sum(c["arms"]["baseline"][cls]["hit"] for c in report)
-        skilled = sum(c["arms"]["with-skill"][cls]["hit"] for c in report)
-        fp_base = sum(c["arms"]["baseline"][cls]["false_positive"] for c in report)
-        fp_skill = sum(c["arms"]["with-skill"][cls]["false_positive"] for c in report)
-        print(
-            f"{cls:>6}  hits {base} → {skilled}   "
-            f"false positives {fp_base} → {fp_skill}",
-            file=sys.stderr,
-        )
-    print("\nA flat taste delta means the skill is a linter. That is the number to watch.",
+
+def summarize(results: list[dict]) -> None:
+    def total(res, arm, cls, field):
+        return sum(c["arms"][arm][cls][field] for c in res["cases"])
+
+    print("\n" + "=" * 78, file=sys.stderr)
+    for res in results:
+        print(f"\n{res['battery']}", file=sys.stderr)
+        for cls in ("floor", "taste"):
+            b_hit, s_hit = total(res, "baseline", cls, "hit"), total(res, "with-skill", cls, "hit")
+            b_fp, s_fp = (total(res, "baseline", cls, "false_positive"),
+                          total(res, "with-skill", cls, "false_positive"))
+            if b_hit or s_hit or b_fp or s_fp:
+                print(f"  {cls:>6}  hits {b_hit} -> {s_hit}   "
+                      f"false positives {b_fp} -> {s_fp}", file=sys.stderr)
+
+        sev = [s for c in res["cases"] for s in c["arms"]["with-skill"]["wrong_severity"]]
+        if sev:
+            for s in sev:
+                print(f"  severity  {s['rule']}: expected {s['expected']}, "
+                      f"reported {s['reported']}", file=sys.stderr)
+
+        flagged = sum(c["arms"]["with-skill"]["flagged_correct_code"] for c in res["cases"])
+        if flagged:
+            print(f"  flagged correct code: {flagged}", file=sys.stderr)
+
+    print("\n" + "-" * 78, file=sys.stderr)
+    print("Read these three things, in order:", file=sys.stderr)
+    print("  1. taste hits baseline -> with-skill. A flat delta means the skill is a "
+          "linter.", file=sys.stderr)
+    print("  2. false positives. A reviewer that flags correct code gets switched off.",
           file=sys.stderr)
+    print("  3. severity across batteries. The same finding should be minor with no motion",
+          file=sys.stderr)
+    print("     language and major against a DECIDED one. If it does not move, the skill",
+          file=sys.stderr)
+    print("     is not reading MOTION.md, it is pattern-matching on code.", file=sys.stderr)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--skill", required=True)
+    ap.add_argument("--model", default="claude-code/claude-sonnet-4-6")
+    ap.add_argument("--battery", default=None,
+                    help="run one battery by name; default runs all")
+    ap.add_argument("--timeout-ms", type=int, default=300_000)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--out", default=None, help="write the full JSON report here")
+    args = ap.parse_args()
+
+    skill_dir = ROOT / "skills" / args.skill
+    specs = sorted((skill_dir / "evals").glob("evals*.json"))
+    if not specs:
+        print(f"error: no evals*.json under {skill_dir / 'evals'}", file=sys.stderr)
+        return 1
+
+    if args.battery:
+        specs = [s for s in specs
+                 if json.loads(s.read_text()).get("battery", s.stem) == args.battery]
+        if not specs:
+            print(f"error: no battery named {args.battery}", file=sys.stderr)
+            return 1
+
+    results = []
+    for spec_path in specs:
+        name = json.loads(spec_path.read_text()).get("battery", spec_path.stem)
+        print(f"\nbattery: {name}", file=sys.stderr)
+        results.append(run_battery(spec_path, skill_dir, args.skill,
+                                   args.model, args.timeout_ms, args.dry_run))
+
+    report = json.dumps(results, indent=2)
+    if args.out:
+        Path(args.out).write_text(report)
+        print(f"\nreport written to {args.out}", file=sys.stderr)
+    else:
+        print(report)
+
+    summarize(results)
     return 0
 
 
