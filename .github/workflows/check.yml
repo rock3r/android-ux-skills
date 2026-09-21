@@ -51,39 +51,14 @@ jobs:
         # describes what it contains invalidates the run while still producing a score.
         run: ./scripts/check-fixture-leaks.sh
 
-      - name: Eval controller compiles and grades correctly
-        run: |
-          set -euo pipefail
-          python3 -m py_compile scripts/run-evals.py
-          python3 - <<'PY'
-          import importlib.util, sys
-          spec = importlib.util.spec_from_file_location("ev", "scripts/run-evals.py")
-          ev = importlib.util.module_from_spec(spec)
-          sys.modules["ev"] = ev
-          spec.loader.exec_module(ev)
+      - name: Eval grader behaves as specified
+        # The tests live in scripts/, not inline here. An earlier inline version kept
+        # asserting the old finding shape after the format gained a severity column, so it
+        # failed in CI while every local check passed.
+        run: ./scripts/test-run-evals.py
 
-          found = ev.parse_findings(
-              "prose the model wrote first\n"
-              "FINDINGS\n"
-              "app/Player.kt:61-68 T-001 taste default transition left in place\n"
-              "- app/Feed.kt:88-96 F-001 floor animated offset read in composition\n"
-              "not a finding line\n"
-          )
-          assert len(found) == 2, found
-
-          graded = ev.grade(
-              found,
-              [{"path": "Player.kt", "lines": [61, 68], "rule": "T-001", "class": "taste"},
-               {"path": "Other.kt", "lines": [10, 20], "rule": "T-009", "class": "taste"}],
-              [{"path": "Feed.kt", "lines": [80, 100]}],
-          )
-          # Matched one expected finding, missed one, and flagged a span declared correct.
-          assert graded["taste"]["hit"] == 1, graded
-          assert graded["taste"]["missed"] == 1, graded
-          assert graded["flagged_correct_code"] == 1, graded
-          assert graded["floor"]["false_positive"] == 1, graded
-          print("grader behaves as specified")
-          PY
+      - name: Eval batteries parse and plan
+        run: ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
 
       - name: Shell scripts parse
         run: for f in scripts/*.sh; do bash -n "$f"; done
