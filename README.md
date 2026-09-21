@@ -10,10 +10,11 @@
 > **Work in progress. Nothing here is ready to install or rely on.**
 >
 > The 32 rules in [`STANDARDS.md`](STANDARDS.md) have been fact-checked against primary
-> sources and reviewed by three separate models, but **no human has reviewed them yet** and
-> a substantial cull is expected. The skills, the eval harness and the corpus design are
-> scaffolding around a rule set that is still moving. Names, rule ids and file layout will
-> change.
+> sources, reviewed by three separate models, and had one engineering review by a human.
+> They have **not** had a designer's review of the taste claims, which is the review that
+> matters most for rules about how things should feel. The skills, the eval harness and the
+> corpus design are scaffolding around a rule set that is still moving. Names, rule ids and
+> file layout will change.
 
 Agent skills for **Android motion and design-engineering craft** — the judgment calls that
 decide whether an interface feels considered or merely functional.

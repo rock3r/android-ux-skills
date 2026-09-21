@@ -8,12 +8,17 @@ The rule set every skill in this repository packages. If a rule is not here, no 
 enforce it.
 
 > [!NOTE]
-> **Status: revision 01, unreviewed by humans.** 32 rules — 10 `floor`, 2 `obligation`,
-> 20 `taste`. Revised after three independent machine reviews (taste, structural,
-> fact-check) which cut three rules, found two internal contradictions, and caught three
-> rules that fire on correct code. REVISION-01.md records what changed
-> and why. Human review with veto is still outstanding, and remains the only check on
-> whether the taste is any good.
+> **Status: revision 02.** 32 rules — 10 `floor`, 2 `obligation`, 20 `taste`.
+>
+> Revision 01 applied three independent machine reviews (taste, structural, fact-check),
+> which cut three rules, found two internal contradictions, and caught three rules that
+> fired on correct code. REVISION-01.md records what changed and why.
+>
+> Revision 02 applied the first human review: 26 keep, 1 revise, 5 discuss, 0 remove.
+> Nothing was cut; the outcome was clarification rather than reversal.
+>
+> A designer's review of the taste claims is still outstanding, and is a different question
+> from the engineering review these rules have had.
 
 ## Admission criteria
 
@@ -71,6 +76,23 @@ the number meant to prove this collection is more than a linter.
 unless marked otherwise.
 
 Floor and taste are graded and reported **separately, never averaged**.
+
+### Severity is contextual
+
+A finding's severity comes from the codebase, not from the rule. The same violation is a
+minor note in a product with no established motion language and a real defect in one that
+has tokenized everything else — because there the problem is no longer the value, it is the
+inconsistency.
+
+| Situation | Severity |
+|---|---|
+| Contradicts a `DECIDED` entry in MOTION.md | **Major.** The team settled this |
+| Diverges from an `OBSERVED` convention the codebase otherwise holds | **Major.** Reported as inconsistency, not as wrong |
+| Violates a `floor` or `obligation` rule | **Major**, regardless of any standard |
+| Violates a `taste` rule where no convention exists | **Minor.** Worth raising, not worth blocking |
+
+This is why a review reads MOTION.md before it reads code. Without it every finding
+defaults to minor, which is the honest result when nothing has been decided.
 
 ---
 
@@ -182,13 +204,24 @@ but never reads it in the implementation, so direct calls bypass the scale regar
 
 ### F-006 — `animateContentSize` clips its child
 
+**Detect: partial.** One narrow form is checkable; the general case is review-only. See
+below.
+
 **Rule.** `Modifier.animateContentSize()` applies `clipToBounds`, so elevation, drop
 shadows, ripples extending past the edge and nested `AnimatedVisibility` are cut.
 `SizeTransform(clip = false)` on an inner animation cannot override an outer
 `animateContentSize`.
 
-Scope: *unintended* clipping. A deliberate clipped reveal is legitimate — the finding is a
-shadowed or elevated container losing its shadow, not the clip itself.
+**Intent cannot be read from source, so the rule does not try.** It splits instead:
+
+**Checkable.** `animateContentSize` on a node that also carries `Modifier.shadow`, a
+non-zero `elevation`, or a `Card`/`Surface` with tonal elevation. That combination is a
+reliable signal of *unintended* clipping — nobody adds a shadow in order to clip it off.
+This is the form a checker may flag.
+
+**Review-only.** Everything else. A clipped reveal can be exactly what was wanted, and only
+a human looking at the result can say. An agent that cannot see the rendered output says
+what it sees — "this clips; confirm that is intended" — rather than asserting a defect.
 
 **Violating**
 
@@ -315,16 +348,26 @@ Settings → Accessibility → Colour and motion; deep link `g.co/android/animat
 **Claim.** An animation that has been switched off should still leave something worth
 looking at. Whatever frame it lands on is what that user sees permanently.
 
-**Rule.** With animations disabled, lottie-compose seeks to the **last** frame — or the
-first when speed is negative — unless the composition contains a marker named
-`reduced motion`. A file whose outro clears the canvas therefore renders nothing.
+**Two different things share the phrase "reduced motion". They are unrelated.**
 
-The requirement is the *outcome*: the disabled frame reads as a complete still. A marker
-is the mechanism where the last frame does not already satisfy it; a file whose final
-frame is the resting state needs no marker.
+- **Remove animations** is the Android accessibility setting — Settings → Accessibility →
+  Colour and motion. It writes `0.0f` to the three animation scales. This is the platform
+  behaviour, and Android has no setting called "reduced motion".
+- **`reduced motion`** is a *marker inside a Lottie composition*: a named frame the
+  animation's author places in the `.json`. It is a Lottie library convention, related to
+  Android only in that Lottie looks for it when animations are off.
 
-This is the only place Lottie reduced-motion behaviour is specified. F-005 governs the
-scale bypass; O-001 governs what the still must convey.
+**Rule.** When Remove animations is on, lottie-compose seeks to the **last** frame — the
+first if speed is negative — unless the composition carries that marker, in which case it
+seeks there instead. A file whose outro clears the canvas therefore renders nothing.
+
+The requirement is the *outcome*: the frame the user is left with reads as a complete
+still. The marker is how you get one when the last frame does not already qualify, and a
+file whose final frame is its resting state needs no marker. Asking a designer to add a
+marker is usually easier than re-cutting the animation.
+
+This is the only place Lottie behaviour under Remove animations is specified. F-005 governs
+the scale bypass; O-001 governs what the remaining frame must convey.
 
 **Pinned.** `LottieDrawable.java:99-112` — the four accepted marker spellings;
 `:864-891` — `setFrame(speed < 0 ? minFrame : maxFrame)`.
@@ -333,16 +376,32 @@ scale bypass; O-001 governs what the still must convey.
 
 ## Taste
 
-### T-001 — The `NavHost` default transition is always a finding
+### T-001 — The `NavHost` default transition is a finding
 
-**Claim.** A transition nobody chose is not a neutral default. Seven hundred milliseconds
-of two scrollables ghosting through each other, on every navigation the product has.
+**Claim.** 700ms is longer than Material's own maximum for a screen transition, and a
+cross-fade holds both screens at partial opacity while it runs — so on content-dense
+screens it is most of a second of two scrollables ghosting through each other, on every
+navigation the product has.
 
 **Rule.** The finding is the **spec, not the pattern**. A cross-fade between top-level
 destinations is correct (T-011); a 700ms one is not. Destination motion is chosen
 deliberately, or the default is replaced.
 
+**Severity is contextual, and usually minor.** In a codebase with no motion language this
+is a note: the value is too long, nothing more. In a codebase that resolves its specs to
+tokens everywhere else (T-002), it is **major** — not because 700ms is worse there, but
+because this one surface silently inherits a third-party default instead of the product's
+own language, and that is the kind of gap that spreads.
+
 Precedence with T-002: report as T-001. An untouched default is one defect, not two.
+
+**What this is not.** There is no evidence the value is a deliberate prompt to change it.
+It reads as an old default nobody revisited, and the rule should not imply intent.
+
+**Pinned — why 700ms is long.** M3's duration tokens stop at 600ms (`extraLong4`), and its
+specified screen transition is 500ms emphasized, with 400ms enter and 200ms exit for the
+decelerate/accelerate pair. Navigation's default exceeds Material's own maximum for the job
+by 40%. The ghosting half of the claim is ours, not Material's.
 
 **Pinned.** `DefaultNavTransitions.android.kt:35-47`; Navigation 3
 `NavDisplay.android.kt:32-48`, `DEFAULT_TRANSITION_DURATION_MILLISECOND = 700`.
@@ -831,11 +890,20 @@ Eighteen of thirty-two derive from an existing source.
 
 ## Progress
 
-**32 rules — 10 floor, 2 obligation, 20 taste.** Nine review-only, the rest checkable.
+**32 rules — 10 floor, 2 obligation, 20 taste.** Eight review-only, one partial, the rest
+checkable.
 
-Revision 01 applied three machine reviews. Human review with veto is outstanding and
-remains the only check on whether the taste is right. See
-REVISION-01.md.
+Revision 01 applied three machine reviews. **Revision 02 applied the first human review**
+(Seb, 2026-09-21): 26 keep, 1 revise, 5 discuss, **0 remove**. No rule was cut. The
+outcomes were clarifications rather than reversals — self-timed versus touch-driven in
+F-005 and F-007, the one-directional nature of F-009, what "platform state layer" means in
+T-009, the full anti-flicker sequence in T-019, a real justification for T-001 in place of
+a circular one, an honest split in F-006 between what a checker can see and what it cannot,
+and untangling Android's *Remove animations* setting from Lottie's `reduced motion` marker
+in O-002.
+
+Still outstanding: a designer's review of the taste claims, which is a different question
+from the engineering review this was.
 
 Retired ids, not to be reused: **T-003** (restated a token fact), **T-007** (absorbed into
 T-011), **T-014** (claim wrong for background list changes), **T-015** (claim contradicted
