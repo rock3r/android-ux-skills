@@ -274,6 +274,33 @@ empty = ev.grade([], [], [])
 check("an undefined rate does not become 0.0",
       ev.mean_grades([empty, empty])["taste"]["recall"] is None)
 
+print("actor resolution")
+
+# `pi` on PATH is a symlink into a node package. Passed to pioneer as-is, the sandbox
+# materialises it at the bin path and Node then looks for the bundle's chunks/ beside the
+# symlink, where they are not. Both halves of the fix are load-bearing.
+import shutil as _shutil  # noqa: E402
+
+if _shutil.which("pi"):
+    real, grants = ev.resolve_actor("pi")
+    check("resolves the symlink to the real script", not Path(real).is_symlink(), real)
+    check("grants the package dir so the chunks are readable",
+          grants and (Path(grants[0]) / "package.json").exists(), grants)
+    check("the real path lives inside the granted dir",
+          grants and real.startswith(grants[0]), (real, grants))
+else:
+    print("  skip  pi is not on PATH in this shell (nvm not loaded?)")
+
+print("work directory")
+
+# Pioneer refuses a run directory under a protected root, and this checkout resolves
+# through a symlink into /srv, so nothing inside the repo can ever be a valid run dir.
+root = ev.work_root()
+check("work root is outside the repo", ev.ROOT not in root.resolve().parents
+      and root.resolve() != ev.ROOT.resolve(), root)
+check("work root is not under a path pioneer refuses",
+      not str(root.resolve()).startswith(("/srv", "/var", "/usr", "/etc")), root)
+
 print()
 if failures:
     print(f"{len(failures)} failed: {', '.join(failures)}")

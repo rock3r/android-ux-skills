@@ -14,6 +14,18 @@ separate a capability gap from sampling noise. Scalars are averaged; the diagnos
 are concatenated, since a false positive that shows up in one run of five is still worth
 reading.
 
+Two environment notes, both of which cost an evening to find once:
+
+- **`pi` and `pioneer` must be on PATH.** If they are installed under nvm, a non-interactive
+  shell has not loaded it and they will appear to be missing entirely. `run-evals.py`
+  resolves the actor's *real* path and grants its package directory to the sandbox, because
+  `pi` on PATH is a symlink into a node package and the sandbox otherwise leaves Node
+  hunting for the bundle's `chunks/` beside the symlink.
+- **Prepared batteries never live in the repo.** Pioneer refuses a run directory under a
+  protected root, `/srv` among them, and this checkout is reached through a symlink into
+  `/srv`. Output goes to `~/.cache/android-ux-skills` by default; `--work-dir` or
+  `ANDROID_UX_SKILLS_WORK_DIR` moves it.
+
 `--dry-run` still runs `validate()`, which checks every declared line range against the
 fixture it names, rejects overlapping spans, and rejects rule ids that no longer exist in
 `STANDARDS.md`. Ranges are written by hand against files that then get edited; a range that
@@ -168,6 +180,47 @@ Judge results are printed beside the detection numbers and never added into them
 What this still cannot do is tell you whether a question was a *good* one, or read a
 transcript for reasoning that was right for the wrong reason. Jev generates no text, so
 that remains a human job — which is what the transcripts are for.
+
+### Supplying the key
+
+No vault path is baked into the repo. A key *spec* goes in `TYPESAFE_API_KEY_SPEC` or in a
+file (`~/.config/typesafe/key`, override with `TYPESAFE_API_KEY_FILE`) and takes one of
+three forms:
+
+| Form | Meaning |
+|---|---|
+| `op://Vault/Item/field` | read with the 1Password CLI at the moment it is needed |
+| `!<shell command>` | run it; its first line of output is the key |
+| anything else | a literal key |
+
+The `!` form is how you run evals on one machine while the key stays on another:
+`!ssh othermachine 'op read "op://Private/Jev/cred"'`. Nothing is copied between them and
+no secret reaches the runner's disk. There is deliberately no `--api-key` flag, because an
+argument is visible in the process table and in shell history.
+
+### Could this run locally instead?
+
+[Laya](https://github.com/NandhaKishorM/laya) is the obvious candidate — Apache-2.0 open
+weights, the same `choice`/`noul`/`score` vocabulary, and a PyTorch package that runs on
+CPU or CUDA. (`laya-mlx` is a separate third-party Apple-silicon port, not the Linux one.)
+`TYPESAFE_ENDPOINT` already exists so the classifier can be pointed anywhere.
+
+It does not fit yet, for one specific reason. Laya's checkpoints cap the *state* at roughly
+320 tokens (English, 512 total) or 768 (multilingual and typed-decisions, 1024 total), after
+the question and its options take their share — and an overlong state is **truncated from
+the end**. Our transcripts run 400 tokens for the simplest single-defect review and grow
+from there, and the findings block is the last thing in them. Laya would silently discard
+precisely the part being graded and answer confidently about the remainder.
+
+Two other things to know before revisiting it: the released package has no HTTP server at
+all — the Jev-compatible `/v1/systemone` route exists only in an unmerged pull request — and
+its own benchmarks note both base checkpoints ship overconfident, with the multilingual one
+having no fitted temperatures.
+
+None of that is fatal. The route in is per-check excerpts rather than whole transcripts,
+which most checks would accept anyway, plus a temperature fitted on our own calibration set.
+`judge-evals.py` reports the largest state it classified, and warns past 700 tokens, so the
+size of that gap stays visible rather than being rediscovered later.
 
 ## Fixture naming and leaks
 

@@ -45,8 +45,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENDPOINT = "https://api.typesafe.ai/v1/systemone"
-MODEL = "jev-latest"
+# Overridable so the plumbing can be exercised against a local stub without spending
+# anything or depending on the network.
+ENDPOINT = os.environ.get("TYPESAFE_ENDPOINT", "https://api.typesafe.ai/v1/systemone")
+MODEL = os.environ.get("TYPESAFE_MODEL", "jev-latest")
 
 # A finding line carries the arm's vocabulary in its rule column: with-skill writes T-009,
 # baseline writes whatever it invented. Left alone, that tells the classifier which arm it
@@ -66,44 +68,70 @@ KEY_FILE = Path(os.environ.get("TYPESAFE_API_KEY_FILE",
                                Path.home() / ".config/typesafe/key"))
 
 
+HOW_TO_SUPPLY_A_KEY = """\
+  No vault path is baked into this repo; you say where yours lives. A key *spec* goes in
+  TYPESAFE_API_KEY_SPEC, or in a file (default ~/.config/typesafe/key, override with
+  TYPESAFE_API_KEY_FILE), and takes one of three forms:
+
+    op://Vault/Item/field      read with the 1Password CLI, at the moment it is needed
+    !<any shell command>       run it; its first line of output is the key
+    <the key itself>           a literal, for when you have nowhere better
+
+  The first two keep the secret out of the filesystem entirely. Some examples:
+
+    echo 'op://Private/TypeSafe/test api key'          > ~/.config/typesafe/key
+    echo '!ssh coso op read "op://Private/Jev/cred"'   > ~/.config/typesafe/key
+    echo '!pass show typesafe/jev'                     > ~/.config/typesafe/key
+
+  The second is the one to use when the key only exists on another machine: the eval runs
+  here, the vault stays there, and nothing is copied between them.
+
+  TYPESAFE_API_KEY still works for a literal key in the environment. There is deliberately
+  no --api-key flag: an argument is visible in the process table and in shell history."""
+
+
 def load_key() -> str:
-    """The key, from the environment or a file — never from an argument.
+    """Resolve a key spec, which may name a vault or a command rather than hold a secret.
 
-    Not a CLI flag, deliberately: a flag puts the secret in the process table, in shell
-    history, and in the terminal scrollback of whoever ran it. The file may instead hold a
-    1Password secret reference (`op://vault/item/field`), in which case the secret itself
-    never lands on this disk at all.
+    Nothing here is specific to one person's vault layout: whoever runs the evals says
+    where their key comes from, and for a remote vault the secret is never copied to the
+    machine doing the running.
     """
-    key = os.environ.get("TYPESAFE_API_KEY", "").strip()
-    if not key and KEY_FILE.exists():
-        key = KEY_FILE.read_text().strip()
+    literal = os.environ.get("TYPESAFE_API_KEY", "").strip()
+    if literal:
+        return literal
 
-    if key.startswith("op://"):
+    spec = os.environ.get("TYPESAFE_API_KEY_SPEC", "").strip()
+    if not spec and KEY_FILE.exists():
+        spec = KEY_FILE.read_text().strip()
+
+    if not spec:
+        print(f"error: no API key.\n{HOW_TO_SUPPLY_A_KEY}", file=sys.stderr)
+        return ""
+
+    if spec.startswith("op://"):
         if not shutil.which("op"):
-            print(f"error: {KEY_FILE} holds a 1Password reference but `op` is not "
-                  f"installed", file=sys.stderr)
+            print("error: the key spec is a 1Password reference but `op` is not "
+                  "installed. Install it, or use a `!` command that fetches the key "
+                  "some other way.", file=sys.stderr)
             return ""
-        proc = subprocess.run(["op", "read", key], capture_output=True, text=True)
-        if proc.returncode != 0:
-            print(f"error: op could not read that reference: "
-                  f"{proc.stderr.strip()[:200]}", file=sys.stderr)
-            return ""
-        key = proc.stdout.strip()
+        cmd, shell = ["op", "read", spec], False
+    elif spec.startswith("!"):
+        cmd, shell = spec[1:].strip(), True
+    else:
+        return spec  # a literal key
 
+    proc = subprocess.run(cmd, shell=shell, capture_output=True, text=True)
+    if proc.returncode != 0:
+        # Deliberately not echoing stdout: on failure it may still contain a partial secret.
+        printable = cmd if isinstance(cmd, str) else " ".join(cmd)
+        print(f"error: key command failed ({printable}):\n  "
+              f"{proc.stderr.strip()[:300]}", file=sys.stderr)
+        return ""
+
+    key = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
     if not key:
-        print(
-            "error: no API key.\n"
-            "  Run this yourself, in your own terminal — not through an agent, whose\n"
-            "  command output is recorded:\n\n"
-            "    mkdir -p ~/.config/typesafe && chmod 700 ~/.config/typesafe\n"
-            "    (umask 077; read -rs -p 'Jev key: ' k && printf '%s' \"$k\" \\\n"
-            "        > ~/.config/typesafe/key && unset k && echo)\n\n"
-            "  read -rs does not echo and does not reach shell history.\n"
-            "  With the 1Password CLI installed you can instead store only a reference:\n\n"
-            "    printf '%s' 'op://Private/TypeSafe AI/credential' \\\n"
-            "        > ~/.config/typesafe/key\n",
-            file=sys.stderr,
-        )
+        print("error: the key command succeeded but printed nothing", file=sys.stderr)
     return key
 
 
@@ -227,8 +255,10 @@ def specs_by_case(skill: str) -> dict[tuple[str, int], dict]:
     return out
 
 
-def judge(report: list[dict], skill: str, api_key: str) -> list[dict]:
+def judge(report: list[dict], skill: str, api_key: str,
+          budget_report: list | None = None) -> list[dict]:
     specs = specs_by_case(skill)
+    budget_report = budget_report if budget_report is not None else []
     results = []
 
     for battery in report:
@@ -246,6 +276,11 @@ def judge(report: list[dict], skill: str, api_key: str) -> list[dict]:
                         print(f"  missing transcript {path}", file=sys.stderr)
                         continue
                     state = normalise(f.read_text())
+                    # Tracked because a locally-hosted classifier has a far smaller
+                    # budget than the hosted one, and the ones worth considering
+                    # truncate the END of an overlong state — which is exactly where
+                    # the findings block sits.
+                    budget_report.append((len(state) // 4, path))
                     answers = ask(
                         state, {c["id"]: to_question(c) for c in checks}, api_key
                     )["answers"]
@@ -319,7 +354,19 @@ def main() -> int:
         print("error: --report is required unless --calibrate-only", file=sys.stderr)
         return 1
 
-    results = judge(json.loads(Path(args.report).read_text()), args.skill, api_key)
+    sizes: list[tuple[int, str]] = []
+    results = judge(json.loads(Path(args.report).read_text()), args.skill, api_key,
+                    sizes)
+    if sizes:
+        biggest, where = max(sizes)
+        print(f'\nlargest state classified: ~{biggest} tokens ({Path(where).name})',
+              file=sys.stderr)
+        if biggest > 700:
+            print('  note: beyond the state budget of every currently released local\n'
+                  '  decision model, which truncate the END of an overlong state — the\n'
+                  '  findings block. A hosted model with a large context is fine; a\n'
+                  '  local one would need the transcript split per check.',
+                  file=sys.stderr)
     if args.out:
         Path(args.out).write_text(json.dumps(results, indent=2))
         print(f"judge results written to {args.out}", file=sys.stderr)

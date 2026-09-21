@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -312,16 +313,44 @@ def mean_grades(grades: list[dict]) -> dict:
     return out
 
 
+def resolve_actor(command: str) -> tuple[str, list[str]]:
+    """The actor's real path, plus directories the sandbox must be allowed to read.
+
+    Two separate problems, neither visible until you hit them, and together they make the
+    actor fail to start with an error about a missing module:
+
+    * Pioneer materialises the command at the path you gave it. `pi` on PATH is a symlink
+      into a node package, so Node resolves the bundle's sibling `chunks/` relative to the
+      *bin* directory, where nothing of the sort exists. Passing the resolved path fixes
+      what Node thinks the script's directory is.
+    * The chunks then resolve correctly and still cannot be opened, because the sandbox was
+      never told the package is readable. Hence the matching `--runtime-read` grant.
+    """
+    found = shutil.which(command)
+    if not found:
+        raise SystemExit(
+            f"error: {command!r} is not on PATH.\n"
+            f"  If it is installed under nvm, the shell running this script may not have "
+            f"loaded nvm — non-interactive shells usually have not."
+        )
+    real = Path(found).resolve()
+    grants = [str(p) for p in real.parents if (p / "package.json").exists()][:1]
+    return str(real), grants
+
+
 def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
-            timeout_ms: int, dry: bool) -> ArmResult:
+            timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None) -> ArmResult:
     arm = run_dir.name
+    actor_path, grants = actor or resolve_actor("pi")
     cmd = [
         "pioneer", "eval", "run",
         "--run-dir", str(run_dir),
         "--timeout-ms", str(timeout_ms),
         "--deny-read-probe", str(ROOT / "skills"),  # answer keys must be unreachable
-        "--", "pi", "--model", model,
     ]
+    for g in grants:
+        cmd += ["--runtime-read", g]
+    cmd += ["--", actor_path, "--model", model]
     if skill_path:
         cmd += ["--skill", str(skill_path)]
     cmd += ["--print", prompt]
@@ -491,7 +520,23 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
     return problems
 
 
-def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1) -> dict:
+def work_root() -> Path:
+    """Where prepared batteries and transcripts go. Never inside the repo.
+
+    Two reasons, one of which is not optional. Pioneer refuses a run directory under a
+    protected root — `/srv` among them — and this checkout is reached through a symlink
+    into `/srv`, so no path inside it can ever be a valid run directory. Battery output is
+    also bulky and disposable, and does not belong in a source tree.
+    """
+    base = os.environ.get("ANDROID_UX_SKILLS_WORK_DIR") or os.environ.get(
+        "XDG_CACHE_HOME", str(Path.home() / ".cache")
+    )
+    root = Path(base)
+    return root if "ANDROID_UX_SKILLS_WORK_DIR" in os.environ else root / "android-ux-skills"
+
+
+def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
+                work_dir: Path | None = None, actor_command: str = "pi") -> dict:
     """Prepare and run one battery. Each evals*.json in a skill is its own battery.
 
     Batteries exist because Pioneer's arms are fixed at baseline/with-skill, so a second
@@ -502,18 +547,27 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1) -> 
     """
     spec = json.loads(spec_path.read_text())
     name = spec.get("battery", spec_path.stem)
-    battery = ROOT / "batteries" / skill / name
+    battery = (work_dir or work_root()) / "batteries" / skill / name
 
     if not dry:
         if battery.exists():
             shutil.rmtree(battery)
-        subprocess.run(
+        # Pioneer resolves --output's parent and fails if it does not exist. Left to
+        # check=True this surfaced as a CalledProcessError traceback with pioneer's actual
+        # message nowhere in it.
+        battery.parent.mkdir(parents=True, exist_ok=True)
+        prep = subprocess.run(
             ["pioneer", "eval", "prepare",
              "--skill", str(skill_dir),
              "--evals", str(spec_path),
              "--output", str(battery)],
-            check=True,
+            capture_output=True, text=True,
         )
+        if prep.returncode != 0:
+            detail = (prep.stderr or prep.stdout).strip()
+            raise SystemExit(f"pioneer eval prepare failed for {name}:\n  {detail}")
+
+    actor = None if dry else resolve_actor(actor_command)
 
     cases = []
     for case in spec["evals"]:
@@ -540,12 +594,12 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1) -> 
                 ("with-skill", case_dir / f"with-skill{suffix}" / "skills" / skill),
             ):
                 r = run_arm(case_dir / f"{arm}{suffix}", prompt, skill_path,
-                            model, timeout_ms, dry)
+                            model, timeout_ms, dry, actor)
                 arms[arm].append(r)
                 if not dry:
                     f = transcripts / f"{arm}{suffix}.md"
                     f.write_text(r.raw or f"(no output — {r.error or 'empty'})")
-                    saved[arm].append(str(f.relative_to(ROOT)))
+                    saved[arm].append(str(f))
 
         cases.append({
             "transcripts": saved,
@@ -654,6 +708,12 @@ def main() -> int:
                          "deterministic and n=1 cannot separate a capability gap from "
                          "sampling noise")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--actor", default="pi",
+                    help="the coding agent each arm runs as")
+    ap.add_argument("--work-dir", default=None,
+                    help="where prepared batteries and transcripts go. Must not be "
+                         "inside the repo: pioneer refuses a run directory under a "
+                         "protected root, and this checkout resolves into /srv")
     ap.add_argument("--out", default=None, help="write the full JSON report here")
     args = ap.parse_args()
 
@@ -684,7 +744,9 @@ def main() -> int:
         print(f"\nbattery: {name}", file=sys.stderr)
         results.append(run_battery(spec_path, skill_dir, args.skill,
                                    args.model, args.timeout_ms, args.dry_run,
-                                   runs=args.runs))
+                                   runs=args.runs,
+                                   work_dir=Path(args.work_dir) if args.work_dir
+                                   else None, actor_command=args.actor))
 
     report = json.dumps(results, indent=2)
     if args.out:
