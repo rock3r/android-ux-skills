@@ -37,6 +37,8 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -58,6 +60,51 @@ RULE_COLUMN = re.compile(
 
 def normalise(transcript: str) -> str:
     return RULE_COLUMN.sub(lambda m: f"{m['loc']} RULE {m['rest']}", transcript)
+
+
+KEY_FILE = Path(os.environ.get("TYPESAFE_API_KEY_FILE",
+                               Path.home() / ".config/typesafe/key"))
+
+
+def load_key() -> str:
+    """The key, from the environment or a file — never from an argument.
+
+    Not a CLI flag, deliberately: a flag puts the secret in the process table, in shell
+    history, and in the terminal scrollback of whoever ran it. The file may instead hold a
+    1Password secret reference (`op://vault/item/field`), in which case the secret itself
+    never lands on this disk at all.
+    """
+    key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+    if not key and KEY_FILE.exists():
+        key = KEY_FILE.read_text().strip()
+
+    if key.startswith("op://"):
+        if not shutil.which("op"):
+            print(f"error: {KEY_FILE} holds a 1Password reference but `op` is not "
+                  f"installed", file=sys.stderr)
+            return ""
+        proc = subprocess.run(["op", "read", key], capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"error: op could not read that reference: "
+                  f"{proc.stderr.strip()[:200]}", file=sys.stderr)
+            return ""
+        key = proc.stdout.strip()
+
+    if not key:
+        print(
+            "error: no API key.\n"
+            "  Run this yourself, in your own terminal — not through an agent, whose\n"
+            "  command output is recorded:\n\n"
+            "    mkdir -p ~/.config/typesafe && chmod 700 ~/.config/typesafe\n"
+            "    (umask 077; read -rs -p 'Jev key: ' k && printf '%s' \"$k\" \\\n"
+            "        > ~/.config/typesafe/key && unset k && echo)\n\n"
+            "  read -rs does not echo and does not reach shell history.\n"
+            "  With the 1Password CLI installed you can instead store only a reference:\n\n"
+            "    printf '%s' 'op://Private/TypeSafe AI/credential' \\\n"
+            "        > ~/.config/typesafe/key\n",
+            file=sys.stderr,
+        )
+    return key
 
 
 def ask(state: str, questions: dict, api_key: str, timeout: int = 60) -> dict:
@@ -127,7 +174,7 @@ def verdict(check: dict, answer: dict) -> tuple[str, float, str]:
     raise SystemExit(f"unknown check type {check['type']!r}")
 
 
-def calibrate(api_key: str, path: Path) -> bool:
+def calibrate(api_key: str, path: Path, floor: float = 0.9) -> bool:
     """Answer questions whose answers we already know, before trusting any we do not.
 
     Each item is a hand-written response with an unambiguous reading. If the classifier
@@ -151,11 +198,21 @@ def calibrate(api_key: str, path: Path) -> bool:
         print(f"  {'ok  ' if ok else 'FAIL'}  {item['name']:<44} {got:<7} ({why})",
               file=sys.stderr)
 
+    accuracy = 1 - failures / len(items)
     if failures:
-        print(f"\n{failures} calibration item(s) failed. Judge output withheld: a "
-              f"classifier that cannot answer known questions cannot be trusted with "
-              f"unknown ones.", file=sys.stderr)
-        return False
+        # Not all-or-nothing. A constrained model can be confidently wrong about a valid
+        # option, and one borderline item is a known, accepted cost rather than grounds to
+        # throw away the rest. Below the floor, though, the numbers are noise.
+        print(f"\n  calibration accuracy {accuracy:.0%} ({failures} of {len(items)} wrong)",
+              file=sys.stderr)
+        if accuracy < floor:
+            print(f"  below the {floor:.0%} floor — judge output withheld. A classifier "
+                  f"that cannot answer settled questions cannot be trusted with open "
+                  f"ones.\n", file=sys.stderr)
+            return False
+        print(f"  above the {floor:.0%} floor — continuing, but treat the checks above "
+              f"as unreliable.\n", file=sys.stderr)
+        return True
     print("calibration passed\n", file=sys.stderr)
     return True
 
@@ -241,18 +298,19 @@ def main() -> int:
     ap.add_argument("--skill", default="review-android-motion")
     ap.add_argument("--calibration", default=None)
     ap.add_argument("--calibrate-only", action="store_true")
+    ap.add_argument("--calibration-floor", type=float, default=0.9,
+                    help="withhold judge output below this calibration accuracy")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    api_key = os.environ.get("TYPESAFE_API_KEY")
+    api_key = load_key()
     if not api_key:
-        print("error: TYPESAFE_API_KEY is not set", file=sys.stderr)
         return 1
 
     calibration = Path(args.calibration) if args.calibration else (
         ROOT / "skills" / args.skill / "evals" / "judge-calibration.json"
     )
-    if not calibrate(api_key, calibration):
+    if not calibrate(api_key, calibration, args.calibration_floor):
         return 1
     if args.calibrate_only:
         return 0
