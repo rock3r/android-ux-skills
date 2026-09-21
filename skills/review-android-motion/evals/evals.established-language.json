@@ -115,6 +115,15 @@
         "Treats it as major — the frequency map is tagged DECIDED, so this contradicts a settled decision",
         "Does NOT ask how often ratings are used. That question is answered in the staged file; asking it here means MOTION.md was not read",
         "Pairs with case 40 in the no-motion-language battery, where the same spring must NOT be asserted against"
+      ],
+      "checks": [
+        {
+          "id": "cites_stated_frequency",
+          "type": "noul",
+          "instructions": "The review justifies its judgement of the rating animation by reference to guidance the project has already stated about how often this kind of control is used, rather than asking the reader how often it is used.",
+          "expect": true,
+          "min_confidence": 0.7
+        }
       ]
     }
   ]

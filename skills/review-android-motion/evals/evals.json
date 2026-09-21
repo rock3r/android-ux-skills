@@ -130,6 +130,15 @@
         "Does NOT flag FilterSummary, which animates the same value correctly through offset { }",
         "Does NOT flag FilterCount's graphicsLayer or drawBehind reads",
         "Names offset { IntOffset(...) } as the fix, not 'use a lambda' generically"
+      ],
+      "checks": [
+        {
+          "id": "names_lambda_offset",
+          "type": "noul",
+          "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix, rather than only advising in general terms to use a lambda or to defer the read.",
+          "expect": true,
+          "min_confidence": 0.7
+        }
       ]
     },
     {
@@ -207,6 +216,24 @@
         "Does NOT assert a usage frequency it cannot know",
         "Does NOT flag the spring itself: fastSpatialSpec on a rare, deliberate interaction is correct",
         "GRADED: only the negative is scored here — an unscoped assertion lands on it as a false positive. Whether the reviewer actually ASKS is not machine-checked; read the transcript for that."
+      ],
+      "checks": [
+        {
+          "id": "frequency_disposition",
+          "type": "choice",
+          "instructions": "How does this review treat the question of how often the rating control is used?",
+          "criteria": {
+            "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+            "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+            "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+            "silent": "It does not raise the frequency or repetition of this interaction at all"
+          },
+          "expect": [
+            "asks",
+            "scopes"
+          ],
+          "min_confidence": 0.6
+        }
       ]
     },
     {
@@ -276,6 +303,15 @@
         "Reports it against the screen or CheckoutSummary itself, not against any individual composable",
         "Does NOT report the five children as five separate findings — every one of them is individually correct",
         "Suggests choosing what the event is about, rather than tuning any single spec"
+      ],
+      "checks": [
+        {
+          "id": "composite_not_parts",
+          "type": "noul",
+          "instructions": "The review's main criticism is about the screen as a whole — several elements animating together on one event — rather than a defect in any one of the individual child composables.",
+          "expect": true,
+          "min_confidence": 0.7
+        }
       ]
     },
     {
@@ -350,6 +386,15 @@
         "Flags the BackHandler closing the notes panel, which fires on commit and cannot follow the finger",
         "Names PredictiveBackHandler with a seekable progress value as the fix",
         "Scopes the finding to the hand-rolled panel, not to back handling in general"
+      ],
+      "checks": [
+        {
+          "id": "flags_framework_path",
+          "type": "noul",
+          "instructions": "The review reports a defect, or asks for a change, in how the NavHost itself handles the back gesture.",
+          "expect": false,
+          "min_confidence": 0.7
+        }
       ]
     },
     {

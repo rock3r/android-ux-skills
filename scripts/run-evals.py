@@ -351,6 +351,15 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
     spec = json.loads(spec_path.read_text())
     where = spec_path.name
 
+    # check id -> the set of verdicts its calibration items cover.
+    calibration_coverage: dict[str, set[str]] = {}
+    cal_path = skill_dir / "evals" / "judge-calibration.json"
+    if cal_path.exists():
+        for item in json.loads(cal_path.read_text())["items"]:
+            calibration_coverage.setdefault(item["check"]["id"], set()).add(
+                item["expect_verdict"]
+            )
+
     seen_ids = set()
     for case in spec["evals"]:
         cid = case["id"]
@@ -431,6 +440,40 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
                         f"{where} case {cid}: expected spans {p1}:{a1}-{b1} and {a2}-{b2} "
                         f"overlap"
                     )
+
+        # A check is only worth its output if the classifier has been shown it can answer
+        # that exact question on states whose reading is already settled — in BOTH
+        # directions. Calibrating only on states that should pass would be passed by a
+        # classifier that answers "pass" to everything.
+        for chk in case.get("checks", []):
+            for field in ("id", "type", "instructions", "expect"):
+                if field not in chk:
+                    problems.append(
+                        f"{where} case {cid}: check is missing {field!r}"
+                    )
+            if chk.get("type") not in ("noul", "choice", "score"):
+                problems.append(
+                    f"{where} case {cid}: check {chk.get('id')!r} has unknown type "
+                    f"{chk.get('type')!r}"
+                )
+            if chk.get("type") == "choice":
+                want = chk["expect"] if isinstance(chk["expect"], list) else [chk["expect"]]
+                unknown = set(want) - set(chk.get("criteria", {}))
+                if unknown:
+                    problems.append(
+                        f"{where} case {cid}: check {chk['id']!r} expects "
+                        f"{sorted(unknown)}, which is not among its criteria"
+                    )
+            covered = calibration_coverage.get(chk.get("id"), set())
+            if not covered:
+                problems.append(
+                    f"{where} case {cid}: check {chk.get('id')!r} has no calibration item"
+                )
+            elif covered != {"pass", "fail"}:
+                problems.append(
+                    f"{where} case {cid}: check {chk['id']!r} is calibrated only for "
+                    f"{sorted(covered)} — it needs a state that should fail it too"
+                )
 
         # A rule id that no longer exists means the case is testing nothing.
         for e in case.get("expect", []):

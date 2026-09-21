@@ -127,6 +127,48 @@ is the pass in the first and a failure in the second — but note that **whether
 actually asks is not machine-checked**. Only the assertion is. Read the transcript for the
 question; the number only tells you it did not assert.
 
+## The qualitative pass
+
+Set-matching catches whether the right line was named. Most of what a case actually claims
+to test lives in its `expectations` array — "names `offset { }` as the fix", "reports it
+against the screen rather than a child", "does not cite MOTION.md content" — and for a long
+time the grader read none of it. Of 57 expectation lines across the four batteries, 51 are
+already phrased as a yes/no about a single response.
+
+Those become `checks`, graded by `scripts/judge-evals.py` against the saved transcripts:
+
+```bash
+./scripts/judge-evals.py --calibrate-only                    # trust check, costs pennies
+./scripts/judge-evals.py --report report.json --out judge.json
+```
+
+**It is a classifier, not a judge model.** `run-evals.py` refuses to score anything with an
+LLM because a model comparing two prose reviews rewards length, confidence, vocabulary and
+finding count, and the with-skill arm wins on all four before correctness enters. Jev
+cannot generate text at all: it takes state plus typed questions and returns a value from
+a set declared here in advance. It has no way to prefer the longer review because it has
+no way to say anything outside the schema. Every answer carries a calibrated probability,
+so a question it is unsure about becomes an **abstention routed to a human** rather than a
+confident guess folded into a number.
+
+**Schema-safety is not accuracy.** A constrained model can still be confidently wrong about
+a valid option. So `judge-calibration.json` holds hand-written responses whose reading is
+unambiguous, the classifier answers those first on every invocation, and if it gets any of
+them wrong its output is withheld entirely. `validate()` refuses to run a battery whose
+checks are not calibrated **in both directions** — a check calibrated only on states that
+should pass would be satisfied by a classifier that answers "pass" to everything.
+
+**Residual leak.** The rule-id column is normalised before classification, since with-skill
+writes `T-009` and baseline writes whatever it invented. That removes the token that
+identifies the arm outright; prose style still differs, and no amount of scrubbing fixes
+that.
+
+Judge results are printed beside the detection numbers and never added into them.
+
+What this still cannot do is tell you whether a question was a *good* one, or read a
+transcript for reasoning that was right for the wrong reason. Jev generates no text, so
+that remains a human job — which is what the transcripts are for.
+
 ## Fixture naming and leaks
 
 Directories are opaque (`c10`, `m1`) and staged filenames are realistic

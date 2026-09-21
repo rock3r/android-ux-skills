@@ -1,0 +1,209 @@
+{
+  "description": "Questions whose answers we already know, run before any real transcript is judged. Each state is hand-written so its reading is unambiguous to a human; if the classifier cannot separate these, nothing it says about a real review is worth printing. Pairs are deliberate — the same check against a state that should pass and one that should fail — because a classifier that answers 'pass' to everything would otherwise calibrate perfectly.",
+  "items": [
+    {
+      "name": "asks about frequency",
+      "expect_verdict": "pass",
+      "state": "The per-star spring is lively, and whether that is right depends on something this file does not tell me: how often do readers actually rate books? If this is a once-per-title action it is fine as it stands. If people are rating dozens of titles in a shelving session, this wants to be much quieter. Can you tell me which it is?\n\nFINDINGS\nNONE",
+      "check": {
+        "id": "frequency_disposition",
+        "type": "choice",
+        "instructions": "How does this review treat the question of how often the rating control is used?",
+        "criteria": {
+          "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+          "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+          "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+          "silent": "It does not raise the frequency or repetition of this interaction at all"
+        },
+        "expect": [
+          "asks",
+          "scopes"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "scopes the claim conditionally",
+      "expect_verdict": "pass",
+      "state": "Assuming ratings are a high-frequency action in this app — and I am assuming, it is not in the file — the 1.25x spring per star will wear thin fast. On that assumption I would drop it to a colour change. If rating is rare, ignore this.\n\nFINDINGS\nRatingControl.kt:31-35 RULE taste minor spring may exceed the frequency ceiling if this surface is high-traffic",
+      "check": {
+        "id": "frequency_disposition",
+        "type": "choice",
+        "instructions": "How does this review treat the question of how often the rating control is used?",
+        "criteria": {
+          "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+          "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+          "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+          "silent": "It does not raise the frequency or repetition of this interaction at all"
+        },
+        "expect": [
+          "asks",
+          "scopes"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "asserts a verdict it cannot support",
+      "expect_verdict": "fail",
+      "state": "This is a high-frequency control and the spring is far too elaborate for it. Users tap these stars constantly and the 1.25x scale will become irritating within a day. Replace it with a colour change.\n\nFINDINGS\nRatingControl.kt:31-35 RULE taste major elaborate spring on a high-frequency control",
+      "check": {
+        "id": "frequency_disposition",
+        "type": "choice",
+        "instructions": "How does this review treat the question of how often the rating control is used?",
+        "criteria": {
+          "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+          "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+          "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+          "silent": "It does not raise the frequency or repetition of this interaction at all"
+        },
+        "expect": [
+          "asks",
+          "scopes"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "says nothing about frequency at all",
+      "expect_verdict": "fail",
+      "state": "The stars are laid out in a Row and each one scales when tapped. The spec comes from the motion scheme, which is correct, and the scale is read inside graphicsLayer rather than during composition, which is also correct. Nothing to report.\n\nFINDINGS\nNONE",
+      "check": {
+        "id": "frequency_disposition",
+        "type": "choice",
+        "instructions": "How does this review treat the question of how often the rating control is used?",
+        "criteria": {
+          "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+          "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+          "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+          "silent": "It does not raise the frequency or repetition of this interaction at all"
+        },
+        "expect": [
+          "asks",
+          "scopes"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "names the concrete fix",
+      "expect_verdict": "pass",
+      "state": "FilterHandle reads the animated Dp during composition. Change Modifier.offset(x = slide) to Modifier.offset { IntOffset(slide.roundToPx(), 0) } so the value is read in the layout phase instead. FilterSummary fifteen lines down already does exactly this.\n\nFINDINGS\nFilterBar.kt:36-40 RULE floor major animated offset read during composition",
+      "check": {
+        "id": "names_lambda_offset",
+        "type": "noul",
+        "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix, rather than only advising in general terms to use a lambda or to defer the read.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "gestures at the fix without naming it",
+      "expect_verdict": "fail",
+      "state": "FilterHandle reads a frame-rate value too early. You should defer this read to a later phase by using a lambda-based modifier so the animation does not cause recomposition every frame.\n\nFINDINGS\nFilterBar.kt:36-40 RULE floor major animated offset read during composition",
+      "check": {
+        "id": "names_lambda_offset",
+        "type": "noul",
+        "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix, rather than only advising in general terms to use a lambda or to defer the read.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "reports the composite against the screen",
+      "expect_verdict": "pass",
+      "state": "Each of these five composables is individually fine. The problem is the screen: applying a discount moves the total, slides in a badge, shifts the postage note, brightens the loyalty line and recolours the button, all at once, so nothing tells the eye what just happened. Decide what the event is about and let that lead.\n\nFINDINGS\nCheckoutSummary.kt:24-34 RULE taste minor five elements respond to one event with no leader",
+      "check": {
+        "id": "composite_not_parts",
+        "type": "noul",
+        "instructions": "The review's main criticism is about the screen as a whole — several elements animating together on one event — rather than a defect in any one of the individual child composables.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "reports the children as separate defects",
+      "expect_verdict": "fail",
+      "state": "TotalRow's lift is unnecessary. SavingsBadge should not slide. PostageNote's shift is distracting and should be removed. LoyaltyPoints should not change opacity. CheckoutButton should not change colour.\n\nFINDINGS\nCheckoutSummary.kt:36-48 RULE taste minor unnecessary lift\nCheckoutSummary.kt:50-60 RULE taste minor unnecessary slide\nCheckoutSummary.kt:62-74 RULE taste minor distracting shift",
+      "check": {
+        "id": "composite_not_parts",
+        "type": "noul",
+        "instructions": "The review's main criticism is about the screen as a whole — several elements animating together on one event — rather than a defect in any one of the individual child composables.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "declines to invent an absent document",
+      "expect_verdict": "pass",
+      "state": "You mention a MOTION.md but none was provided to me, so I cannot check this screen against it. Reviewing on general grounds only: the NavHost specifies no transitions and so inherits the 700ms default cross-fade, which is long for a screen change. Whether that contradicts anything your team has decided, I cannot say.\n\nFINDINGS\nAppNavigation.kt:27-35 RULE taste minor NavHost left on the default transition",
+      "check": {
+        "id": "invents_conventions",
+        "type": "noul",
+        "instructions": "The review states or implies specific contents of the project's motion language document — named tokens, decided conventions, or quoted entries — as though it had read that document.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "fabricates the contents of a document it never saw",
+      "expect_verdict": "fail",
+      "state": "Per MOTION.md, destination changes are bound to AppMotion.destinationEnter and destinationExit, and that binding is marked DECIDED. This NavHost ignores it and falls back to the framework default, contradicting a settled decision.\n\nFINDINGS\nAppNavigation.kt:27-35 RULE taste major contradicts the DECIDED destination token",
+      "check": {
+        "id": "invents_conventions",
+        "type": "noul",
+        "instructions": "The review states or implies specific contents of the project's motion language document — named tokens, decided conventions, or quoted entries — as though it had read that document.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "leaves the framework path alone",
+      "expect_verdict": "pass",
+      "state": "The NavHost needs nothing: Navigation already installs a predictive-back handler and seeks the transition with SeekableTransitionState, so back gestures follow the finger without any app code. The notes panel is the problem — its BackHandler fires on commit, so the panel snaps shut at the end of the gesture instead of tracking it.\n\nFINDINGS\nReaderScreen.kt:57-59 RULE taste minor hand-rolled back handling cannot follow the gesture",
+      "check": {
+        "id": "flags_framework_path",
+        "type": "noul",
+        "instructions": "The review reports a defect, or asks for a change, in how the NavHost itself handles the back gesture.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "flags the framework path as if it were broken",
+      "expect_verdict": "fail",
+      "state": "The NavHost does not handle predictive back. You should add a PredictiveBackHandler around it and drive the transition from the gesture progress, otherwise back will not animate correctly on Android 14 and later.\n\nFINDINGS\nReaderScreen.kt:37-50 RULE taste major NavHost does not support predictive back",
+      "check": {
+        "id": "flags_framework_path",
+        "type": "noul",
+        "instructions": "The review reports a defect, or asks for a change, in how the NavHost itself handles the back gesture.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "uses the stated frequency guidance",
+      "expect_verdict": "pass",
+      "state": "Your motion language already settles this: star ratings are listed under Never animate, because readers tap them constantly while shelving. The per-star spring contradicts that directly.\n\nFINDINGS\nRatingControl.kt:31-35 RULE taste major contradicts the stated frequency guidance for ratings",
+      "check": {
+        "id": "cites_stated_frequency",
+        "type": "noul",
+        "instructions": "The review justifies its judgement of the rating animation by reference to guidance the project has already stated about how often this kind of control is used, rather than asking the reader how often it is used.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "asks a question already answered in the staged document",
+      "expect_verdict": "fail",
+      "state": "The per-star spring may be too much, but I cannot tell without knowing how often readers rate books. How frequently is this control used in practice?\n\nFINDINGS\nNONE",
+      "check": {
+        "id": "cites_stated_frequency",
+        "type": "noul",
+        "instructions": "The review justifies its judgement of the rating animation by reference to guidance the project has already stated about how often this kind of control is used, rather than asking the reader how often it is used.",
+        "expect": true,
+        "min_confidence": 0.7
+      }
+    }
+  ]
+}

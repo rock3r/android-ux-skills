@@ -57,6 +57,15 @@
         "OBSERVED",
         "OnboardingPager",
         "frequency map"
+      ],
+      "checks": [
+        {
+          "id": "invents_conventions",
+          "type": "noul",
+          "instructions": "The review states or implies specific contents of the project's motion language document — named tokens, decided conventions, or quoted entries — as though it had read that document.",
+          "expect": false,
+          "min_confidence": 0.7
+        }
       ]
     }
   ]
