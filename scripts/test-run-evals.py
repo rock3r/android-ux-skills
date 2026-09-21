@@ -64,7 +64,7 @@ check("credits the matched finding", g["taste"]["hit"] == 1, g)
 check("counts the missed one", g["taste"]["missed"] == 1, g)
 check("computes recall", g["taste"]["recall"] == 0.5, g)
 check("counts a finding on a must-not-flag span", g["flagged_correct_code"] == 1, g)
-check("charges it as a false positive", g["floor"]["false_positive"] == 1, g)
+check("charges a must-not-flag hit as a false positive", g["floor"]["false_positive"] == 1, g)
 
 # The right rule in the wrong place is not a hit. Matching on rule id alone would credit a
 # model that named a plausible rule and guessed at where it applied.
@@ -84,8 +84,69 @@ check("stays silent when severity agrees",
       ev.grade(under, [expected[0]], [])["wrong_severity"] == [])
 
 # A precision case declares no expected findings at all; anything reported is spurious.
-check("precision case penalises any finding",
+check("precision case penalises a finding on a declared-clean span",
       ev.grade(under, [], [{"path": "Nav.kt", "lines": [20, 40]}])["flagged_correct_code"] == 1)
+
+print("baseline arm — rule ids not required")
+
+# The contract tells an arm with no standards to invent an identifier. Grading baseline on
+# our private ids measured whether it guessed our vocabulary, not whether it found the
+# defect, and made the headline delta meaningless.
+invented = ev.parse_findings("FINDINGS\nNav.kt:27-31 NAV-DEFAULT taste minor 700ms\n")
+want = [{"path": "Nav.kt", "lines": [27, 31], "rule": "T-001", "class": "taste"}]
+check("baseline credits the right defect under an invented id",
+      ev.grade(invented, want, [], match_rule_ids=False)["taste"]["hit"] == 1)
+check("with-skill still requires the real id",
+      ev.grade(invented, want, [], match_rule_ids=True)["taste"]["hit"] == 0)
+check("baseline still needs the right location",
+      ev.grade(ev.parse_findings("FINDINGS\nNav.kt:200-210 X taste minor x\n"),
+               want, [], match_rule_ids=False)["taste"]["hit"] == 0)
+check("baseline still needs the right class",
+      ev.grade(ev.parse_findings("FINDINGS\nNav.kt:27-31 X floor minor x\n"),
+               want, [], match_rule_ids=False)["taste"]["hit"] == 0)
+
+print("obligation is scored")
+
+# An earlier version computed floor and taste only, so the one absence-class case produced
+# identical numbers whether it passed or failed.
+ob = [{"path": "S.kt", "lines": [19, 36], "rule": "O-002", "class": "obligation"}]
+hit = ev.grade(ev.parse_findings("FINDINGS\nS.kt:19-36 O-002 obligation major x\n"), ob, [])
+miss = ev.grade([], ob, [])
+check("obligation hit is counted", hit["obligation"]["hit"] == 1, hit["obligation"])
+check("obligation miss is counted", miss["obligation"]["missed"] == 1, miss["obligation"])
+check("hit and miss are distinguishable", hit["obligation"] != miss["obligation"])
+
+print("one finding, one disposition")
+
+wide = ev.parse_findings("FINDINGS\nC.kt:25-105 T-026 taste minor whole screen\n")
+g = ev.grade(wide, [{"path": "C.kt", "lines": [25, 34], "rule": "T-026", "class": "taste"}],
+             [{"path": "C.kt", "lines": [35, 48]}])
+check("a wide finding is not both a hit and a false positive",
+      g["taste"]["hit"] == 1 and g["taste"]["false_positive"] == 0, g["taste"])
+
+dupes = ev.parse_findings("FINDINGS\nA.kt:1-5 T-001 taste minor x\nA.kt:1-5 T-001 taste minor x\n")
+g = ev.grade(dupes, [{"path": "A.kt", "lines": [1, 5], "rule": "T-001", "class": "taste"}], [])
+check("duplicates collapse to one finding",
+      g["taste"]["hit"] == 1 and g["taste"]["false_positive"] == 0, g["taste"])
+check("duplicates are counted", g["duplicates"] == 1)
+
+# Our labels are not a census of every defect in a fixture. Punishing a real finding we
+# failed to anticipate would train the skill to stay quiet.
+outside = ev.parse_findings("FINDINGS\nA.kt:200-210 F-008 floor major animated padding\n")
+g = ev.grade(outside, [], [])
+check("an unlabeled finding is not a false positive", g["floor"]["false_positive"] == 0, g["floor"])
+check("an unlabeled finding is surfaced for adjudication", len(g["unlabeled"]) == 1, g["unlabeled"])
+
+check("a finding on a must-not-flag span is still a false positive",
+      ev.grade(outside, [], [{"path": "A.kt", "lines": [195, 215]}])["floor"]["false_positive"] == 1)
+
+print("class mismatch")
+
+g = ev.grade(ev.parse_findings("FINDINGS\nA.kt:1-10 T-026 obligation minor x\n"),
+             [{"path": "A.kt", "lines": [1, 10], "rule": "T-026", "class": "taste"}], [])
+check("a misclassed finding still counts as detection", g["taste"]["hit"] == 1)
+check("but the class error is reported", g["wrong_class"] != [], g["wrong_class"])
+
 
 print()
 if failures:

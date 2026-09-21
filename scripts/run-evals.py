@@ -112,11 +112,26 @@ def parse_findings(text: str) -> list[Finding]:
     return out
 
 
-def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) -> dict:
+def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
+          match_rule_ids: bool = True) -> dict:
     """Set-match actual findings against the case's labels.
 
-    A hit requires the same rule id AND an overlapping line range. Matching on rule id
-    alone would credit a finding that named the right rule in the wrong place.
+    `match_rule_ids=False` is used for the baseline arm. The output contract tells an arm
+    with no standards to invent its own identifiers, so requiring "T-001" from an arm that
+    was never given the rule set measured vocabulary, not capability: a baseline naming the
+    exact defect at the exact lines scored as a miss AND a false positive, and the headline
+    delta could only ever flatter the skill. Baseline matches on location and class.
+
+    Three further rules, each fixing a way the earlier version scored a right answer wrong:
+
+    * A finding is counted once. It is either a hit, a false positive, or unlabeled — never
+      two of those. A wide finding that covered an expected span and a must-not-flag span
+      previously scored as both at the same time.
+    * Duplicates collapse. Two identical lines are one finding, not a hit plus a spurious.
+    * A correct finding outside every labeled span is **unlabeled**, not a false positive.
+      Our labels are not a complete census of the defects in a fixture, and punishing a
+      real finding we did not anticipate trains exactly the wrong behaviour. These surface
+      for a human to adjudicate and fold back into the labels.
     """
     exp = [
         Finding(e["path"], e["lines"][0], e["lines"][1], e["rule"].upper(),
@@ -125,32 +140,47 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) ->
     ]
     neg = [Finding(n["path"], n["lines"][0], n["lines"][1], "", "") for n in negatives]
 
-    matched, unmatched, wrong_severity = set(), [], []
+    # Collapse duplicates: same place, same rule, same class is one finding.
+    seen, deduped, duplicates = set(), [], 0
+    for a in actual:
+        key = (Path(a.path).name, a.start, a.end, a.rule, a.cls)
+        if key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+        deduped.append(a)
+
+    matched, unmatched, wrong_severity, wrong_class = set(), [], [], []
     for e in exp:
-        hit = next(
-            (a for a in actual if a.rule == e.rule and a.overlaps(e) and id(a) not in matched),
-            None,
-        )
+        def fits(a: Finding) -> bool:
+            if id(a) in matched or not a.overlaps(e):
+                return False
+            return a.rule == e.rule if match_rule_ids else a.cls == e.cls
+
+        hit = next((a for a in deduped if fits(a)), None)
         if hit:
             matched.add(id(hit))
-            # Severity is graded separately from detection. Finding the right thing and
-            # misjudging how much it matters is a different failure from missing it, and
-            # in a codebase with an established language it is the more interesting one.
             if e.severity and hit.severity and hit.severity != e.severity:
                 wrong_severity.append(
                     {"rule": e.rule, "expected": e.severity, "reported": hit.severity}
                 )
+            if match_rule_ids and e.cls and hit.cls and hit.cls != e.cls:
+                wrong_class.append(
+                    {"rule": e.rule, "expected": e.cls, "reported": hit.cls}
+                )
         else:
             unmatched.append(e)
 
-    # A finding landing on a span declared correct is the expensive kind of wrong.
-    on_negative = [a for a in actual if any(a.overlaps(n) for n in neg)]
-    spurious = [a for a in actual if id(a) not in matched and a not in on_negative]
+    # Each remaining finding gets exactly one disposition.
+    on_negative = [a for a in deduped
+                   if id(a) not in matched and any(a.overlaps(n) for n in neg)]
+    unlabeled = [a for a in deduped
+                 if id(a) not in matched and a not in on_negative]
 
     def counts(cls: str) -> dict:
         tp = len([e for e in exp if e.cls == cls]) - len([e for e in unmatched if e.cls == cls])
         fn = len([e for e in unmatched if e.cls == cls])
-        fp = len([a for a in on_negative + spurious if a.cls == cls])
+        fp = len([a for a in on_negative if a.cls == cls])
         return {
             "hit": tp,
             "missed": fn,
@@ -160,10 +190,20 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict]) ->
         }
 
     return {
+        # Obligation is reported separately, never folded into taste. STANDARDS.md excludes
+        # it from the taste *delta*; an earlier version excluded it from everything, so the
+        # only absence-class case produced identical numbers whether it passed or failed.
         "floor": counts("floor"),
+        "obligation": counts("obligation"),
         "taste": counts("taste"),
         "wrong_severity": wrong_severity,
+        "wrong_class": wrong_class,
         "flagged_correct_code": len(on_negative),
+        "unlabeled": [
+            {"path": a.path, "lines": [a.start, a.end], "rule": a.rule, "class": a.cls}
+            for a in unlabeled
+        ],
+        "duplicates": duplicates,
         "total_reported": len(actual),
     }
 
@@ -294,8 +334,9 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry) -> dict:
             "case": cid,
             "title": case.get("title", ""),
             "arms": {
-                arm: {"error": r.error, **grade(r.findings, case.get("expect", []),
-                                                case.get("negatives", []))}
+                arm: {"error": r.error,
+                      **grade(r.findings, case.get("expect", []), case.get("negatives", []),
+                              match_rule_ids=(arm != "baseline"))}
                 for arm, r in arms.items()
             },
         })
@@ -310,7 +351,7 @@ def summarize(results: list[dict]) -> None:
     print("\n" + "=" * 78, file=sys.stderr)
     for res in results:
         print(f"\n{res['battery']}", file=sys.stderr)
-        for cls in ("floor", "taste"):
+        for cls in ("floor", "obligation", "taste"):
             b_hit, s_hit = total(res, "baseline", cls, "hit"), total(res, "with-skill", cls, "hit")
             b_fp, s_fp = (total(res, "baseline", cls, "false_positive"),
                           total(res, "with-skill", cls, "false_positive"))
@@ -327,6 +368,16 @@ def summarize(results: list[dict]) -> None:
         flagged = sum(c["arms"]["with-skill"]["flagged_correct_code"] for c in res["cases"])
         if flagged:
             print(f"  flagged correct code: {flagged}", file=sys.stderr)
+
+        # Not scored either way. These are findings we did not label, which may be real
+        # defects we missed rather than noise — they need a human, and they are how the
+        # label set improves.
+        unlabeled = [u for c in res["cases"] for u in c["arms"]["with-skill"]["unlabeled"]]
+        if unlabeled:
+            print(f"  unlabeled, needs adjudication: {len(unlabeled)}", file=sys.stderr)
+            for u in unlabeled[:5]:
+                print(f"    {u['path']}:{u['lines'][0]}-{u['lines'][1]} {u['rule']}",
+                      file=sys.stderr)
 
     print("\n" + "-" * 78, file=sys.stderr)
     print("Read these three things, in order:", file=sys.stderr)
