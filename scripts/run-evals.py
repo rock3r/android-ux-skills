@@ -479,20 +479,33 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1) -> 
         case_dir = battery / "actor-runs" / f"eval-{cid}"
         print(f"  case {cid}: {case.get('title', '')}", file=sys.stderr)
 
+        # Transcripts are kept. The grader reduces a review to a handful of counts, and
+        # when a case scores badly those counts do not tell you why — the reasoning, the
+        # near-misses, and everything the labels do not cover were being thrown away with
+        # the process output. They are also the input any later qualitative pass needs.
+        transcripts = battery / "transcripts" / f"eval-{cid}"
+        if not dry:
+            transcripts.mkdir(parents=True, exist_ok=True)
+            (transcripts / "prompt.md").write_text(prompt)
+
         arms: dict[str, list[ArmResult]] = {"baseline": [], "with-skill": []}
+        saved: dict[str, list[str]] = {"baseline": [], "with-skill": []}
         for n in range(runs):
             suffix = "" if runs == 1 else f"-run{n + 1}"
-            arms["baseline"].append(
-                run_arm(case_dir / f"baseline{suffix}", prompt, None,
-                        model, timeout_ms, dry)
-            )
-            arms["with-skill"].append(
-                run_arm(case_dir / f"with-skill{suffix}", prompt,
-                        case_dir / f"with-skill{suffix}" / "skills" / skill,
-                        model, timeout_ms, dry)
-            )
+            for arm, skill_path in (
+                ("baseline", None),
+                ("with-skill", case_dir / f"with-skill{suffix}" / "skills" / skill),
+            ):
+                r = run_arm(case_dir / f"{arm}{suffix}", prompt, skill_path,
+                            model, timeout_ms, dry)
+                arms[arm].append(r)
+                if not dry:
+                    f = transcripts / f"{arm}{suffix}.md"
+                    f.write_text(r.raw or f"(no output — {r.error or 'empty'})")
+                    saved[arm].append(str(f.relative_to(ROOT)))
 
         cases.append({
+            "transcripts": saved,
             "case": cid,
             "title": case.get("title", ""),
             "runs": runs,
