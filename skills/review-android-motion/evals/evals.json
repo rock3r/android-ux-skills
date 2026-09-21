@@ -1,17 +1,23 @@
 {
   "skill_name": "review-android-motion",
   "battery": "no-motion-language",
-  "description": "T-001 with no MOTION.md present. Severity should be minor: the value is too long, but nothing has been decided for it to contradict. Also the precision case, which must produce no T-001 finding at all.",
+  "description": "Every eval class that does not need a MOTION.md staged. One exemplar rule per class from TAXONOMY.md, so each harness shape is proven before the remaining rules are filled in behind it.",
   "evals": [
     {
       "id": 10,
-      "title": "T-001 detection, no motion language",
+      "title": "B \u00b7 T-001 detection with no motion language",
+      "class": "B. Context-dependent severity",
       "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
-      "files": ["evals/files/c10/AppNavigation.kt"],
+      "files": [
+        "evals/files/c10/AppNavigation.kt"
+      ],
       "expect": [
         {
           "path": "AppNavigation.kt",
-          "lines": [27, 31],
+          "lines": [
+            27,
+            31
+          ],
           "rule": "T-001",
           "class": "taste",
           "severity": "minor"
@@ -20,50 +26,302 @@
       "negatives": [
         {
           "path": "AppNavigation.kt",
-          "lines": [45, 71],
-          "note": "DismissibleCard is a correct gesture-driven Animatable with velocity carried into animateDecay. Flagging it is an F-002 or T-012 false positive."
+          "lines": [
+            45,
+            71
+          ],
+          "note": "Correct gesture-driven Animatable with velocity carried into animateDecay."
         },
         {
           "path": "AppNavigation.kt",
-          "lines": [73, 84],
-          "note": "StatusBanner resolves its spec to the scheme and reads the animated value in a graphicsLayer lambda. Correct under T-002 and F-001."
+          "lines": [
+            73,
+            84
+          ],
+          "note": "Spec resolves to the scheme, animated value read in a graphicsLayer lambda."
         }
       ],
       "expectations": [
-        "Flags the NavHost as having no transitions specified, so it inherits the 700ms default",
-        "Reports it as minor, or does not assert a severity beyond a note — nothing has been decided here for it to contradict",
-        "Does NOT flag DismissibleCard's gesture handling",
-        "Does NOT flag StatusBanner's fade",
-        "Does not invent a motion convention the codebase has not established"
+        "Flags the NavHost as inheriting the 700ms default",
+        "Reports it as minor \u2014 nothing has been decided here for it to contradict",
+        "Does NOT flag DismissibleCard or StatusBanner"
       ]
     },
     {
       "id": 11,
-      "title": "T-001 precision, transitions specified",
+      "title": "B \u00b7 T-001 precision, transitions specified",
+      "class": "B. Context-dependent severity",
       "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
-      "files": ["evals/files/c11/AppNavigation.kt"],
+      "files": [
+        "evals/files/c11/AppNavigation.kt"
+      ],
       "expect": [],
       "negatives": [
         {
           "path": "AppNavigation.kt",
-          "lines": [28, 47],
-          "note": "NavHost specifies all four transitions from product tokens. This is the compliant form and must not be flagged."
+          "lines": [
+            28,
+            49
+          ],
+          "note": "All four transitions bound to product tokens. The compliant form."
         },
         {
           "path": "AppNavigation.kt",
-          "lines": [52, 78],
-          "note": "DismissibleCard, as above."
-        },
-        {
-          "path": "AppNavigation.kt",
-          "lines": [80, 91],
-          "note": "StatusBanner, as above."
+          "lines": [
+            53,
+            91
+          ],
+          "note": "Gesture handling and banner fade, both correct."
         }
       ],
       "expectations": [
         "Produces no T-001 finding",
-        "Does not object to the cross-fade itself — unordered top-level destinations cross-fade correctly under T-011",
-        "If it reports anything, it is not about the NavHost transitions"
+        "Does not object to the cross-fade itself \u2014 unordered top-level destinations cross-fade correctly under T-011"
+      ]
+    },
+    {
+      "id": 20,
+      "title": "A \u00b7 F-001 static twin, one line apart",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this component. File: fixtures/FilterBar.kt",
+      "files": [
+        "evals/files/c20/FilterBar.kt"
+      ],
+      "expect": [
+        {
+          "path": "FilterBar.kt",
+          "lines": [
+            36,
+            38
+          ],
+          "rule": "F-001",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "FilterBar.kt",
+          "lines": [
+            50,
+            54
+          ],
+          "note": "FilterSummary animates the identical value through offset { } \u2014 the lambda form, read in layout. This is the fix, sitting fourteen lines below the defect."
+        },
+        {
+          "path": "FilterBar.kt",
+          "lines": [
+            58,
+            78
+          ],
+          "note": "FilterCount reads its animated alpha in graphicsLayer and its colour in drawBehind. Both correct."
+        }
+      ],
+      "expectations": [
+        "Flags FilterHandle's Modifier.offset(x = slide) as reading a frame-rate value during composition",
+        "Does NOT flag FilterSummary, which animates the same value correctly through offset { }",
+        "Does NOT flag FilterCount's graphicsLayer or drawBehind reads",
+        "Names offset { IntOffset(...) } as the fix, not 'use a lambda' generically"
+      ]
+    },
+    {
+      "id": 30,
+      "title": "C \u00b7 O-002 absence, with a twin that is legitimately exempt",
+      "class": "C. Absence",
+      "prompt": "Review the motion in this screen. Files: fixtures/SyncStatus.kt, fixtures/sync_complete.json",
+      "files": [
+        "evals/files/c30/SyncStatus.kt",
+        "evals/files/c30/sync_complete.json"
+      ],
+      "expect": [
+        {
+          "path": "SyncStatus.kt",
+          "lines": [
+            19,
+            36
+          ],
+          "rule": "O-002",
+          "class": "obligation",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "SyncStatus.kt",
+          "lines": [
+            43,
+            60
+          ],
+          "note": "NoResults is decorative and the Text below carries the message, so the illustration losing its motion costs nothing. O-001's static carrier is the Text."
+        }
+      ],
+      "expectations": [
+        "Notices sync_complete.json has no marker named 'reduced motion' among its markers",
+        "Connects that to the outro at frame 120-150 fading the tick to zero opacity, so the last frame \u2014 where Lottie seeks when animations are off \u2014 is empty",
+        "Identifies SyncComplete as the problem because the illustration is the ONLY confirmation the user gets",
+        "Does NOT demand a marker on NoResults, where the text carries the meaning",
+        "Does not confuse the Lottie marker with the Android 'Remove animations' setting"
+      ]
+    },
+    {
+      "id": 40,
+      "title": "D \u00b7 T-009 asks rather than asserts",
+      "class": "D. Not in the source at all",
+      "prompt": "Review the motion in this component. File: fixtures/RatingControl.kt",
+      "files": [
+        "evals/files/c40/RatingControl.kt"
+      ],
+      "expect": [],
+      "negatives": [],
+      "expectations": [
+        "Recognises that whether this exceeds the frequency ceiling depends on how often users rate books, which is not in the source",
+        "ASKS how often this is used, or states the assumption it is reasoning from, rather than asserting a verdict",
+        "If it does raise T-009, it scopes the claim \u2014 'if this is a high-frequency surface, then\u2026' \u2014 rather than declaring a violation",
+        "Does NOT assert a usage frequency it cannot know",
+        "Does NOT flag the spring itself: fastSpatialSpec on a rare, deliberate interaction is correct"
+      ]
+    },
+    {
+      "id": 50,
+      "title": "E \u00b7 T-026 composite defect, every part correct",
+      "class": "E. Composite-only",
+      "prompt": "Review the motion in this screen. File: fixtures/CheckoutSummary.kt",
+      "files": [
+        "evals/files/c50/CheckoutSummary.kt"
+      ],
+      "expect": [
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            25,
+            34
+          ],
+          "rule": "T-026",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            35,
+            48
+          ],
+          "note": "TotalRow: token spec, lambda offset. Individually correct."
+        },
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            50,
+            61
+          ],
+          "note": "SavingsBadge: AnimatedVisibility, effects tier, faster exit than enter. Individually correct."
+        },
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            63,
+            74
+          ],
+          "note": "PostageNote: token spec, lambda offset. Individually correct."
+        },
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            75,
+            88
+          ],
+          "note": "LoyaltyPoints: effects spec, graphicsLayer read. Individually correct."
+        },
+        {
+          "path": "CheckoutSummary.kt",
+          "lines": [
+            89,
+            105
+          ],
+          "note": "CheckoutButton: spatial spec, graphicsLayer read. Individually correct."
+        }
+      ],
+      "expectations": [
+        "Identifies that five elements animate on one event and none of them leads",
+        "Reports it against the screen or CheckoutSummary itself, not against any individual composable",
+        "Does NOT report the five children as five separate findings \u2014 every one of them is individually correct",
+        "Suggests choosing what the event is about, rather than tuning any single spec"
+      ]
+    },
+    {
+      "id": 60,
+      "title": "F \u00b7 F-006 legitimate twin, same construct both ways",
+      "class": "F. Legitimate twin",
+      "prompt": "Review the motion in this file. File: fixtures/ExpandableRow.kt",
+      "files": [
+        "evals/files/c60/ExpandableRow.kt"
+      ],
+      "expect": [
+        {
+          "path": "ExpandableRow.kt",
+          "lines": [
+            20,
+            34
+          ],
+          "rule": "F-006",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ExpandableRow.kt",
+          "lines": [
+            41,
+            51
+          ],
+          "note": "CollapsibleBlurb clips deliberately \u2014 the cut-off line is the affordance saying there is more. clipToBounds is explicit and heightIn caps it. Asserting a defect here is the failure this case exists to catch."
+        }
+      ],
+      "expectations": [
+        "Flags BookRow, where shadow(6.dp) sits directly above animateContentSize and will have its shadow cut",
+        "Does NOT assert a defect on CollapsibleBlurb, where clipping is explicit and intended",
+        "If it mentions CollapsibleBlurb at all, it asks whether the clipping is intended rather than declaring it wrong",
+        "Distinguishes the two by the surrounding signal \u2014 an elevated container versus an explicit clipToBounds with a height cap"
+      ]
+    },
+    {
+      "id": 70,
+      "title": "G \u00b7 T-008 framework-correct, precision only",
+      "class": "G. Framework-correct",
+      "prompt": "Review the back handling and motion in this screen. File: fixtures/ReaderScreen.kt",
+      "files": [
+        "evals/files/c70/ReaderScreen.kt"
+      ],
+      "expect": [
+        {
+          "path": "ReaderScreen.kt",
+          "lines": [
+            47,
+            49
+          ],
+          "rule": "T-008",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ReaderScreen.kt",
+          "lines": [
+            24,
+            36
+          ],
+          "note": "NavHost already installs its own predictive-back handler and seeks with SeekableTransitionState. Zero app code is required, and flagging it is the failure this case exists to catch."
+        }
+      ],
+      "expectations": [
+        "Does NOT flag the NavHost \u2014 the framework already seeks predictive back correctly",
+        "Flags the BackHandler closing the notes panel, which fires on commit and cannot follow the finger",
+        "Names PredictiveBackHandler with a seekable progress value as the fix",
+        "Scopes the finding to the hand-rolled panel, not to back handling in general"
       ]
     }
   ]

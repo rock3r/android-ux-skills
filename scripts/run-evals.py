@@ -195,6 +195,63 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
     return ArmResult(arm=arm, raw=proc.stdout, findings=parse_findings(proc.stdout))
 
 
+def validate(spec_path: Path, skill_dir: Path) -> list[str]:
+    """Check a battery against its fixtures before anything is run.
+
+    Line ranges are written by hand against files that then get edited. A range that has
+    drifted off the construct it names does not fail loudly — the case simply stops
+    measuring what it claims to, and keeps reporting a number.
+    """
+    problems: list[str] = []
+    spec = json.loads(spec_path.read_text())
+    where = spec_path.name
+
+    seen_ids = set()
+    for case in spec["evals"]:
+        cid = case["id"]
+        if cid in seen_ids:
+            problems.append(f"{where}: duplicate case id {cid}")
+        seen_ids.add(cid)
+
+        staged: dict[str, Path] = {}
+        for rel in case.get("files", []):
+            src = (skill_dir / rel).resolve()
+            if not src.exists():
+                problems.append(f"{where} case {cid}: staged file missing — {rel}")
+                continue
+            staged[src.name] = src
+
+        spans = []
+        for kind in ("expect", "negatives"):
+            for e in case.get(kind, []):
+                src = staged.get(e["path"])
+                if src is None:
+                    problems.append(
+                        f"{where} case {cid}: {kind} names {e['path']}, which is not staged"
+                    )
+                    continue
+                total = len(src.read_text().splitlines())
+                a, b = e["lines"]
+                if a < 1 or a > b or b > total:
+                    problems.append(
+                        f"{where} case {cid}: {e['path']}:{a}-{b} is outside the file "
+                        f"({total} lines)"
+                    )
+                else:
+                    spans.append((kind, e["path"], a, b))
+
+        # A span cannot be both the finding we want and a must-not-flag region.
+        for i, (k1, p1, a1, b1) in enumerate(spans):
+            for k2, p2, a2, b2 in spans[i + 1:]:
+                if k1 != k2 and p1 == p2 and a1 <= b2 and a2 <= b1:
+                    problems.append(
+                        f"{where} case {cid}: {p1} lines {a1}-{b1} and {a2}-{b2} are both "
+                        f"expected and must-not-flag"
+                    )
+
+    return problems
+
+
 def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry) -> dict:
     """Prepare and run one battery. Each evals*.json in a skill is its own battery.
 
@@ -307,6 +364,14 @@ def main() -> int:
         if not specs:
             print(f"error: no battery named {args.battery}", file=sys.stderr)
             return 1
+
+    problems = [p for s in specs for p in validate(s, skill_dir)]
+    if problems:
+        print("battery validation failed:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        return 1
+    print(f"{len(specs)} batteries validated against their fixtures", file=sys.stderr)
 
     results = []
     for spec_path in specs:
