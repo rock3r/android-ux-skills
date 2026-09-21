@@ -42,14 +42,31 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+
+def _known_rules() -> dict[str, str]:
+    """Rule id -> class, read from STANDARDS.md. The prefix encodes the class."""
+    prefixes = {"F": "floor", "O": "obligation", "T": "taste"}
+    text = (ROOT / "STANDARDS.md").read_text()
+    return {
+        m.group(1): prefixes[m.group(1)[0]]
+        for m in re.finditer(r"^### ([FOT]-\d{3})", text, re.M)
+    }
+
+
+KNOWN_RULES = _known_rules()
+
 # The shape every arm is asked to produce, appended to each case prompt so both arms are
 # answering the same question in the same form.
 OUTPUT_CONTRACT = """
 
-Report every finding as one line in exactly this form, and nothing else after the marker:
+Write your review however you normally would. Then, at the very end of your response, add a
+machine-readable summary of it: the line FINDINGS on its own, then one line per finding in
+exactly this form, and nothing after the last of them.
 
 FINDINGS
 <path>:<start>-<end> <rule-id> <floor|obligation|taste> <minor|major> <one line>
+
+This block must repeat every finding your review made, and must not add any it did not.
 
 Severity is relative to what this codebase has decided, not intrinsic to the finding:
 contradicting a convention the project has established is major; the same observation with
@@ -57,10 +74,12 @@ no convention established is minor.
 
 Use the rule ids from the standards if you have them. If you have no standards to draw on,
 still use this shape and put your own short identifier in the rule-id column.
-If you find nothing, write FINDINGS and then NONE."""
+If you found nothing, write FINDINGS and then NONE."""
 
+# The end of the range is optional: a one-line finding is naturally written "Nav.kt:27",
+# and rejecting that form measured transcription, not judgment.
 FINDING_RE = re.compile(
-    r"^(?P<path>[^\s:]+):(?P<start>\d+)-(?P<end>\d+)\s+"
+    r"^(?P<path>[^\s:]+):(?P<start>\d+)(?:-(?P<end>\d+))?\s+"
     r"(?P<rule>\S+)\s+(?P<cls>floor|obligation|taste)\s+(?P<sev>minor|major)\b",
     re.IGNORECASE,
 )
@@ -89,31 +108,52 @@ class ArmResult:
     findings: list[Finding] = field(default_factory=list)
     raw: str = ""
     error: str | None = None
+    unparsed: int = 0
 
 
-def parse_findings(text: str) -> list[Finding]:
-    """Parse the contract block. Tolerant of prose around it, strict about the lines."""
+def parse_findings(text: str) -> tuple[list[Finding], int]:
+    """Parse the contract block. Tolerant of prose around it, strict about the lines.
+
+    Returns the findings and a count of lines that looked like findings but did not
+    parse. Silently dropping malformed lines made a badly formatted review
+    indistinguishable from a clean one: zero findings, zero false positives, perfect
+    precision.
+    """
     out: list[Finding] = []
+    unparsed = 0
     if "FINDINGS" in text:
-        text = text.split("FINDINGS", 1)[1]
+        # rsplit, not split: a model that says the word "findings" in its preamble would
+        # otherwise have everything after the first mention treated as the block.
+        text = text.rsplit("FINDINGS", 1)[1]
     for line in text.splitlines():
-        m = FINDING_RE.match(line.strip().lstrip("-* "))
+        stripped = line.strip().lstrip("-* ")
+        if not stripped or stripped.upper() == "NONE":
+            continue
+        m = FINDING_RE.match(stripped)
+        if not m:
+            # Looks like it was meant to be a finding: has a path:line somewhere. This
+            # also catches the markdown-table shape, which is how a format conflict
+            # between the contract and a skill's own report style shows up.
+            if re.search(r"[^\s:]+:\d+(-\d+)?\b", stripped):
+                unparsed += 1
+            continue
         if m:
             out.append(
                 Finding(
                     path=m["path"],
                     start=int(m["start"]),
-                    end=int(m["end"]),
+                    end=int(m["end"] or m["start"]),
                     rule=m["rule"].upper(),
                     cls=m["cls"].lower(),
                     severity=m["sev"].lower(),
                 )
             )
-    return out
+    return out, unparsed
 
 
 def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
-          match_rule_ids: bool = True) -> dict:
+          match_rule_ids: bool = True, forbidden: list[str] | None = None,
+          raw: str = "") -> dict:
     """Set-match actual findings against the case's labels.
 
     `match_rule_ids=False` is used for the baseline arm. The output contract tells an arm
@@ -138,6 +178,15 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
                 e.get("class", "taste"), e.get("severity", ""))
         for e in expected
     ]
+    # Some defects have more than one honest place to report them. O-002's subject is a
+    # composable that plays a Lottie, but the missing marker is a fact about the .json, and
+    # anchoring the finding there is not wrong. Without this the correct answer in the
+    # wrong-but-reasonable file scored as a miss.
+    alt: list[list[Finding]] = [
+        [Finding(a["path"], a["lines"][0], a["lines"][1], "", "")
+         for a in e.get("also_at", [])]
+        for e in expected
+    ]
     neg = [Finding(n["path"], n["lines"][0], n["lines"][1], "", "") for n in negatives]
 
     # Collapse duplicates: same place, same rule, same class is one finding.
@@ -151,19 +200,25 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
         deduped.append(a)
 
     matched, unmatched, wrong_severity, wrong_class = set(), [], [], []
-    for e in exp:
-        def fits(a: Finding) -> bool:
-            if id(a) in matched or not a.overlaps(e):
+    severity_right = 0
+    for e, e_alt in zip(exp, alt):
+        def fits(a: Finding, e=e, e_alt=e_alt) -> bool:
+            if id(a) in matched:
+                return False
+            if not (a.overlaps(e) or any(a.overlaps(x) for x in e_alt)):
                 return False
             return a.rule == e.rule if match_rule_ids else a.cls == e.cls
 
         hit = next((a for a in deduped if fits(a)), None)
         if hit:
             matched.add(id(hit))
-            if e.severity and hit.severity and hit.severity != e.severity:
-                wrong_severity.append(
-                    {"rule": e.rule, "expected": e.severity, "reported": hit.severity}
-                )
+            if e.severity and hit.severity:
+                if hit.severity == e.severity:
+                    severity_right += 1
+                else:
+                    wrong_severity.append(
+                        {"rule": e.rule, "expected": e.severity, "reported": hit.severity}
+                    )
             if match_rule_ids and e.cls and hit.cls and hit.cls != e.cls:
                 wrong_class.append(
                     {"rule": e.rule, "expected": e.cls, "reported": hit.cls}
@@ -176,6 +231,18 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
                    if id(a) not in matched and any(a.overlaps(n) for n in neg)]
     unlabeled = [a for a in deduped
                  if id(a) not in matched and a not in on_negative]
+
+    # A matched finding can still be a shotgun: one span covering the expected defect AND
+    # every must-not-flag region around it. Counting it once means it cannot also be a
+    # false positive, so it would otherwise score as a clean hit — which rewards the
+    # laziest possible answer, "something on this screen is wrong". Not scored, but
+    # surfaced, and it disqualifies the hit from counting as precise.
+    blanketing = [
+        {"path": a.path, "lines": [a.start, a.end], "rule": a.rule,
+         "covers_negatives": sum(1 for n in neg if a.overlaps(n))}
+        for a in deduped
+        if id(a) in matched and any(a.overlaps(n) for n in neg)
+    ]
 
     def counts(cls: str) -> dict:
         tp = len([e for e in exp if e.cls == cls]) - len([e for e in unmatched if e.cls == cls])
@@ -196,16 +263,53 @@ def grade(actual: list[Finding], expected: list[dict], negatives: list[dict],
         "floor": counts("floor"),
         "obligation": counts("obligation"),
         "taste": counts("taste"),
+        "severity_right": severity_right,
+        "severity_wrong": len(wrong_severity),
         "wrong_severity": wrong_severity,
         "wrong_class": wrong_class,
         "flagged_correct_code": len(on_negative),
+        "blanketing": blanketing,
         "unlabeled": [
             {"path": a.path, "lines": [a.start, a.end], "rule": a.rule, "class": a.cls}
             for a in unlabeled
         ],
         "duplicates": duplicates,
         "total_reported": len(actual),
+        # Fabrication had been the entire point of the phantom battery and the one thing
+        # it did not measure: every defining behaviour ("does not cite MOTION.md content")
+        # lived in prose the grader never read, so a skill that invented a motion language
+        # scored a clean pass. These strings appear nowhere in the staged input — validate()
+        # enforces that — so naming one cannot be a quote. Any hit fails the case.
+        "fabricated": sorted({f for f in (forbidden or []) if f.lower() in raw.lower()}),
     }
+
+
+def mean_grades(grades: list[dict]) -> dict:
+    """Average n runs of one arm into one grade-shaped dict.
+
+    A single sample cannot tell a capability gap from sampling noise, and these models are
+    not deterministic. Scalars are averaged so the summary reads the same at n=1; the
+    diagnostic lists are concatenated, because a false positive that appears in one run of
+    five is still a false positive worth reading.
+    """
+    if len(grades) == 1:
+        return grades[0]
+
+    out: dict = {}
+    for key, sample in grades[0].items():
+        if isinstance(sample, dict):  # floor / obligation / taste
+            out[key] = {
+                k: (None if all(g[key][k] is None for g in grades)
+                    else round(sum(g[key][k] or 0 for g in grades) / len(grades), 3))
+                for k in sample
+            }
+        elif isinstance(sample, list):
+            out[key] = [item for g in grades for item in g[key]]
+        elif isinstance(sample, (int, float)):
+            out[key] = round(sum(g[key] for g in grades) / len(grades), 3)
+        else:
+            out[key] = sample
+    return out
 
 
 def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
@@ -232,7 +336,8 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         return ArmResult(arm=arm, error="pioneer not found on PATH")
     if proc.returncode != 0:
         return ArmResult(arm=arm, raw=proc.stdout, error=proc.stderr.strip()[:400])
-    return ArmResult(arm=arm, raw=proc.stdout, findings=parse_findings(proc.stdout))
+    found, unparsed = parse_findings(proc.stdout)
+    return ArmResult(arm=arm, raw=proc.stdout, findings=found, unparsed=unparsed)
 
 
 def validate(spec_path: Path, skill_dir: Path) -> list[str]:
@@ -259,11 +364,31 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
             if not src.exists():
                 problems.append(f"{where} case {cid}: staged file missing — {rel}")
                 continue
+            # Pioneer flattens to the basename in prompts and we match findings on it, so
+            # two fixtures sharing one would silently shadow each other in both places.
+            if src.name in staged:
+                problems.append(
+                    f"{where} case {cid}: two staged files share the basename {src.name}"
+                )
             staged[src.name] = src
+
+        # A forbidden string that the arm can legitimately read is a trap, not a check.
+        blob = "\n".join(p.read_text() for p in staged.values()) + case["prompt"]
+        for s in case.get("forbidden_strings", []):
+            if s.lower() in blob.lower():
+                problems.append(
+                    f"{where} case {cid}: forbidden string {s!r} appears in the staged "
+                    f"input, so citing it would not be fabrication"
+                )
 
         spans = []
         for kind in ("expect", "negatives"):
+            entries = []
             for e in case.get(kind, []):
+                entries.append(e)
+                # Alternate anchors are real spans and drift like any other.
+                entries.extend(e.get("also_at", []))
+            for e in entries:
                 src = staged.get(e["path"])
                 if src is None:
                     problems.append(
@@ -283,16 +408,47 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
         # A span cannot be both the finding we want and a must-not-flag region.
         for i, (k1, p1, a1, b1) in enumerate(spans):
             for k2, p2, a2, b2 in spans[i + 1:]:
-                if k1 != k2 and p1 == p2 and a1 <= b2 and a2 <= b1:
+                if p1 != p2 or not (a1 <= b2 and a2 <= b1):
+                    continue
+                if k1 != k2:
                     problems.append(
                         f"{where} case {cid}: {p1} lines {a1}-{b1} and {a2}-{b2} are both "
                         f"expected and must-not-flag"
                     )
+                elif k1 == "negatives":
+                    # Interlocking negatives make it ambiguous which declared-clean region
+                    # a finding landed on, and usually mean a span has swallowed the next
+                    # declaration's header.
+                    problems.append(
+                        f"{where} case {cid}: negative spans {p1}:{a1}-{b1} and {a2}-{b2} "
+                        f"overlap"
+                    )
+                else:
+                    # Overlapping expects make matching order-dependent: one finding could
+                    # satisfy either, and which it lands on decides whether the other is a
+                    # miss. Keeping them disjoint removes the ambiguity structurally.
+                    problems.append(
+                        f"{where} case {cid}: expected spans {p1}:{a1}-{b1} and {a2}-{b2} "
+                        f"overlap"
+                    )
+
+        # A rule id that no longer exists means the case is testing nothing.
+        for e in case.get("expect", []):
+            if e["rule"].upper() not in KNOWN_RULES:
+                problems.append(
+                    f"{where} case {cid}: expects {e['rule']}, which is not in STANDARDS.md"
+                )
+            elif KNOWN_RULES[e["rule"].upper()] != e.get("class", "taste"):
+                problems.append(
+                    f"{where} case {cid}: {e['rule']} is class "
+                    f"{KNOWN_RULES[e['rule'].upper()]} in STANDARDS.md, "
+                    f"but the case declares {e.get('class', 'taste')}"
+                )
 
     return problems
 
 
-def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry) -> dict:
+def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1) -> dict:
     """Prepare and run one battery. Each evals*.json in a skill is its own battery.
 
     Batteries exist because Pioneer's arms are fixed at baseline/with-skill, so a second
@@ -323,21 +479,36 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry) -> dict:
         case_dir = battery / "actor-runs" / f"eval-{cid}"
         print(f"  case {cid}: {case.get('title', '')}", file=sys.stderr)
 
-        arms = {
-            "baseline": run_arm(case_dir / "baseline", prompt, None,
-                                model, timeout_ms, dry),
-            "with-skill": run_arm(case_dir / "with-skill", prompt,
-                                  case_dir / "with-skill" / "skills" / skill,
-                                  model, timeout_ms, dry),
-        }
+        arms: dict[str, list[ArmResult]] = {"baseline": [], "with-skill": []}
+        for n in range(runs):
+            suffix = "" if runs == 1 else f"-run{n + 1}"
+            arms["baseline"].append(
+                run_arm(case_dir / f"baseline{suffix}", prompt, None,
+                        model, timeout_ms, dry)
+            )
+            arms["with-skill"].append(
+                run_arm(case_dir / f"with-skill{suffix}", prompt,
+                        case_dir / f"with-skill{suffix}" / "skills" / skill,
+                        model, timeout_ms, dry)
+            )
+
         cases.append({
             "case": cid,
             "title": case.get("title", ""),
+            "runs": runs,
             "arms": {
-                arm: {"error": r.error,
-                      **grade(r.findings, case.get("expect", []), case.get("negatives", []),
-                              match_rule_ids=(arm != "baseline"))}
-                for arm, r in arms.items()
+                arm: {
+                    "error": next((r.error for r in rs if r.error), None),
+                    "unparsed": round(sum(r.unparsed for r in rs) / len(rs), 3),
+                    **mean_grades([
+                        grade(r.findings, case.get("expect", []),
+                              case.get("negatives", []),
+                              match_rule_ids=(arm != "baseline"),
+                              forbidden=case.get("forbidden_strings", []), raw=r.raw)
+                        for r in rs
+                    ]),
+                }
+                for arm, rs in arms.items()
             },
         })
 
@@ -359,11 +530,34 @@ def summarize(results: list[dict]) -> None:
                 print(f"  {cls:>6}  hits {b_hit} -> {s_hit}   "
                       f"false positives {b_fp} -> {s_fp}", file=sys.stderr)
 
-        sev = [s for c in res["cases"] for s in c["arms"]["with-skill"]["wrong_severity"]]
-        if sev:
-            for s in sev:
-                print(f"  severity  {s['rule']}: expected {s['expected']}, "
-                      f"reported {s['reported']}", file=sys.stderr)
+        # Severity is the payload of three of four batteries, so it is scored, not just
+        # annotated, and shown for both arms — the question is whether it MOVES with the
+        # staged MOTION.md, which a single arm cannot answer.
+        for arm in ("baseline", "with-skill"):
+            right = sum(c["arms"][arm]["severity_right"] for c in res["cases"])
+            wrong = sum(c["arms"][arm]["severity_wrong"] for c in res["cases"])
+            if right or wrong:
+                print(f"  severity  {arm:>10}: {right} right, {wrong} wrong", file=sys.stderr)
+
+        blanket = [b for c in res["cases"] for b in c["arms"]["with-skill"]["blanketing"]]
+        if blanket:
+            print(f"  shotgun findings (hit, but blanket declared-clean code): "
+                  f"{len(blanket)}", file=sys.stderr)
+
+        # Loud, and not folded into any rate: inventing a convention is a different kind of
+        # failure from missing one, and a skill that does it is worse than no skill.
+        for arm in ("baseline", "with-skill"):
+            for c in res["cases"]:
+                fab = c["arms"][arm].get("fabricated") or []
+                if fab:
+                    print(f"  FABRICATION  case {c['case']} {arm}: cited "
+                          f"{', '.join(fab)} — absent from everything it was given",
+                          file=sys.stderr)
+
+        unparsed = sum(c["arms"]["with-skill"].get("unparsed", 0) for c in res["cases"])
+        if unparsed:
+            print(f"  unparsed finding lines: {unparsed} — output may be malformed",
+                  file=sys.stderr)
 
         flagged = sum(c["arms"]["with-skill"]["flagged_correct_code"] for c in res["cases"])
         if flagged:
@@ -399,6 +593,10 @@ def main() -> int:
     ap.add_argument("--battery", default=None,
                     help="run one battery by name; default runs all")
     ap.add_argument("--timeout-ms", type=int, default=300_000)
+    ap.add_argument("--runs", type=int, default=1,
+                    help="repeat each arm n times and average; these models are not "
+                         "deterministic and n=1 cannot separate a capability gap from "
+                         "sampling noise")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out", default=None, help="write the full JSON report here")
     args = ap.parse_args()
@@ -429,7 +627,8 @@ def main() -> int:
         name = json.loads(spec_path.read_text()).get("battery", spec_path.stem)
         print(f"\nbattery: {name}", file=sys.stderr)
         results.append(run_battery(spec_path, skill_dir, args.skill,
-                                   args.model, args.timeout_ms, args.dry_run))
+                                   args.model, args.timeout_ms, args.dry_run,
+                                   runs=args.runs))
 
     report = json.dumps(results, indent=2)
     if args.out:

@@ -2,9 +2,11 @@ package com.example.catalogue.ui.checkout
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Card
@@ -13,14 +15,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 
-/**
- * Shown when the order total changes — a promo code is applied, or postage is recalculated.
- * Everything on screen responds to the same single event.
- */
+/** The order summary on the checkout screen. */
 @Composable
 fun CheckoutSummary(discountApplied: Boolean, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth()) {
@@ -50,7 +51,8 @@ private fun TotalRow(discounted: Boolean) {
 private fun SavingsBadge(discounted: Boolean) {
     AnimatedVisibility(
         visible = discounted,
-        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+        enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 } +
+            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
         exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
     ) {
         Card { Text("You saved £9.60", style = MaterialTheme.typography.labelLarge) }
@@ -87,19 +89,13 @@ private fun LoyaltyPoints(discounted: Boolean) {
 
 @Composable
 private fun CheckoutButton(discounted: Boolean) {
-    val grow by animateFloatAsState(
-        targetValue = if (discounted) 1.04f else 1f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-        label = "buttonGrow",
+    val tint by animateColorAsState(
+        targetValue = if (discounted) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.secondary,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "buttonTint",
     )
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = grow
-                scaleY = grow
-            },
-    ) {
+    Card(Modifier.fillMaxWidth().drawBehind { drawRect(tint) }) {
         Text("Checkout", style = MaterialTheme.typography.titleMedium)
     }
 }

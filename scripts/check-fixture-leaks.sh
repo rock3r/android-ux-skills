@@ -46,6 +46,21 @@ while IFS= read -r -d '' file; do
         grep -nE '(BUG:|FIXME|XXX|TODO-EVAL|@violating|@compliant)' "$file" | sed 's/^/             /' >&2
         status=1
     fi
+
+    # Prose that states the finding, or argues the exemption, in the fixture itself.
+    #
+    # This is the leak that mattered and the guard could not see: comments explaining WHY
+    # something is correct, or that everything responds to one event, or that a clip is
+    # intentional, hand the answer to any reader. A real checkout carries business
+    # context — what the screen is for — not design-review reasoning about its own motion.
+    reasoning='only confirmation|carries the message|responds to the same|single event|is the affordance|deliberately|intentional|not a destination|local state|correct(ly)? (form|handled)|unordered peers|reference implementation|must not|should not|is the fix'
+    if grep -nEi "^[[:space:]]*(//|\*|/\*\*).*($reasoning)" "$file" >/dev/null 2>&1; then
+        echo "LEAK  prose   $rel" >&2
+        grep -nEi "^[[:space:]]*(//|\*|/\*\*).*($reasoning)" "$file" \
+            | sed 's/^/             /' >&2
+        echo "             a comment arguing about this code's motion is the answer key" >&2
+        status=1
+    fi
 done < <(find "$root"/skills/*/evals/files -type f -print0 2>/dev/null || true)
 
 # Within ONE directory, two fixtures whose names differ only by a suffix let a model infer

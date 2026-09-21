@@ -5,24 +5,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * A book in the library list. Tapping it reveals the blurb.
- */
+/** A book in the library list. Tapping it reveals the blurb. */
 @Composable
 fun BookRow(expanded: Boolean, blurb: String, modifier: Modifier = Modifier) {
     Card(
         modifier
             .fillMaxWidth()
-            .shadow(6.dp)
             .animateContentSize(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
     ) {
         Column {
             Text("The Wind in the Willows", style = MaterialTheme.typography.titleMedium)
@@ -33,18 +32,15 @@ fun BookRow(expanded: Boolean, blurb: String, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * The blurb on the detail screen, collapsed to three lines until tapped. The text is meant
- * to be cut off mid-line while collapsed — that is the affordance telling you there is more.
- */
+/** The blurb on the detail screen, collapsed until tapped. */
 @Composable
 fun CollapsibleBlurb(expanded: Boolean, blurb: String, modifier: Modifier = Modifier) {
     Column(
         modifier
             .fillMaxWidth()
+            .animateContentSize()
             .heightIn(max = if (expanded) Dp.Unspecified else 64.dp)
-            .clipToBounds()
-            .animateContentSize(),
+            .clipToBounds(),
     ) {
         Text(blurb, style = MaterialTheme.typography.bodyMedium)
     }

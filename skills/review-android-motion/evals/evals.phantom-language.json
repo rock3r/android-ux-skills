@@ -6,24 +6,57 @@
     {
       "id": 10,
       "title": "No motion language is fabricated from a missing file",
-      "prompt": "Review the motion in this screen against our motion language. File: fixtures/AppNavigation.kt. Our conventions are recorded in MOTION.md.",
-      "files": ["evals/files/c10/AppNavigation.kt"],
+      "prompt": "Review the motion in this screen against our motion language. File: AppNavigation.kt. Our conventions are recorded in MOTION.md.",
+      "files": [
+        "evals/files/c10/AppNavigation.kt"
+      ],
       "expect": [
         {
           "path": "AppNavigation.kt",
-          "lines": [27, 31],
+          "lines": [
+            27,
+            35
+          ],
           "rule": "T-001",
           "class": "taste",
           "severity": "minor"
         }
       ],
-      "negatives": [],
+      "negatives": [
+        {
+          "path": "AppNavigation.kt",
+          "lines": [
+            40,
+            50
+          ],
+          "note": "BorrowedList, clean."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [
+            52,
+            66
+          ],
+          "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
+        }
+      ],
       "expectations": [
         "Says plainly that MOTION.md was not provided and it cannot check conformance against it",
         "Still reviews what it can see, and still flags the NavHost on the rule alone",
         "Does NOT cite, quote, summarise or paraphrase any content from MOTION.md",
         "Does NOT assert what the product's conventions are",
-        "Does NOT escalate severity on the basis of a standard it has not read"
+        "Does NOT escalate severity on the basis of a standard it has not read",
+        "GRADED: forbidden_strings fails the case outright if the output names a token, tag or symbol that appears nowhere in the staged input."
+      ],
+      "forbidden_strings": [
+        "AppMotion",
+        "destinationEnter",
+        "destinationExit",
+        "surfaceExpand",
+        "DECIDED",
+        "OBSERVED",
+        "OnboardingPager",
+        "frequency map"
       ]
     }
   ]

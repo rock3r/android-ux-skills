@@ -1,8 +1,18 @@
 package com.example.catalogue.ui.reader
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -20,7 +30,10 @@ import androidx.navigation.compose.rememberNavController
 fun ReaderHost(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
 
-    Scaffold(modifier) { padding ->
+    Scaffold(
+        modifier = modifier,
+        bottomBar = { ReaderNavigationBar(navController) },
+    ) { padding ->
         NavHost(
             navController = navController,
             startDestination = Route.Shelf,
@@ -30,16 +43,13 @@ fun ReaderHost(modifier: Modifier = Modifier) {
             popEnterTransition = { fadeIn(AppMotion.destinationEnter) },
             popExitTransition = { fadeOut(AppMotion.destinationExit) },
         ) {
-            composable<Route.Shelf> { ShelfScreen(onOpen = { navController.navigate(it) }) }
+            composable<Route.Shelf> { ShelfScreen() }
             composable<Route.Reading> { ReadingScreen() }
+            composable<Route.Settings> { SettingsScreen() }
         }
     }
 }
 
-/**
- * The notes panel slides up over the page. It is not a destination — it is local state on
- * the reading screen, so back has to be handled here.
- */
 @Composable
 private fun ReadingScreen() {
     var notesOpen by remember { mutableStateOf(false) }
@@ -49,8 +59,17 @@ private fun ReadingScreen() {
     }
 
     Box(Modifier.fillMaxSize()) {
-        Text("…page content…", style = MaterialTheme.typography.bodyLarge)
-        if (notesOpen) {
+        Text("\u2026page content\u2026", style = MaterialTheme.typography.bodyLarge)
+
+        IconButton(onClick = { notesOpen = true }) {
+            Icon(Icons.Outlined.EditNote, contentDescription = "Notes")
+        }
+
+        AnimatedVisibility(
+            visible = notesOpen,
+            enter = slideInVertically(AppMotion.panelEnter) { it },
+            exit = slideOutVertically(AppMotion.panelExit) { it },
+        ) {
             NotesPanel(onClose = { notesOpen = false })
         }
     }

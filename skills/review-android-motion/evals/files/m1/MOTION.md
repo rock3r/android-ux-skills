@@ -35,14 +35,16 @@ Where this file and M3E are both silent, ask rather than assume.
 
 ## Frequency map
 
-- **Never animate** — Row press states in the catalogue list
+- **Never animate** — Row press states in the catalogue list; star ratings, which
+  readers tap constantly while shelving
 - **Standard** — Sheets, destination changes, banners
 - **Delight allowed** — First successful sync
 
+**Tag** — `DECIDED`
+
 ## Gestures and haptics
 
-Velocity handoff required on every draggable. `DismissibleCard` is the reference.
-Haptics at commit only; never on scroll.
+Velocity handoff required on every draggable.
 
 ## Reduced motion
 

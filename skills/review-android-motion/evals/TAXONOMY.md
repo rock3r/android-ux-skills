@@ -51,10 +51,19 @@ or merely tripped over a part.
 only surrounding signal distinguishes them. Tests whether the skill reads the signal or the
 syntax.
 
-**G — Framework-correct.** The framework already handles it, so the only possible finding
-is a false positive. Pure precision. These matter disproportionately: a skill that flags
+**G — Framework-correct.** The framework already handles it, so any finding against the
+framework path is a false positive. These matter disproportionately: a skill that flags
 correct framework usage gets switched off after one review, and nothing it says afterwards
 is heard.
+
+G needs two fixtures, because the cheap way to pass it is to say nothing about anything.
+
+- **Pure** (case 80). The whole file is framework-owned motion and the correct output is
+  empty. This is the only case in the suite where a finding of any kind is a failure.
+- **Hybrid** (case 70). The framework path sits beside a hand-rolled one that is genuinely
+  wrong, so silence is no longer a passing strategy: the skill has to stay quiet about the
+  `NavHost` *and* flag the `BackHandler`. Without this, a skill that reviews nothing scores
+  full marks on class G.
 
 ## What each exemplar must show
 
@@ -66,4 +75,4 @@ is heard.
 | D | Asks, or states the assumption it is working from | Asserts a number it cannot know |
 | E | Names the composite, not a part | Reports several correct parts as defects |
 | F | Distinguishes the two by their surrounding signal | Treats the construct as always-wrong |
-| G | Says nothing about the framework path | Any finding at all |
+| G | Says nothing about the framework path | Any finding against framework-owned motion |

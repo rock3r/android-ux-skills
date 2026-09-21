@@ -357,20 +357,47 @@ looking at. Whatever frame it lands on is what that user sees permanently.
   animation's author places in the `.json`. It is a Lottie library convention, related to
   Android only in that Lottie looks for it when animations are off.
 
-**Rule.** When Remove animations is on, lottie-compose seeks to the **last** frame — the
-first if speed is negative — unless the composition carries that marker, in which case it
-seeks there instead. A file whose outro clears the canvas therefore renders nothing.
+**Rule.** When Remove animations is on, a Lottie lands on its **last** frame — its first if
+speed is negative — unless the composition carries that marker, in which case it shows the
+marker's start frame instead. A file whose outro clears the canvas therefore renders
+nothing.
 
 The requirement is the *outcome*: the frame the user is left with reads as a complete
 still. The marker is how you get one when the last frame does not already qualify, and a
 file whose final frame is its resting state needs no marker. Asking a designer to add a
 marker is usually easier than re-cutting the animation.
 
+**The marker is honoured at draw time, by the view or the composable — not by the
+animation state.** In Compose these are two separate mechanisms that happen to compose:
+`animateLottieCompositionAsState` divides speed by the system animator scale, so at scale
+zero the speed becomes infinite and `LottieAnimatable` snaps straight to the clip's
+terminal progress; then, independently, every `LottieAnimation` draw replaces that progress
+with the marker's start frame if the composition has one.
+
+The practical consequence: **the marker only helps if you render through `LottieAnimation`.**
+Code that reads `LottieAnimationState.progress` and drives its own drawing — a custom
+painter, a `graphicsLayer`, an interop `AndroidView` holding something other than
+`LottieAnimationView` — sees the snapped endpoint and never the marker. For that code the
+readable frame has to come from the composition itself or from a `LottieClipSpec` that ends
+somewhere readable.
+
 This is the only place Lottie behaviour under Remove animations is specified. F-005 governs
 the scale bypass; O-001 governs what the remaining frame must convey.
 
-**Pinned.** `LottieDrawable.java:99-112` — the four accepted marker spellings;
-`:864-891` — `setFrame(speed < 0 ? minFrame : maxFrame)`.
+**Pinned — the marker.** `LottieDrawable.java:99-112` — the four accepted spellings
+(`reduced motion`, `reduced_motion`, `reduced-motion`, `reducedmotion`, matched
+case-insensitively); `:899-911` — `getMarkerForAnimationsDisabled()`, the lookup both paths
+share; `:1293-1299` — `animationsEnabled()`, and
+`SystemReducedMotionOption.java:21-27`, which is where animator scale zero becomes
+`REDUCED_MOTION`.
+
+**Pinned — the Compose path.** `LottieAnimation.kt:138-143` — the draw-time override
+(`if (!drawable.animationsEnabled(context) && markerForAnimationsDisabled != null)
+drawable.progress = markerForAnimationsDisabled.startFrame`), added in `66bc2fb`;
+`animateLottieCompositionAsState.kt:59-64` — `speed / Utils.getAnimationScale(...)`, with
+the library's own comment that dividing by zero yields `POSITIVE_INFINITY`;
+`LottieAnimatable.kt:242-260` — `else if (speed.isInfinite()) updateProgress(endProgress)`;
+`:199-205` — `endProgress`, which is `clipSpec`'s max, or min when speed is negative.
 
 ---
 
@@ -524,8 +551,26 @@ just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
 **Outside Material.** Enter moves *and* fades; exit only fades. The property count is the
 mechanism; the tier names are Material's way of saying it.
 
-Does not apply to gesture dismissals, which complete on velocity, or to predictive-back
-exits, which the system times.
+**Scope — this is about a component entering and leaving, not about every fade.** Three
+things are outside it:
+
+- **Gesture dismissals**, which complete on velocity, and **predictive-back exits**, which
+  the system times.
+- **A change of emphasis in place.** A persistent element animating its own alpha, colour
+  or elevation is not entering or leaving, so there is no spatial half to add and a
+  symmetric spec is correct.
+- **Transitions whose pattern is itself a cross-fade** (T-011: unordered top-level
+  destinations). The pattern is chosen to promise *no* spatial relationship; adding
+  movement to satisfy this rule would assert the order T-011 says does not exist.
+
+Read literally and without these, the rule would make every cross-fade a violation and
+contradict T-011 outright.
+
+**Precedence with T-020.** An exit on a faster tier or with fewer properties, exactly as
+this rule prescribes, is **not** a T-020 tier mismatch. T-020 compares elements moving in
+the same direction of the same event; enter-versus-exit asymmetry is this rule's whole
+subject. Without this, the two rules would forbid each other in every correct Material
+transition.
 
 **Why the ratio was wrong.** "Half the entrance" is one legacy pairing (emphasized
 400/200) promoted to law; M2 standard was 225/195, M3 standard 250/200. Under springs
@@ -713,6 +758,10 @@ common defect is a pane transition on one tier with content on another.
 
 Precedence with T-012: T-012 governs whether input is gated; T-020 governs coherence. A
 uniform screen that blocks input is still a T-012 finding.
+
+Precedence with T-010: compare elements moving in the *same direction* of the event. An
+exit that is faster or uses fewer properties than the entrance it mirrors is T-010 working
+as specified, not a tier mismatch.
 
 Does not apply across the app/platform boundary — system transitions are not yours.
 

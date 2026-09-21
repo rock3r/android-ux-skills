@@ -31,7 +31,7 @@ Where this file and M3E are both silent, ask rather than assume.
 
 ## Exceptions
 
-- `LegacyPagerHost` — keeps the framework default transition until the rewrite lands.
+- `AppNavigation` — keeps the framework default transition until typed routes land.
 - `OnboardingPager` — slow spatial, first run only, deliberate.
 
 ## Frequency map
@@ -40,10 +40,11 @@ Where this file and M3E are both silent, ask rather than assume.
 - **Standard** — Sheets, destination changes, banners
 - **Delight allowed** — First successful sync
 
+**Tag** — `DECIDED`
+
 ## Gestures and haptics
 
-Velocity handoff required on every draggable. `DismissibleCard` is the reference.
-Haptics at commit only; never on scroll.
+Velocity handoff required on every draggable.
 
 ## Reduced motion
 

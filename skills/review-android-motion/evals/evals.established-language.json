@@ -1,17 +1,23 @@
 {
   "skill_name": "review-android-motion",
   "battery": "established-language",
-  "description": "The same fixtures, with a MOTION.md that DECIDED a destination-change token. T-001 should now be major — not because 700ms got worse, but because this one surface inherits a third-party default while everything else resolves to the product's own token. Case ids and staged filenames are identical to the other batteries so nothing about the variant is visible to the agent.",
+  "description": "The same fixtures and the same case ids, with a MOTION.md that DECIDED a destination-change token and a frequency map that names star ratings. Case 10's T-001 should now be major — not because 700ms got worse, but because this one surface inherits a third-party default while everything else resolves to the product's own token. Case 40 is the recall direction of the no-language battery's precision case: the fact the reviewer could not know there is settled here, so the question it should have asked is already answered and a finding is now required.",
   "evals": [
     {
       "id": 10,
       "title": "T-001 severity escalates against a DECIDED token",
-      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
-      "files": ["evals/files/c10/AppNavigation.kt", "evals/files/m1/MOTION.md"],
+      "prompt": "Review the motion in this screen. File: AppNavigation.kt",
+      "files": [
+        "evals/files/c10/AppNavigation.kt",
+        "evals/files/m1/MOTION.md"
+      ],
       "expect": [
         {
           "path": "AppNavigation.kt",
-          "lines": [27, 31],
+          "lines": [
+            27,
+            35
+          ],
           "rule": "T-001",
           "class": "taste",
           "severity": "major"
@@ -20,12 +26,18 @@
       "negatives": [
         {
           "path": "AppNavigation.kt",
-          "lines": [45, 71],
-          "note": "MOTION.md names DismissibleCard as the reference implementation for velocity handoff. Flagging it contradicts the file the skill was given."
+          "lines": [
+            40,
+            50
+          ],
+          "note": "BorrowedList, clean."
         },
         {
           "path": "AppNavigation.kt",
-          "lines": [73, 84],
+          "lines": [
+            52,
+            66
+          ],
           "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
         }
       ],
@@ -33,26 +45,76 @@
         "Flags the NavHost, and cites the DECIDED destination-change entry in MOTION.md",
         "Treats it as major or equivalent — a contradiction of a settled decision, not a loose value",
         "Names AppMotion.destinationEnter / destinationExit as what it should bind to, rather than proposing a duration",
-        "Does NOT flag DismissibleCard, which MOTION.md names as the reference",
-        "Does NOT flag StatusBanner"
+        "Does NOT flag BorrowedList or StatusBanner"
       ]
     },
     {
       "id": 11,
       "title": "Compliant against an established language",
-      "prompt": "Review the motion in this screen. File: fixtures/AppNavigation.kt",
-      "files": ["evals/files/c11/AppNavigation.kt", "evals/files/m1/MOTION.md"],
+      "prompt": "Review the motion in this screen. File: AppNavigation.kt",
+      "files": [
+        "evals/files/c11/AppNavigation.kt",
+        "evals/files/m1/MOTION.md"
+      ],
       "expect": [],
       "negatives": [
         {
           "path": "AppNavigation.kt",
-          "lines": [28, 47],
-          "note": "Binds to exactly the tokens MOTION.md declares. Conformant."
+          "lines": [
+            29,
+            43
+          ],
+          "note": "Binds to exactly the tokens MOTION.md declares."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [
+            45,
+            56
+          ],
+          "note": "BorrowedList, clean."
+        },
+        {
+          "path": "AppNavigation.kt",
+          "lines": [
+            58,
+            72
+          ],
+          "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
         }
       ],
       "expectations": [
         "Produces no finding against the NavHost",
         "Recognises the bindings as the ones MOTION.md declares"
+      ]
+    },
+    {
+      "id": 40,
+      "title": "D · T-009 recall: the unknowable fact is settled in MOTION.md",
+      "class": "D. Not in the source at all",
+      "prompt": "Review the motion in this screen. File: RatingControl.kt",
+      "files": [
+        "evals/files/c40/RatingControl.kt",
+        "evals/files/m1/MOTION.md"
+      ],
+      "expect": [
+        {
+          "path": "RatingControl.kt",
+          "lines": [
+            31,
+            35
+          ],
+          "rule": "T-009",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [],
+      "expectations": [
+        "Flags the per-star spring: MOTION.md's frequency map puts star ratings under 'Never animate'",
+        "Treats it as major — the frequency map is tagged DECIDED, so this contradicts a settled decision",
+        "Does NOT ask how often ratings are used. That question is answered in the staged file; asking it here means MOTION.md was not read",
+        "Pairs with case 40 in the no-motion-language battery, where the same spring must NOT be asserted against"
       ]
     }
   ]

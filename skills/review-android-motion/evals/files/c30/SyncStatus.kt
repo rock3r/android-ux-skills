@@ -5,16 +5,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 
-/**
- * Shown once a sync completes. The illustration is the only confirmation the user gets that
- * anything happened — there is no toast and no banner.
- */
+/** Shown on the shelf for a few seconds after a background sync finishes. */
 @Composable
 fun SyncComplete(modifier: Modifier = Modifier) {
     val composition by rememberLottieComposition(
@@ -22,23 +20,14 @@ fun SyncComplete(modifier: Modifier = Modifier) {
     )
     val progress by animateLottieCompositionAsState(composition)
 
-    Column(modifier.fillMaxWidth()) {
-        LottieAnimation(
-            composition = composition,
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            text = "Library up to date",
-            style = MaterialTheme.typography.titleMedium,
-        )
-    }
+    LottieAnimation(
+        composition = composition,
+        progress = { progress },
+        modifier = modifier.fillMaxWidth(),
+    )
 }
 
-/**
- * Empty state for a filter that matched nothing. The illustration is decorative; the text
- * below carries the message.
- */
+/** Empty state for a filter that matched nothing. */
 @Composable
 fun NoResults(modifier: Modifier = Modifier) {
     val composition by rememberLottieComposition(
