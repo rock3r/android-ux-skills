@@ -10,6 +10,11 @@
 [global]
 # Generated copies are linted too — they are what actually ships in a skill bundle, and
 # a link that resolves at the repo root can be broken once the file travels alone.
+exclude = [
+    # Review records are verbatim artefacts of someone else's output. Reformatting one to
+    # satisfy a linter would falsify the record of what was actually said.
+    "reviews/",
+]
 
 [MD013]
 # Prose wraps at 90. Tables are exempt by default and stay that way — a rule's
