@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import roster  # noqa: E402
 
 
 def _known_rules() -> dict[str, str]:
@@ -339,7 +341,8 @@ def resolve_actor(command: str) -> tuple[str, list[str]]:
 
 
 def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
-            timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None) -> ArmResult:
+            timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None,
+            thinking: str = "") -> ArmResult:
     arm = run_dir.name
     actor_path, grants = actor or resolve_actor("pi")
     cmd = [
@@ -351,6 +354,10 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
     for g in grants:
         cmd += ["--runtime-read", g]
     cmd += ["--", actor_path, "--model", model]
+    # A separate flag, not a ":level" suffix on the model: pi accepts the suffix only
+    # for a bare id, and rejects "provider/id:level" as an unknown model.
+    if thinking:
+        cmd += ["--thinking", thinking]
     if skill_path:
         cmd += ["--skill", str(skill_path)]
     cmd += ["--print", prompt]
@@ -364,7 +371,11 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
     except FileNotFoundError:
         return ArmResult(arm=arm, error="pioneer not found on PATH")
     if proc.returncode != 0:
-        return ArmResult(arm=arm, raw=proc.stdout, error=proc.stderr.strip()[:400])
+        # The TAIL of stderr, not the head: pioneer prints a multi-line contract
+        # preamble before anything runs, so truncating from the front reliably keeps
+        # the boilerplate and discards the actual failure.
+        return ArmResult(arm=arm, raw=proc.stdout,
+                         error=proc.stderr.strip()[-600:])
     found, unparsed = parse_findings(proc.stdout)
     return ArmResult(arm=arm, raw=proc.stdout, findings=found, unparsed=unparsed)
 
@@ -543,7 +554,8 @@ def work_root() -> Path:
 
 
 def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
-                work_dir: Path | None = None, actor_command: str = "pi") -> dict:
+                work_dir: Path | None = None, actor_command: str = "pi",
+                tag: str = "", thinking: str = "") -> dict:
     """Prepare and run one battery. Each evals*.json in a skill is its own battery.
 
     Batteries exist because Pioneer's arms are fixed at baseline/with-skill, so a second
@@ -554,7 +566,9 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
     """
     spec = json.loads(spec_path.read_text())
     name = spec.get("battery", spec_path.stem)
-    battery = (work_dir or work_root()) / "batteries" / skill / name
+    # Namespaced by model: without this a sweep's second model overwrites the first
+    # model's transcripts, and the reading pass silently reads the wrong run.
+    battery = (work_dir or work_root()) / "batteries" / skill / (tag or "single") / name
 
     if not dry:
         if battery.exists():
@@ -601,7 +615,7 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                 ("with-skill", case_dir / f"with-skill{suffix}" / "skills" / skill),
             ):
                 r = run_arm(case_dir / f"{arm}{suffix}", prompt, skill_path,
-                            model, timeout_ms, dry, actor)
+                            model, timeout_ms, dry, actor, thinking)
                 arms[arm].append(r)
                 if not dry:
                     f = transcripts / f"{arm}{suffix}.md"
@@ -616,6 +630,11 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
             "arms": {
                 arm: {
                     "error": next((r.error for r in rs if r.error), None),
+                    # An arm that never ran is not an arm that found nothing. A transient
+                    # 503 produced zero findings and zero false positives, which scores as
+                    # flawless precision — the most flattering possible result for a run
+                    # that never happened.
+                    "failed": all(r.error for r in rs),
                     "unparsed": round(sum(r.unparsed for r in rs) / len(rs), 3),
                     **mean_grades([
                         grade(r.findings, case.get("expect", []),
@@ -629,16 +648,31 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
             },
         })
 
-    return {"battery": name, "description": spec.get("description", ""), "cases": cases}
+    return {"battery": name, "model": model, "thinking": thinking,
+            "description": spec.get("description", ""), "cases": cases}
 
 
 def summarize(results: list[dict]) -> None:
     def total(res, arm, cls, field):
-        return sum(c["arms"][arm][cls][field] for c in res["cases"])
+        return sum(c["arms"][arm][cls][field] for c in res["cases"]
+                   if not c["arms"][arm].get("failed"))
 
     print("\n" + "=" * 78, file=sys.stderr)
     for res in results:
         print(f"\n{res['battery']}", file=sys.stderr)
+
+        # Loudly, and before any number: everything below is computed over the cases that
+        # actually ran.
+        failed = [(c["case"], arm) for c in res["cases"] for arm in c["arms"]
+                  if c["arms"][arm].get("failed")]
+        if failed:
+            print(f"  !! {len(failed)} arm(s) DID NOT RUN and are excluded from the "
+                  f"numbers below:", file=sys.stderr)
+            for cid, arm in failed[:6]:
+                err = next(c["arms"][arm]["error"] for c in res["cases"]
+                           if c["case"] == cid)
+                short = (err or "").replace("\n", " ")[-120:]
+                print(f"       case {cid} {arm}: …{short}", file=sys.stderr)
         for cls in ("floor", "obligation", "taste"):
             b_hit, s_hit = total(res, "baseline", cls, "hit"), total(res, "with-skill", cls, "hit")
             b_fp, s_fp = (total(res, "baseline", cls, "false_positive"),
@@ -706,7 +740,15 @@ def summarize(results: list[dict]) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skill", required=True)
-    ap.add_argument("--model", default="claude-code/claude-sonnet-4-6")
+    ap.add_argument("--model", default=None,
+                    help="model(s) to run, comma-separated, each optionally "
+                         "model:thinking. Omit to take the first reachable entries "
+                         "of --tier. One model alone needs --allow-single: its "
+                         "habits are indistinguishable from what is being measured")
+    ap.add_argument("--tier", default=None, choices=("arms", "sota"),
+                    help="run every reachable model in this roster tier, one "
+                         "report each")
+    ap.add_argument("--allow-single", action="store_true")
     ap.add_argument("--battery", default=None,
                     help="run one battery by name; default runs all")
     ap.add_argument("--timeout-ms", type=int, default=300_000)
@@ -745,24 +787,44 @@ def main() -> int:
         return 1
     print(f"{len(specs)} batteries validated against their fixtures", file=sys.stderr)
 
-    results = []
-    for spec_path in specs:
-        name = json.loads(spec_path.read_text()).get("battery", spec_path.stem)
-        print(f"\nbattery: {name}", file=sys.stderr)
-        results.append(run_battery(spec_path, skill_dir, args.skill,
-                                   args.model, args.timeout_ms, args.dry_run,
-                                   runs=args.runs,
-                                   work_dir=Path(args.work_dir) if args.work_dir
-                                   else None, actor_command=args.actor))
+    models = roster.resolve(args.model, args.tier or "arms", 2,
+                            args.allow_single)
+    if len(models) > 1:
+        print(f"sweeping {len(models)} models: "
+              f"{', '.join(m['model'] for m in models)}", file=sys.stderr)
 
-    report = json.dumps(results, indent=2)
-    if args.out:
-        Path(args.out).write_text(report)
-        print(f"\nreport written to {args.out}", file=sys.stderr)
-    else:
-        print(report)
+    for entry in models:
+        tag = roster.label(entry)
+        model = entry["model"]
+        if len(models) > 1:
+            print(f"\n===== {entry['model']} =====", file=sys.stderr)
 
-    summarize(results)
+        results = []
+        for spec_path in specs:
+            name = json.loads(spec_path.read_text()).get("battery", spec_path.stem)
+            print(f"\nbattery: {name}", file=sys.stderr)
+            results.append(run_battery(spec_path, skill_dir, args.skill,
+                                       model, args.timeout_ms, args.dry_run,
+                                       runs=args.runs,
+                                       work_dir=Path(args.work_dir) if args.work_dir
+                                       else None, actor_command=args.actor,
+                                       tag=tag, thinking=entry.get("thinking", "")))
+
+        report = json.dumps(results, indent=2)
+        if args.out:
+            # One file per model. The report schema is unchanged, so judge-evals and
+            # read-evals consume each of them exactly as before.
+            out = Path(args.out)
+            # os.devnull takes no suffix — CI and the pre-push hook write the plan
+            # there, and a sweep would otherwise try to create /dev/null.<model>.
+            dest = (out if len(models) == 1 or str(out) == os.devnull
+                    else out.with_name(f"{out.stem}.{tag}{out.suffix}"))
+            dest.write_text(report)
+            print(f"\nreport written to {dest}", file=sys.stderr)
+        else:
+            print(report)
+
+        summarize(results)
     return 0
 
 

@@ -1,0 +1,89 @@
+{
+  "description": "Which models to run evals and readings against. Never one model alone.\n\nThe point of more than one is not redundancy, it is bias. Every model has a house style — one is terse and misses nuance, another writes at length and finds problems that are not there. Measuring a skill against a single model measures that model's habits as much as the skill, and a reading produced by one model is one opinion presented as a conclusion. Where two disagree, that disagreement is the finding.\n\nEntries prefer a floating 'latest' pointer over a pinned version where the provider offers one, so the roster does not quietly go stale. Availability is discovered at run time: an entry here is an intention, not a promise the machine can reach it.",
+  "min_models_per_pass": 2,
+  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which is a much narrower constraint than it looks: the sandboxed pi sees only part of the host's model registry, and everything outside it fails with 'model not found' rather than an auth error. On bepi today that leaves the google provider alone, so the two entries below are two models of one family — weaker diversity than this file asks for, and a known gap rather than a choice. Widening it means fixing what the sandbox propagates, not editing this list. Pinned versions lead here despite the preference for floating pointers, because gemini-flash-latest has been timing out; a roster entry that reliably fails is worse than a stale one.",
+  "arms": [
+    {
+      "model": "google/gemini-3.5-flash-lite",
+      "family": "gemini-flash-lite",
+      "note": "Verified to resolve and answer inside the sandbox, well within the per-arm timeout."
+    },
+    {
+      "model": "google/gemini-3.5-flash",
+      "family": "gemini-flash",
+      "note": "Larger sibling of the entry above. Size is the only axis of variation an arm currently has."
+    },
+    {
+      "model": "google/gemini-flash-latest",
+      "family": "gemini-flash-latest",
+      "note": "A floating pointer, and preferable in principle — but it has been serving 503s and exceeding the 300s per-arm timeout, so it sits below the pinned pair rather than above them. Promote it when it is reliable again."
+    }
+  ],
+  "_readers_note": "Models that read transcripts in the third pass. These run OUTSIDE the sandbox, so the full host registry is available and genuine cross-family diversity is possible here even while the arms are constrained. Two are used per pass; where they disagree, that is reported rather than resolved.",
+  "readers": [
+    {
+      "model": "jetbrains/gpt-5.6-luna",
+      "thinking": "high",
+      "family": "gpt-luna",
+      "note": "A different house style from the Gemini and Claude families, which is the point."
+    },
+    {
+      "model": "jetbrains/claude-sonnet-5",
+      "thinking": "high",
+      "family": "claude-sonnet",
+      "note": "Dearest of the routine tier, still far below the sota tier."
+    },
+    {
+      "model": "google/gemini-flash-latest",
+      "thinking": "high",
+      "family": "gemini-flash",
+      "note": "Floating pointer, and preferable in principle — but it has been serving 503s and exhausting per-call timeouts, so it sits below the reliable entries. Promote it when that changes."
+    },
+    {
+      "model": "openrouter/~deepseek/deepseek-v4-flash-latest",
+      "thinking": "high",
+      "family": "deepseek-flash",
+      "note": "Floating pointer. Needs OpenRouter credit; unreachable on bepi today."
+    },
+    {
+      "model": "openrouter/~z-ai/glm-latest",
+      "thinking": "high",
+      "family": "glm",
+      "note": "Floating pointer. Needs OpenRouter credit; unreachable on bepi today."
+    }
+  ],
+  "_sota_note": "A periodic manual pass, not something to leave in a loop. Use for a considered re-read when a result matters or a conclusion is about to be acted on.",
+  "sota": [
+    {
+      "model": "jetbrains/gpt-6-astra",
+      "thinking": "high",
+      "family": "gpt-astra"
+    },
+    {
+      "model": "jetbrains/claude-fable-5-1",
+      "thinking": "high",
+      "family": "claude-fable"
+    },
+    {
+      "model": "openrouter/~google/gemini-pro-latest",
+      "thinking": "high",
+      "family": "gemini-pro"
+    },
+    {
+      "model": "jetbrains/grok-4.6",
+      "thinking": "high",
+      "family": "grok"
+    },
+    {
+      "model": "openrouter/~z-ai/glm-latest",
+      "thinking": "max",
+      "family": "glm",
+      "note": "Same weights as the routine entry, run harder."
+    },
+    {
+      "model": "kimi-coding/k3",
+      "thinking": "high",
+      "family": "kimi"
+    }
+  ]
+}

@@ -34,7 +34,11 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import roster  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,7 +53,12 @@ You are settling one undecided question about a code review. A small classifier 
 a fixed question about the review below and could not answer it confidently, so it has been \
 passed to you.
 
-Do not score anything and do not produce a verdict table. Write prose.
+Begin with a single line of exactly this form, then write prose:
+
+  DECISION: <the answer you think correct, from the acceptable list or 'other'>
+
+That line is not a score. It exists so two readers can be compared without reading
+both in full. Everything after it is prose; do not produce a verdict table.
 
 The question put to the classifier:
   {instructions}
@@ -99,30 +108,55 @@ If the review is simply fine, say so in one line rather than manufacturing criti
 No preamble."""
 
 
-def run_model(prompt: str, model: str, timeout: int = 300) -> str:
+def run_model(prompt: str, entry: dict, timeout: int = 300) -> str:
     if not shutil.which("pi"):
         raise SystemExit(
             "error: 'pi' is not on PATH.\n"
             "  If it is installed under nvm, this shell has not loaded it."
         )
-    proc = subprocess.run(
-        ["pi", "--model", model, "--no-session", "--print", prompt],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    cmd = ["pi", "--model", entry["model"], "--no-session"]
+    if entry.get("thinking"):
+        cmd += ["--thinking", entry["thinking"]]
+    try:
+        # Run from an empty directory, never the repo. A reader given the repo as its
+        # working directory can reach evals/*.json — the answer key — and one of them was
+        # observed opening fixture files to check a claim. Useful instinct, wrong room:
+        # everything it is meant to judge is in the prompt, and anything else it finds is
+        # contamination. This is the same reason run-evals passes --deny-read-probe.
+        with tempfile.TemporaryDirectory(prefix="read-evals-") as empty:
+            proc = subprocess.run(cmd + ["--print", prompt], capture_output=True,
+                                  text=True, timeout=timeout, cwd=empty)
+    except subprocess.TimeoutExpired:
+        return "_(this reader timed out)_"
     if proc.returncode != 0:
-        return f"_(the reading model failed: {proc.stderr.strip()[:200]})_"
+        return f"_(this reader failed: {proc.stderr.strip()[:200]})_"
     return proc.stdout.strip()
+
+
+def decision_of(text: str) -> str:
+    """The DECISION line, for comparing readers without reading both in full."""
+    for line in text.splitlines():
+        if line.strip().upper().startswith("DECISION:"):
+            return line.split(":", 1)[1].strip().strip("*`_ ").lower()
+    return "?"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", required=True, help="JSON from run-evals.py")
     ap.add_argument("--judge", help="JSON from judge-evals.py --out")
-    ap.add_argument("--model", default="claude-code/claude-sonnet-4-6")
+    ap.add_argument("--models", default=None,
+                    help="comma-separated, each optionally model:thinking. Default is\nthe first reachable entries of the roster tier")
+    ap.add_argument("--tier", default="readers", choices=("readers", "sota"))
+    ap.add_argument("--allow-single", action="store_true",
+                    help="accept one reader; a lone reading is one opinion presented\nas a conclusion")
     ap.add_argument("--full", action="store_true",
                     help="also read every transcript, not only the undecided ones")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+
+    models = roster.resolve(args.models, args.tier, 2, args.allow_single)
+    print("readers: " + ", ".join(m["model"] for m in models), file=sys.stderr)
 
     report = json.loads(Path(args.report).read_text())
     verdicts = json.loads(Path(args.judge).read_text()) if args.judge else []
@@ -149,14 +183,26 @@ def main() -> int:
         transcript = Path(v["transcript"])
         if not transcript.exists():
             continue
-        body = run_model(ADJUDICATE.format(
+        prompt = ADJUDICATE.format(
             instructions=chk.get("instructions", v["check"]),
             expect=chk.get("expect", "?"),
             why=v["why"],
             transcript=je.normalise(transcript.read_text()),
-        ), args.model)
+        )
+        readings = [(m, run_model(prompt, m)) for m in models]
+        calls = {decision_of(body) for _, body in readings} - {"?"}
+
         out += [f"### {battery_name(v)} · case {v['case']} · `{v['check']}`", "",
-                f"Classifier: **{v['verdict']}** — {v['why']}", "", body, ""]
+                f"Classifier: **{v['verdict']}** — {v['why']}", ""]
+        if len(calls) > 1:
+            # Two readers reaching different conclusions on the same text is the most
+            # useful thing this pass produces: it means the question genuinely does not
+            # have one answer here, which no single reading would have revealed.
+            out += [f"> **Readers disagree** — {', '.join(sorted(calls))}. Treat the "
+                    f"question or the review as genuinely ambiguous, not as a close call "
+                    f"one of them got wrong.", ""]
+        for m, body in readings:
+            out += [f"**{m['model']}**", "", body, ""]
 
     if args.full:
         out += ["## Every review, read", ""]
@@ -169,11 +215,12 @@ def main() -> int:
                             continue
                         seen.add(path)
                         print(f"reading {Path(path).name}", file=sys.stderr)
-                        body = run_model(
-                            READ.format(transcript=je.normalise(Path(path).read_text())),
-                            args.model)
-                        out += [f"### {battery['battery']} · case {case['case']}", "",
-                                body, ""]
+                        prompt = READ.format(
+                            transcript=je.normalise(Path(path).read_text()))
+                        out += [f"### {battery['battery']} · case {case['case']}", ""]
+                        for m in models:
+                            out += [f"**{m['model']}**", "",
+                                    run_model(prompt, m), ""]
 
     text = "\n".join(out)
     if args.out:

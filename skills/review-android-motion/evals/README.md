@@ -157,6 +157,32 @@ reading transcripts by hand is how an eval suite stops being run.
 ./scripts/read-evals.py --report report.json --judge judge.json --full   # read everything
 ```
 
+**Every pass uses at least two models, and refuses to run with one** unless told
+`--allow-single`. Not for redundancy — for bias. Every model has a house style, one terse
+and prone to missing things, another expansive and prone to inventing them. A skill
+measured against a single model is measured against that model's habits as much as its own
+merit, and a reading produced by one model is a single opinion wearing the clothes of a
+conclusion.
+
+That is not theoretical. On the same battery, `gemini-3.5-flash-lite` scored the skill at
+0 → 1 taste hits and `gemini-3.5-flash` at 1 → 1: against the weaker model the skill looks
+essential, against the stronger one it looks like it adds nothing, because the stronger
+baseline found the defect unaided. Either number alone is a confident, misleading answer.
+
+Readers get a `DECISION:` line before their prose. It is not a score — it exists so two
+readings can be compared without reading both in full, and **where they disagree that is
+reported rather than resolved**. On the first two-reader run one said a review had asserted
+contents of a file it was never given; the other checked, found the file had in fact been
+staged, and concluded the opposite. The second was right, and a single reader would have
+had us "fix" a question that was not broken.
+
+Readers run from an empty temporary directory rather than the repo. One of them was
+observed opening fixture files to verify a claim — a good instinct in the wrong room, since
+the same working directory also contains `evals/*.json`, which is the answer key.
+`scripts/model-roster.json` holds the tiers: `arms` for the reviewer under test, `readers`
+for this pass, and `sota` for a periodic manual re-read. Availability is discovered at run
+time, because an entry there is an intention rather than a promise.
+
 It scores nothing, and nothing it produces feeds a number — which is the same reason
 `run-evals.py` keeps models away from its grading. It is told nothing about which arm
 produced a transcript and sees rule ids normalised out, because an explanation that begins
