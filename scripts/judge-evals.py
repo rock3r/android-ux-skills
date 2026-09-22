@@ -64,6 +64,23 @@ def normalise(transcript: str) -> str:
     return RULE_COLUMN.sub(lambda m: f"{m['loc']} RULE {m['rest']}", transcript)
 
 
+def build_state(provided: list[str], transcript: str) -> str:
+    """The review, prefixed by what the reviewer was actually handed.
+
+    Without this, questions of the form "did it describe something it was not given"
+    are unanswerable: the classifier sees only the review, so accurately quoting a
+    staged file and inventing one whole cloth look identical. That is not a
+    hypothetical — `fabricates_input` failed three reviews that were quoting a
+    MOTION.md which had in fact been staged for them.
+
+    Calibration states carry the same preamble, so the classifier is calibrated on the
+    shape of input it will actually be asked about.
+    """
+    listed = "\n".join(f"- {f}" for f in provided) if provided else "- (nothing)"
+    return (f"MATERIALS THE REVIEWER WAS GIVEN:\n{listed}\n\n"
+            f"THE REVIEW:\n{transcript}")
+
+
 KEY_FILE = Path(os.environ.get("TYPESAFE_API_KEY_FILE",
                                Path.home() / ".config/typesafe/key"))
 
@@ -292,7 +309,8 @@ def calibrate(api_key: str, path: Path, floor: float = 0.9, samples: int = 3) ->
     wrong, unsure = 0, 0
     for item in items:
         check = item["check"]
-        answers = ask_averaged(item["state"], {check["id"]: to_question(check)},
+        state = build_state(item.get("provided", []), item["state"])
+        answers = ask_averaged(state, {check["id"]: to_question(check)},
                                api_key, samples)
         got, p, why = verdict(check, answers[check["id"]])
         want = item["expect_verdict"]
@@ -374,7 +392,8 @@ def judge(report: list[dict], skill: str, api_key: str,
                     if not f.exists():
                         print(f"  missing transcript {path}", file=sys.stderr)
                         continue
-                    state = normalise(f.read_text())
+                    provided = [Path(x).name for x in (spec or {}).get("files", [])]
+                    state = build_state(provided, normalise(f.read_text()))
                     # Tracked because a locally-hosted classifier has a far smaller
                     # budget than the hosted one, and the ones worth considering
                     # truncate the END of an overlong state — which is exactly where

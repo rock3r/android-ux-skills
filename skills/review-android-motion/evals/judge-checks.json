@@ -1,13 +1,6 @@
 {
-  "description": "Checks applied to every transcript in every battery, regardless of which case it answers or which arm produced it. Nothing here refers to a rule id, to STANDARDS.md, or to the existence of a skill: these ask whether a review is a sensible piece of work on its own terms. That matters for the measurement — a question phrased in our private vocabulary can only be answered well by an arm that shares it, which measures vocabulary again. It also matters practically, since these are the failures that make a reviewer worth switching off, and none of them are visible to span-matching.",
+  "description": "Checks applied to every transcript in every battery, regardless of which case it answers or which arm produced it. Nothing here refers to a rule id, to STANDARDS.md, or to the existence of a skill: these ask whether a review is a sensible piece of work on its own terms. That matters for the measurement — a question phrased in our private vocabulary can only be answered well by an arm that shares it, which measures vocabulary again. It also matters practically, since these are the failures that make a reviewer worth switching off, and none of them are visible to span-matching. Every state is prefixed with the materials the reviewer was given, so questions about invention are answerable rather than guesswork.",
   "universal": [
-    {
-      "id": "fabricates_input",
-      "type": "noul",
-      "instructions": "The review states the contents of a document or file it was NOT given, naming tokens, entries, rules or values as though it had read them. Quoting or describing code that WAS provided to it does not count, and neither does saying that a document is missing.",
-      "expect": false,
-      "min_confidence": 0.7
-    },
     {
       "id": "remedy_quality",
       "type": "choice",
@@ -49,7 +42,7 @@
       "type": "choice",
       "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
       "criteria": {
-        "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
+        "cannot_tell": "It says the project's conventions were not among the materials it was given, so it cannot judge whether the code follows them",
         "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
         "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
         "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
@@ -61,5 +54,6 @@
       ],
       "min_confidence": 0.6
     }
-  ]
+  ],
+  "_withdrawn_note": "fabricates_input was withdrawn after it failed its own calibration reproducibly. It asked whether a review stated the contents of a document it was not given. Three wordings were tried, and the materials the reviewer was handed were added to the state so the question was answerable in principle. It still answers 'fabrication' whenever a review describes a document's contents, whether or not that document was provided: the decisive calibration pair is the SAME review judged against different materials, and it returns the same answer to both. At seven samples the same three items fail every run, so this is a stable limitation and not noise. Adding the materials list did measurably help real transcripts — with-skill failures fell from three to one and baseline confident-correct answers rose from seven to eleven — but helping is not the same as being right, and a graded check that cannot pass its own calibration should not produce numbers. Deterministic fabrication detection still exists where it matters most, as forbidden_strings on the phantom battery, and conformance_claim covers adjacent ground and calibrates cleanly."
 }

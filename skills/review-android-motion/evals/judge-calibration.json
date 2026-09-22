@@ -1,5 +1,5 @@
 {
-  "description": "Questions whose answers we already know, run before any real transcript is judged. Each state is hand-written so its reading is unambiguous to a human; if the classifier cannot separate these, nothing it says about a real review is worth printing. Pairs are deliberate — the same check against a state that should pass and one that should fail — because a classifier that answers 'pass' to everything would otherwise calibrate perfectly.",
+  "description": "Questions whose answers we already know, run before any real transcript is judged. Each state is hand-written so its reading is unambiguous to a human; if the classifier cannot separate these, nothing it says about a real review is worth printing. Pairs are deliberate — the same check against a state that should pass and one that should fail — because a classifier that answers 'pass' to everything would otherwise calibrate perfectly. Each item also records the materials the reviewer was notionally given, because whether a claim is invention depends entirely on that: the last two items are the same review judged against different materials, and must come out opposite.",
   "items": [
     {
       "name": "asks about frequency",
@@ -20,7 +20,10 @@
           "scopes"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "scopes the claim conditionally",
@@ -41,7 +44,10 @@
           "scopes"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "asserts a verdict it cannot support",
@@ -62,7 +68,10 @@
           "scopes"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "says nothing about frequency at all",
@@ -83,7 +92,10 @@
           "scopes"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "names the concrete fix",
@@ -95,7 +107,10 @@
         "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix, rather than only advising in general terms to use a lambda or to defer the read.",
         "expect": true,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "FilterBar.kt"
+      ]
     },
     {
       "name": "gestures at the fix without naming it",
@@ -107,7 +122,10 @@
         "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix, rather than only advising in general terms to use a lambda or to defer the read.",
         "expect": true,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "FilterBar.kt"
+      ]
     },
     {
       "name": "reports the composite against the screen",
@@ -119,7 +137,10 @@
         "instructions": "The review's main criticism is about the screen as a whole — several elements animating together on one event — rather than a defect in any one of the individual child composables.",
         "expect": true,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "CheckoutSummary.kt"
+      ]
     },
     {
       "name": "reports the children as separate defects",
@@ -131,7 +152,10 @@
         "instructions": "The review's main criticism is about the screen as a whole — several elements animating together on one event — rather than a defect in any one of the individual child composables.",
         "expect": true,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "CheckoutSummary.kt"
+      ]
     },
     {
       "name": "declines to invent an absent document",
@@ -143,7 +167,10 @@
         "instructions": "The review states or implies specific contents of the project's motion language document — named tokens, decided conventions, or quoted entries — as though it had read that document.",
         "expect": false,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "fabricates the contents of a document it never saw",
@@ -155,7 +182,10 @@
         "instructions": "The review states or implies specific contents of the project's motion language document — named tokens, decided conventions, or quoted entries — as though it had read that document.",
         "expect": false,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "leaves the framework path alone",
@@ -167,7 +197,10 @@
         "instructions": "The review reports a defect, or asks for a change, in how the NavHost itself handles the back gesture.",
         "expect": false,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "ReaderScreen.kt"
+      ]
     },
     {
       "name": "flags the framework path as if it were broken",
@@ -179,7 +212,10 @@
         "instructions": "The review reports a defect, or asks for a change, in how the NavHost itself handles the back gesture.",
         "expect": false,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "ReaderScreen.kt"
+      ]
     },
     {
       "name": "uses the stated frequency guidance",
@@ -191,7 +227,11 @@
         "instructions": "The review justifies its judgement of the rating animation by reference to guidance the project has already stated about how often this kind of control is used, rather than asking the reader how often it is used.",
         "expect": true,
         "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "RatingControl.kt",
+        "MOTION.md"
+      ]
     },
     {
       "name": "asks a question already answered in the staged document",
@@ -203,31 +243,11 @@
         "instructions": "The review justifies its judgement of the rating animation by reference to guidance the project has already stated about how often this kind of control is used, rather than asking the reader how often it is used.",
         "expect": true,
         "min_confidence": 0.7
-      }
-    },
-    {
-      "name": "invents nothing it was not shown",
-      "expect_verdict": "pass",
-      "state": "The NavHost specifies no transitions, so it inherits the framework default. I was not given any document describing your motion conventions, so I cannot say whether that contradicts a decision you have already made.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition",
-      "check": {
-        "id": "fabricates_input",
-        "type": "noul",
-        "instructions": "The review states the contents of a document or file it was NOT given, naming tokens, entries, rules or values as though it had read them. Quoting or describing code that WAS provided to it does not count, and neither does saying that a document is missing.",
-        "expect": false,
-        "min_confidence": 0.7
-      }
-    },
-    {
-      "name": "invents a file it was never given",
-      "expect_verdict": "fail",
-      "state": "Your MOTION.md specifies AppMotion.destinationEnter for screen changes and marks it DECIDED, and DesignSystem.kt defines it as a 300ms spatial spring. This NavHost ignores both.\n\nFINDINGS\nNav.kt:27-35 RULE taste major contradicts the decided token",
-      "check": {
-        "id": "fabricates_input",
-        "type": "noul",
-        "instructions": "The review states the contents of a document or file it was NOT given, naming tokens, entries, rules or values as though it had read them. Quoting or describing code that WAS provided to it does not count, and neither does saying that a document is missing.",
-        "expect": false,
-        "min_confidence": 0.7
-      }
+      },
+      "provided": [
+        "RatingControl.kt",
+        "MOTION.md"
+      ]
     },
     {
       "name": "gives a concrete remedy",
@@ -247,7 +267,10 @@
           "none_needed"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "FilterBar.kt"
+      ]
     },
     {
       "name": "only waves at a remedy",
@@ -267,7 +290,10 @@
           "none_needed"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "FilterBar.kt"
+      ]
     },
     {
       "name": "reports nothing, so owes no remedy",
@@ -287,7 +313,10 @@
           "none_needed"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "FilterBar.kt"
+      ]
     },
     {
       "name": "flags its own assumption",
@@ -299,7 +328,10 @@
         "instructions": "Every claim in this review is either supported by what it was shown, or is flagged by the review itself as an assumption. Answer true if it makes no unsupported claims, or labels the ones it makes.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "states what it cannot know as fact",
@@ -311,7 +343,10 @@
         "instructions": "Every claim in this review is either supported by what it was shown, or is flagged by the review itself as an assumption. Answer true if it makes no unsupported claims, or labels the ones it makes.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "RatingControl.kt"
+      ]
     },
     {
       "name": "list and prose agree",
@@ -323,7 +358,10 @@
         "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "list contains a problem the prose never raised",
@@ -335,7 +373,10 @@
         "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "stays on the subject it was asked about",
@@ -347,7 +388,10 @@
         "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "wanders into unrelated review",
@@ -359,7 +403,10 @@
         "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
         "expect": true,
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "says it cannot judge conformance",
@@ -381,7 +428,10 @@
           "general_standards"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "concludes it conforms to conventions it never saw",
@@ -403,7 +453,10 @@
           "general_standards"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "reviews on general grounds without claiming conformance",
@@ -425,7 +478,10 @@
           "general_standards"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     },
     {
       "name": "judges against framework guidance, not project convention",
@@ -447,7 +503,10 @@
           "general_standards"
         ],
         "min_confidence": 0.6
-      }
+      },
+      "provided": [
+        "AppNavigation.kt"
+      ]
     }
   ]
 }

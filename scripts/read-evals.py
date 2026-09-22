@@ -127,10 +127,17 @@ def run_model(prompt: str, entry: dict, timeout: int = 300) -> str:
             proc = subprocess.run(cmd + ["--print", prompt], capture_output=True,
                                   text=True, timeout=timeout, cwd=empty)
     except subprocess.TimeoutExpired:
-        return "_(this reader timed out)_"
+        return FAILED_PREFIX + "timed out_"
     if proc.returncode != 0:
-        return f"_(this reader failed: {proc.stderr.strip()[:200]})_"
+        return FAILED_PREFIX + f"{proc.stderr.strip()[:200]}_"
     return proc.stdout.strip()
+
+
+FAILED_PREFIX = "_(this reader failed: "
+
+
+def failed(body: str) -> bool:
+    return body.startswith(FAILED_PREFIX)
 
 
 def decision_of(text: str) -> str:
@@ -171,6 +178,7 @@ def main() -> int:
             for c in case.get("checks", []):
                 checks.setdefault(c["id"], c)
 
+    degraded: list[tuple[str, str, str]] = []
     out: list[str] = ["# Reading of an eval run", ""]
     if not unsettled and not args.full:
         out += ["The classifier settled every check. Nothing needed a second opinion.", ""]
@@ -190,10 +198,20 @@ def main() -> int:
             transcript=je.normalise(transcript.read_text()),
         )
         readings = [(m, run_model(prompt, m)) for m in models]
-        calls = {decision_of(body) for _, body in readings} - {"?"}
+        alive = [(m, b) for m, b in readings if not failed(b)]
+        for m, b in readings:
+            if failed(b):
+                degraded.append((v["check"], m["model"], b[len(FAILED_PREFIX):][:120]))
+        calls = {decision_of(b) for _, b in alive} - {"?"}
 
         out += [f"### {battery_name(v)} · case {v['case']} · `{v['check']}`", "",
                 f"Classifier: **{v['verdict']}** — {v['why']}", ""]
+        if len(alive) < len(models):
+            # Silence here would be the worst outcome: the entire point of two readers is
+            # that one opinion is not a conclusion, and a failed reader leaves exactly the
+            # single opinion this pass exists to avoid — looking identical to a healthy run.
+            out += [f"> **Only {len(alive)} of {len(models)} readers answered.** Treat what "
+                    f"follows as one opinion, not a second view.", ""]
         if len(calls) > 1:
             # Two readers reaching different conclusions on the same text is the most
             # useful thing this pass produces: it means the question genuinely does not
@@ -221,6 +239,14 @@ def main() -> int:
                         for m in models:
                             out += [f"**{m['model']}**", "",
                                     run_model(prompt, m), ""]
+
+    if degraded:
+        print(f"\n!! {len(degraded)} reader call(s) failed — readings below are thinner "
+              f"than they look:", file=sys.stderr)
+        for check, model, why in degraded[:6]:
+            print(f"   {model} on {check}: {why}", file=sys.stderr)
+        out = (["> **This reading is degraded.** "
+                f"{len(degraded)} reader call(s) failed; see the notes inline.", ""] + out)
 
     text = "\n".join(out)
     if args.out:

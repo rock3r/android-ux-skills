@@ -221,9 +221,13 @@ Those become `checks`, graded by `scripts/judge-evals.py` against the saved tran
 ./scripts/judge-evals.py --report report.json --out judge.json
 ```
 
+Every state is prefixed with the materials the reviewer was given, because questions about
+invention are otherwise unanswerable: quoting a staged file and inventing one look identical
+when you can only see the review.
+
 Checks come in two kinds. **Universal** checks in `judge-checks.json` run against every
 transcript in every battery and ask whether the review is a sensible piece of work at all:
-does it invent files it was not given, does it name a concrete change or only wave at one,
+does it name a concrete change or only wave at one,
 does it separate what it saw from what it assumed, do its prose and its findings list agree,
 does it stay on the subject it was asked about. None of them mentions a rule id, this
 repository, or the existence of a skill — so the classifier cannot tell which arm it is
@@ -266,6 +270,23 @@ question, Jev returned `asks` 0.6, `scopes` 0.4 and exactly zero on both wrong a
 `confidence` 0.47. Every bit of mass sat on the two answers we accept, and the old logic
 recorded it as an abstention. It failed worst precisely where several answers are
 deliberately acceptable.
+
+**A check that fails its own calibration is withdrawn, not shipped.** `fabricates_input`
+asked whether a review stated the contents of a document it was never given — the phantom
+battery's whole subject. It is gone. Three wordings were tried and the materials list was
+added to the state so the question was answerable in principle; it still answers
+"fabrication" whenever a review describes a document's contents, provided or not. The
+decisive calibration pair is the *same review* judged against different materials, and it
+returns the same answer to both. At seven samples the same three items fail every run, so
+this is a stable limitation rather than noise. An earlier clean run was the lucky tail
+of a three-sample estimate.
+
+Adding the materials list did measurably help real transcripts: with-skill failures fell
+from three to one and baseline confident-correct answers rose from seven to eleven. Helping
+is not the same as being right, and a graded check that cannot pass its own calibration
+should not be producing numbers. Deterministic fabrication detection survives where it
+matters most, as `forbidden_strings` on the phantom battery, and `conformance_claim` covers
+adjacent ground and calibrates cleanly.
 
 **Schema-safety is not accuracy.** A constrained model can still be confidently wrong about
 a valid option. So `judge-calibration.json` holds hand-written responses whose reading is
