@@ -428,8 +428,14 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
                 )
             staged[src.name] = src
 
-        # A forbidden string that the arm can legitimately read is a trap, not a check.
+        # A forbidden string the arm can legitimately read is a trap, not a check —
+        # and the with-skill arm can read the whole skill, including every reference
+        # doc. Omitting that is how "DECIDED" got onto a forbidden list and failed a
+        # run for correctly reporting that a file was absent.
         blob = "\n".join(p.read_text() for p in staged.values()) + case["prompt"]
+        for doc in skill_dir.rglob("*.md"):
+            if "evals" not in doc.parts:
+                blob += "\n" + doc.read_text()
         for s in case.get("forbidden_strings", []):
             if s.lower() in blob.lower():
                 problems.append(

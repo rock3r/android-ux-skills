@@ -65,7 +65,7 @@ find more", not "did it phrase things our way".
 | Field | Why it exists |
 |---|---|
 | `severity_right` / `severity_wrong` | Severity is the payload of three batteries. It used to be printed but never scored, so a skill answering "minor" everywhere was numerically identical to one whose severity moved with the staged MOTION.md. |
-| `fabricated` | Strings that appear nowhere in the staged input. `validate()` refuses a case whose forbidden strings are actually readable, so a hit can only be invention. |
+| `fabricated` | Strings that appear nowhere in the staged input **or in the skill's own reference docs**, which the with-skill arm can read every word of. `validate()` refuses a case whose forbidden strings are readable from either, so a hit can only be invention. The list is product-specific identifiers such as `AppMotion.destinationEnter`, not the skill's vocabulary: an earlier version listed `DECIDED` and duly failed a run for saying *"MOTION.md was not present, so I could not verify the DECIDED conventions"* — which is the correct answer, not a fabrication. |
 | `blanketing` | One span covering the defect *and* the clean code around it. It counts once, so it cannot also be a false positive — without this, "something on this screen is wrong" would be the highest-scoring answer available. |
 | `unlabeled` | A finding outside every labelled span. **Not** a false positive: our labels are not a census of every defect in a fixture, and punishing a real finding we failed to anticipate trains the skill to stay quiet. These need a human, and they are how the label set improves. |
 | `unparsed` | Lines that looked like findings and did not parse. Silently dropping them made a badly formatted review indistinguishable from a clean one: zero findings, zero false positives, perfect precision. |
@@ -164,7 +164,9 @@ measured against a single model is measured against that model's habits as much 
 merit, and a reading produced by one model is a single opinion wearing the clothes of a
 conclusion.
 
-That is not theoretical. On the same battery, `gemini-3.5-flash-lite` scored the skill at
+That is not theoretical. Sweeping two codex models over the phantom battery, the older
+fabricated a motion language where the newer did not. On an earlier sweep
+`gemini-3.5-flash-lite` scored the skill at
 0 → 1 taste hits and `gemini-3.5-flash` at 1 → 1: against the weaker model the skill looks
 essential, against the stronger one it looks like it adds nothing, because the stronger
 baseline found the defect unaided. Either number alone is a confident, misleading answer.

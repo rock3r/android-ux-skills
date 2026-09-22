@@ -1,43 +1,51 @@
 {
-  "description": "Which models to run evals and readings against. Never one model alone.\n\nThe point of more than one is not redundancy, it is bias. Every model has a house style — one is terse and misses nuance, another writes at length and finds problems that are not there. Measuring a skill against a single model measures that model's habits as much as the skill, and a reading produced by one model is one opinion presented as a conclusion. Where two disagree, that disagreement is the finding.\n\nEntries prefer a floating 'latest' pointer over a pinned version where the provider offers one, so the roster does not quietly go stale. Availability is discovered at run time: an entry here is an intention, not a promise the machine can reach it.",
+  "description": "Which models to run evals and readings against. Never one model alone.\n\nThe point of more than one is not redundancy, it is bias. Every model has a house style — one terse and prone to missing things, another expansive and prone to inventing them. A skill measured against a single model is measured against that model's habits as much as its own merit, and a reading produced by one model is a single opinion wearing the clothes of a conclusion. Where two disagree, that disagreement is the finding.\n\nAvailability is discovered at run time: an entry here is an intention, not a promise the machine can reach it. Entries are ordered by reliability first, because a roster entry that reliably fails is worse than one that is merely a version behind.",
   "min_models_per_pass": 2,
-  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which is a much narrower constraint than it looks: the sandboxed pi sees only part of the host's model registry, and everything outside it fails with 'model not found' rather than an auth error. On bepi today that leaves the google provider alone, so the two entries below are two models of one family — weaker diversity than this file asks for, and a known gap rather than a choice. Widening it means fixing what the sandbox propagates, not editing this list. Pinned versions lead here despite the preference for floating pointers, because gemini-flash-latest has been timing out; a roster entry that reliably fails is worse than a stale one.",
+
+  "_no_gemini_note": "Gemini is deliberately not a default anywhere in this file. The API errors out or times out the overwhelming majority of the time from this account, and a default that usually fails is worse than one that is merely imperfect. The entries remain, demoted, so they can be promoted if that changes.",
+
+  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which is narrower than the host: a sandboxed pi sees only part of the host's model registry. As of pioneer 0.3.5, openai-codex and google resolve; claude-code and jetbrains still fail with 'model not found' (a registry propagation gap, worth reporting upstream with that exact wording) and kimi-coding fails asking for /login. Until claude-code resolves, every arm entry below is one provider, so the diversity here is generational rather than cross-family — a real limitation, recorded rather than disguised.",
   "arms": [
     {
-      "model": "google/gemini-3.5-flash-lite",
-      "family": "gemini-flash-lite",
-      "note": "Verified to resolve and answer inside the sandbox, well within the per-arm timeout."
+      "model": "openai-codex/gpt-5.6-luna",
+      "family": "gpt-luna",
+      "note": "Verified inside the sandbox on pioneer 0.3.5."
     },
     {
-      "model": "google/gemini-3.5-flash",
+      "model": "openai-codex/gpt-5.5",
+      "family": "gpt-5.5",
+      "note": "A generation behind the entry above rather than a different house, which is the most independence an arm currently gets. Verified inside the sandbox."
+    },
+    {
+      "model": "openai-codex/gpt-5.6-terra",
+      "family": "gpt-terra",
+      "note": "A third codex line, verified in the sandbox. Use when one of the two above is unavailable."
+    },
+    {
+      "model": "google/gemini-3.8-flash",
       "family": "gemini-flash",
-      "note": "Larger sibling of the entry above. Size is the only axis of variation an arm currently has."
-    },
-    {
-      "model": "google/gemini-flash-latest",
-      "family": "gemini-flash-latest",
-      "note": "A floating pointer, and preferable in principle — but it has been serving 503s and exceeding the 300s per-arm timeout, so it sits below the pinned pair rather than above them. Promote it when it is reliable again."
+      "note": "Resolves in the sandbox, and would be genuine cross-family diversity — but see _no_gemini_note. Demoted, not removed."
     }
   ],
-  "_readers_note": "Models that read transcripts in the third pass. These run OUTSIDE the sandbox, so the full host registry is available and genuine cross-family diversity is possible here even while the arms are constrained. Two are used per pass; where they disagree, that is reported rather than resolved.",
+
+  "_readers_note": "Models that read transcripts in the third pass. These run OUTSIDE the sandbox, so the full host registry is available and genuine cross-family diversity is possible here even while the arms are constrained to one provider. Two are used per pass; where they disagree, that is reported rather than resolved.",
   "readers": [
-    {
-      "model": "jetbrains/gpt-5.6-luna",
-      "thinking": "high",
-      "family": "gpt-luna",
-      "note": "A different house style from the Gemini and Claude families, which is the point."
-    },
     {
       "model": "jetbrains/claude-sonnet-5",
       "thinking": "high",
       "family": "claude-sonnet",
-      "note": "Dearest of the routine tier, still far below the sota tier."
+      "note": "Verified outside the sandbox. On the first two-reader run it was the one that checked a claim against the staged fixtures instead of assuming."
     },
     {
-      "model": "google/gemini-flash-latest",
+      "model": "openai-codex/gpt-5.6-luna",
       "thinking": "high",
-      "family": "gemini-flash",
-      "note": "Floating pointer, and preferable in principle — but it has been serving 503s and exhausting per-call timeouts, so it sits below the reliable entries. Promote it when that changes."
+      "family": "gpt-luna",
+      "note": "A different house from Claude, which is the point of pairing them."
+    },
+    {
+      "model": "jetbrains/claude-fable-5-1",
+      "thinking": "high",
+      "family": "claude-fable"
     },
     {
       "model": "openrouter/~deepseek/deepseek-v4-flash-latest",
@@ -50,14 +58,22 @@
       "thinking": "high",
       "family": "glm",
       "note": "Floating pointer. Needs OpenRouter credit; unreachable on bepi today."
+    },
+    {
+      "model": "google/gemini-flash-latest",
+      "thinking": "high",
+      "family": "gemini-flash",
+      "note": "Demoted; see _no_gemini_note."
     }
   ],
+
   "_sota_note": "A periodic manual pass, not something to leave in a loop. Use for a considered re-read when a result matters or a conclusion is about to be acted on.",
   "sota": [
     {
-      "model": "jetbrains/gpt-6-astra",
+      "model": "openai-codex/gpt-6-astra",
       "thinking": "high",
-      "family": "gpt-astra"
+      "family": "gpt-astra",
+      "note": "Verified inside the sandbox, so this one can be an arm as well as a reader."
     },
     {
       "model": "jetbrains/claude-fable-5-1",
@@ -65,25 +81,21 @@
       "family": "claude-fable"
     },
     {
-      "model": "openrouter/~google/gemini-pro-latest",
-      "thinking": "high",
-      "family": "gemini-pro"
-    },
-    {
       "model": "jetbrains/grok-4.6",
       "thinking": "high",
       "family": "grok"
     },
     {
+      "model": "kimi-coding/k3",
+      "thinking": "high",
+      "family": "kimi",
+      "note": "Needs its OAuth token refreshed on the host before it will run anywhere."
+    },
+    {
       "model": "openrouter/~z-ai/glm-latest",
       "thinking": "max",
       "family": "glm",
-      "note": "Same weights as the routine entry, run harder."
-    },
-    {
-      "model": "kimi-coding/k3",
-      "thinking": "high",
-      "family": "kimi"
+      "note": "Same weights as the reader entry, run harder."
     }
   ]
 }
