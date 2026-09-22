@@ -193,12 +193,38 @@ three forms:
 | `!<shell command>` | run it; its first line of output is the key |
 | anything else | a literal key |
 
-The `!` form is how you run evals on one machine while the key stays on another:
-`!ssh othermachine 'op read "op://Private/Jev/cred"'`. Nothing is copied between them and
-no secret reaches the runner's disk. There is deliberately no `--api-key` flag, because an
-argument is visible in the process table and in shell history.
+There is deliberately no `--api-key` flag, because an argument is visible in the process
+table and in shell history.
 
-### Could this run locally instead?
+#### When the vault is on a different machine from the runner
+
+The obvious spec — `!ssh vaultmachine 'op read "op://..."'` — **does not work**, and it is
+worth knowing why before trying it. 1Password's desktop-app integration is bound to your
+GUI login session. Over SSH, `op` reports `No accounts configured` however many prompts you
+approve, and `op signin` only exports a session token into the shell that ran it. The vault
+side has to initiate. Two ways:
+
+**Push it, from the machine with the vault.** Works today, needs nothing new:
+
+```bash
+./scripts/push-jev-key.sh <runner-host> "op://Private/TypeSafe/test api key"
+```
+
+The key is piped from `op` straight into the runner's per-user tmpfs — RAM only, `0600`
+inside a `0700` directory, gone on reboot. It touches no disk on either machine and never
+appears in an argument list. The runner's spec is then `!cat /run/user/$(id -u)/jev-key`.
+Re-run it after a reboot, or whenever the runner says the file is missing.
+
+**Or use a service account**, which is 1Password's supported path for unattended
+automation: install `op` on the runner, set `OP_SERVICE_ACCOUNT_TOKEN`, and the spec
+becomes the `op://` reference directly with no second machine involved. One catch to check
+before committing to it — a service account cannot read a *Private* vault, so the item has
+to live in a shared one.
+
+### Could this run locally instead? (parked)
+
+Not being pursued — the hosted classifier is fine. Recorded because the question will come
+back, and because the blocker is specific rather than a matter of taste.
 
 [Laya](https://github.com/NandhaKishorM/laya) is the obvious candidate — Apache-2.0 open
 weights, the same `choice`/`noul`/`score` vocabulary, and a PyTorch package that runs on
