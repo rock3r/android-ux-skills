@@ -1,40 +1,37 @@
 {
   "description": "Which models to run evals and readings against. Never one model alone.\n\nThe point of more than one is not redundancy, it is bias. Every model has a house style — one terse and prone to missing things, another expansive and prone to inventing them. A skill measured against a single model is measured against that model's habits as much as its own merit, and a reading produced by one model is a single opinion wearing the clothes of a conclusion. Where two disagree, that disagreement is the finding.\n\nAvailability is discovered at run time: an entry here is an intention, not a promise the machine can reach it. Entries are ordered by reliability first, because a roster entry that reliably fails is worse than one that is merely a version behind.",
   "min_models_per_pass": 2,
-
   "_no_gemini_note": "Gemini is deliberately not a default anywhere in this file. The API errors out or times out the overwhelming majority of the time from this account, and a default that usually fails is worse than one that is merely imperfect. The entries remain, demoted, so they can be promoted if that changes.",
-
-  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which is narrower than the host: a sandboxed pi sees only part of the host's model registry. As of pioneer 0.3.5, openai-codex and google resolve; claude-code and jetbrains still fail with 'model not found' (a registry propagation gap, worth reporting upstream with that exact wording) and kimi-coding fails asking for /login. Until claude-code resolves, every arm entry below is one provider, so the diversity here is generational rather than cross-family — a real limitation, recorded rather than disguised.",
+  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which sees only part of the host's configuration: pioneer copies exactly five root files into the sandboxed pi home — auth.json, models.json, models-store.json, settings.json and AGENTS.md (pioneer src/pi-home.ts, DEFAULT_ROOT_FILES). Per-provider catalogues such as claude-code-models.json and kimi-code-models.json are NOT copied, so those providers resolve on the host and fail inside the sandbox with 'model not found'. That is a pioneer fix, not a roster one. Everything listed here is verified to answer inside the sandbox.",
   "arms": [
     {
       "model": "openai-codex/gpt-5.6-luna",
       "family": "gpt-luna",
-      "note": "Verified inside the sandbox on pioneer 0.3.5."
+      "note": "Verified inside the sandbox."
+    },
+    {
+      "model": "zai/glm-5.3",
+      "family": "glm",
+      "note": "Verified inside the sandbox, and a genuinely different house from the entry above — which is the whole point of pairing them."
     },
     {
       "model": "openai-codex/gpt-5.5",
       "family": "gpt-5.5",
-      "note": "A generation behind the entry above rather than a different house, which is the most independence an arm currently gets. Verified inside the sandbox."
-    },
-    {
-      "model": "openai-codex/gpt-5.6-terra",
-      "family": "gpt-terra",
-      "note": "A third codex line, verified in the sandbox. Use when one of the two above is unavailable."
+      "note": "Fallback if one of the two above is unavailable."
     },
     {
       "model": "google/gemini-3.8-flash",
       "family": "gemini-flash",
-      "note": "Resolves in the sandbox, and would be genuine cross-family diversity — but see _no_gemini_note. Demoted, not removed."
+      "note": "Resolves in the sandbox; demoted, see _no_gemini_note."
     }
   ],
-
-  "_readers_note": "Models that read transcripts in the third pass. These run OUTSIDE the sandbox, so the full host registry is available and genuine cross-family diversity is possible here even while the arms are constrained to one provider. Two are used per pass; where they disagree, that is reported rather than resolved.",
+  "_readers_note": "Models that read transcripts in the third pass. These run OUTSIDE the sandbox, so the full host configuration is available. Two per pass; where they disagree, that is reported rather than resolved.",
   "readers": [
     {
-      "model": "jetbrains/claude-sonnet-5",
+      "model": "claude-code/claude-sonnet-5",
       "thinking": "high",
       "family": "claude-sonnet",
-      "note": "Verified outside the sandbox. On the first two-reader run it was the one that checked a claim against the staged fixtures instead of assuming."
+      "note": "The custom Claude Code provider. Host-only: see _arms_note for why it cannot be an arm."
     },
     {
       "model": "openai-codex/gpt-5.6-luna",
@@ -43,30 +40,22 @@
       "note": "A different house from Claude, which is the point of pairing them."
     },
     {
-      "model": "jetbrains/claude-fable-5-1",
+      "model": "zai/glm-5.3",
       "thinking": "high",
-      "family": "claude-fable"
+      "family": "glm"
     },
     {
-      "model": "openrouter/~deepseek/deepseek-v4-flash-latest",
+      "model": "kimi-code/k3",
       "thinking": "high",
-      "family": "deepseek-flash",
-      "note": "Floating pointer. Needs OpenRouter credit; unreachable on bepi today."
-    },
-    {
-      "model": "openrouter/~z-ai/glm-latest",
-      "thinking": "high",
-      "family": "glm",
-      "note": "Floating pointer. Needs OpenRouter credit; unreachable on bepi today."
+      "family": "kimi"
     },
     {
       "model": "google/gemini-flash-latest",
       "thinking": "high",
       "family": "gemini-flash",
-      "note": "Demoted; see _no_gemini_note."
+      "note": "Demoted, see _no_gemini_note."
     }
   ],
-
   "_sota_note": "A periodic manual pass, not something to leave in a loop. Use for a considered re-read when a result matters or a conclusion is about to be acted on.",
   "sota": [
     {
@@ -76,26 +65,26 @@
       "note": "Verified inside the sandbox, so this one can be an arm as well as a reader."
     },
     {
-      "model": "jetbrains/claude-fable-5-1",
+      "model": "claude-code/claude-opus-5",
+      "thinking": "high",
+      "family": "claude-opus"
+    },
+    {
+      "model": "claude-code/claude-fable-5-1",
       "thinking": "high",
       "family": "claude-fable"
     },
     {
-      "model": "jetbrains/grok-4.6",
-      "thinking": "high",
-      "family": "grok"
-    },
-    {
-      "model": "kimi-coding/k3",
-      "thinking": "high",
-      "family": "kimi",
-      "note": "Needs its OAuth token refreshed on the host before it will run anywhere."
-    },
-    {
-      "model": "openrouter/~z-ai/glm-latest",
+      "model": "zai/glm-5.3",
       "thinking": "max",
       "family": "glm",
-      "note": "Same weights as the reader entry, run harder."
+      "note": "Same weights as the routine entry, run harder."
+    },
+    {
+      "model": "kimi-code/k3",
+      "thinking": "high",
+      "family": "kimi"
     }
-  ]
+  ],
+  "_jetbrains_note": "JetBrains is deliberately absent from every default. Its catalogue is incomplete, so a model named there may not be the model you think you are running. Use it only when it genuinely carries the model you want and nothing else does, and then only as a fallback."
 }

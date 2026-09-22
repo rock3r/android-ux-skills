@@ -21,6 +21,12 @@ Two environment notes, both of which cost an evening to find once:
   resolves the actor's *real* path and grants its package directory to the sandbox, because
   `pi` on PATH is a symlink into a node package and the sandbox otherwise leaves Node
   hunting for the bundle's `chunks/` beside the symlink.
+- **The sandbox sees only part of pi's configuration.** Pioneer copies five root files
+  into the sandboxed pi home — `auth.json`, `models.json`, `models-store.json`,
+  `settings.json`, `AGENTS.md` (`src/pi-home.ts`, `DEFAULT_ROOT_FILES`). Per-provider
+  catalogues such as `claude-code-models.json` are not among them, so those providers
+  resolve on the host and fail inside the sandbox with *"model not found"* rather than an
+  auth error. That is why `claude-code` is a reader and never an arm.
 - **Prepared batteries never live in the repo.** Pioneer refuses a run directory under a
   protected root, `/srv` among them, and this checkout is reached through a symlink into
   `/srv`. Output goes to `~/.cache/android-ux-skills` by default; `--work-dir` or
