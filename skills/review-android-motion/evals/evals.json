@@ -248,8 +248,8 @@
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            24,
-            34
+            25,
+            35
           ],
           "rule": "T-026",
           "class": "taste",
@@ -260,40 +260,40 @@
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            36,
-            48
+            37,
+            49
           ],
           "note": "TotalRow: token spec, lambda offset."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            50,
-            60
+            51,
+            62
           ],
-          "note": "SavingsBadge: AnimatedVisibility, spatial+effects in and effects-only out at a faster tier — T-010's prescribed asymmetry, which T-020 explicitly does not treat as a tier mismatch."
+          "note": "SavingsBadge: AnimatedVisibility that animates its own SIZE as well as its opacity, so the three siblings below are pushed down on the same clock as their own springs rather than jumping in one frame. Spatial+effects in, effects-plus-a-faster-shrink out. An earlier version specified enter/exit without a size animation, which silently overrode AnimatedVisibility's default expandIn and left an untimed reflow in the middle of a timed event — a real T-020 defect inside a fixture whose entire premise is that every part is individually clean. A model found it before we did."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            62,
-            74
+            64,
+            76
           ],
           "note": "PostageNote: token spec, lambda offset."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            76,
-            88
+            78,
+            90
           ],
           "note": "LoyaltyPoints: effects spec, graphicsLayer read."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            90,
-            101
+            92,
+            103
           ],
           "note": "CheckoutButton: effects spec, colour only, read in drawBehind."
         }
@@ -302,7 +302,8 @@
         "Identifies that five elements animate on one event and none of them leads",
         "Reports it against the screen or CheckoutSummary itself, not against any individual composable",
         "Does NOT report the five children as five separate findings — every one of them is individually correct",
-        "Suggests choosing what the event is about, rather than tuning any single spec"
+        "Suggests choosing what the event is about, rather than tuning any single spec",
+        "Does NOT report the badge's appearance as reflowing its siblings instantly: the size change is animated on the same tier as the movement around it."
       ],
       "checks": [
         {
@@ -363,8 +364,8 @@
         {
           "path": "ReaderScreen.kt",
           "lines": [
-            57,
-            59
+            56,
+            58
           ],
           "rule": "T-008",
           "class": "taste",
@@ -375,17 +376,26 @@
         {
           "path": "ReaderScreen.kt",
           "lines": [
-            37,
-            50
+            36,
+            49
           ],
           "note": "NavHost already installs its own predictive-back handler and seeks with SeekableTransitionState. Zero app code is required, and flagging it is the failure this span exists to catch."
+        },
+        {
+          "path": "ReaderScreen.kt",
+          "lines": [
+            67,
+            73
+          ],
+          "note": "The notes panel enters with a slide AND a fade and leaves with the fade alone — T-010's prescribed asymmetry. It was previously slide-in, slide-out, which a model correctly flagged as a T-010 violation sitting inside the one case meant to carry a single intended defect. Declared clean now so the same finding is caught rather than tolerated."
         }
       ],
       "expectations": [
         "Does NOT flag the NavHost — the framework already seeks predictive back correctly",
         "Flags the BackHandler closing the notes panel, which fires on commit and cannot follow the finger",
         "Names PredictiveBackHandler with a seekable progress value as the fix",
-        "Scopes the finding to the hand-rolled panel, not to back handling in general"
+        "Scopes the finding to the hand-rolled panel, not to back handling in general",
+        "Does NOT flag the panel's enter/exit pair: spatial+effects in, effects only out is what T-010 asks for."
       ],
       "checks": [
         {

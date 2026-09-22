@@ -1,14 +1,16 @@
 package com.example.catalogue.ui.checkout
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 
@@ -51,9 +52,10 @@ private fun TotalRow(discounted: Boolean) {
 private fun SavingsBadge(discounted: Boolean) {
     AnimatedVisibility(
         visible = discounted,
-        enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 2 } +
+        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
             fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
     ) {
         Card { Text("You saved £9.60", style = MaterialTheme.typography.labelLarge) }
     }
