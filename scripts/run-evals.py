@@ -81,6 +81,9 @@ If you found nothing, write FINDINGS and then NONE."""
 
 # The end of the range is optional: a one-line finding is naturally written "Nav.kt:27",
 # and rejecting that form measured transcription, not judgment.
+# Retries for an arm that exits 0 with nothing on stdout.
+EMPTY_RETRIES = 2
+
 FINDING_RE = re.compile(
     r"^(?P<path>[^\s:]+):(?P<start>\d+)(?:-(?P<end>\d+))?\s+"
     r"(?P<rule>\S+)\s+(?P<cls>floor|obligation|taste)\s+(?P<sev>minor|major)\b",
@@ -366,10 +369,22 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         print("  would run:", " ".join(cmd[:8]), "…", file=sys.stderr)
         return ArmResult(arm=arm, raw="", error="dry-run")
 
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError:
-        return ArmResult(arm=arm, error="pioneer not found on PATH")
+    # Some models intermittently exit 0 with an empty body — reproduced with an unchanged
+    # prompt returning nothing on one attempt and a full review on the next. That is a
+    # transient failure rather than an answer, so it is retried. Note this retries an
+    # empty response only: a review that genuinely found nothing still writes its
+    # FINDINGS/NONE block, so it is never mistaken for one of these.
+    for attempt in range(EMPTY_RETRIES + 1):
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return ArmResult(arm=arm, error="pioneer not found on PATH")
+        if proc.returncode != 0 or proc.stdout.strip():
+            break
+        if attempt < EMPTY_RETRIES:
+            print(f"    {arm}: empty response, retrying "
+                  f"({attempt + 1}/{EMPTY_RETRIES})", file=sys.stderr)
+
     if proc.returncode != 0:
         # The TAIL of stderr, not the head: pioneer prints a multi-line contract
         # preamble before anything runs, so truncating from the front reliably keeps
@@ -383,7 +398,9 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         # indistinguishable from a genuinely clean fixture. Observed on two cases where a
         # model returned success with an empty body, which cost the skill both floor
         # findings in that run.
-        return ArmResult(arm=arm, raw="", error="[EMPTY_OUTPUT] exited 0 with no output")
+        return ArmResult(arm=arm, raw="",
+                         error=f"[EMPTY_OUTPUT] exited 0 with no output after "
+                               f"{EMPTY_RETRIES + 1} attempts")
 
     found, unparsed = parse_findings(proc.stdout)
     return ArmResult(arm=arm, raw=proc.stdout, findings=found, unparsed=unparsed)
