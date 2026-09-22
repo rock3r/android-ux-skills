@@ -16,8 +16,17 @@ without it**. Two of three reach 7/7 on taste. False positives fall in all three
 sharply where they were worst: GLM drops 20 to 4 while its recall rises, so precision and
 recall moved together rather than trading against each other.
 
-Severity moves correctly in two of three. Astra is the exception at three wrong, the only
-model to miss severity more than once, and the one unexplained result here.
+Severity moves correctly in two of three. Astra's three wrong looked like a model weakness
+and was a harness bug: all three were `minor` where `major` was expected, all three on floor
+or obligation rules, and all three in the battery with no motion language. The output
+contract said only that contradicting an established convention is major and the same
+observation without one is minor — omitting `STANDARDS.md`'s explicit carve-out that a floor
+or obligation violation is major regardless. Astra followed the instruction it was given,
+correctly and consistently. GLM and Luna scored better by ignoring it.
+
+The contract has been corrected, so **the severity column above is measured against a
+contract that no longer exists** and should not be compared with later runs. Detection
+numbers are unaffected: severity is scored separately and never gates a hit.
 
 ## Luna is the weak arm and that is the point
 

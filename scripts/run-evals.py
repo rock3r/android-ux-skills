@@ -71,9 +71,12 @@ FINDINGS
 
 This block must repeat every finding your review made, and must not add any it did not.
 
-Severity is relative to what this codebase has decided, not intrinsic to the finding:
-contradicting a convention the project has established is major; the same observation with
-no convention established is minor.
+Severity for a taste finding is relative to what this codebase has decided, not intrinsic
+to the finding: contradicting a convention the project has established is major; the same
+observation with no convention established is minor.
+
+A floor or obligation finding is major regardless, whether or not the project has decided
+anything. Those are about the software being wrong, not about it being inconsistent.
 
 Use the rule ids from the standards if you have them. If you have no standards to draw on,
 still use this shape and put your own short identifier in the rule-id column.
