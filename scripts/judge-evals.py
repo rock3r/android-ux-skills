@@ -245,6 +245,19 @@ def calibrate(api_key: str, path: Path, floor: float = 0.9) -> bool:
     return True
 
 
+def universal_checks(skill: str) -> list[dict]:
+    """Checks every transcript answers, whatever case it belongs to.
+
+    Kept apart from a case's own checks because they are a different question. A case
+    check asks whether this review found the thing we planted. These ask whether it is a
+    sensible piece of work at all — and are phrased without reference to any rule id or to
+    the existence of a skill, so the classifier cannot tell which arm it is reading and a
+    good answer does not depend on sharing our vocabulary.
+    """
+    f = ROOT / "skills" / skill / "evals" / "judge-checks.json"
+    return json.loads(f.read_text())["universal"] if f.exists() else []
+
+
 def specs_by_case(skill: str) -> dict[tuple[str, int], dict]:
     """(battery, case id) -> case, so the report can be matched back to its checks."""
     out = {}
@@ -258,6 +271,7 @@ def specs_by_case(skill: str) -> dict[tuple[str, int], dict]:
 def judge(report: list[dict], skill: str, api_key: str,
           budget_report: list | None = None) -> list[dict]:
     specs = specs_by_case(skill)
+    universal = universal_checks(skill)
     budget_report = budget_report if budget_report is not None else []
     results = []
 
@@ -265,7 +279,7 @@ def judge(report: list[dict], skill: str, api_key: str,
         bname = battery["battery"]
         for case in battery["cases"]:
             spec = specs.get((bname, case["case"]))
-            checks = (spec or {}).get("checks", [])
+            checks = universal + (spec or {}).get("checks", [])
             if not checks:
                 continue
 

@@ -204,6 +204,162 @@
         "expect": true,
         "min_confidence": 0.7
       }
+    },
+    {
+      "name": "invents nothing it was not shown",
+      "expect_verdict": "pass",
+      "state": "The NavHost specifies no transitions, so it inherits the framework default. I was not given any document describing your motion conventions, so I cannot say whether that contradicts a decision you have already made.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition",
+      "check": {
+        "id": "fabricates_input",
+        "type": "noul",
+        "instructions": "The review describes file contents, project conventions, documents, or code that it was not given — stating them as fact rather than as a guess.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "invents a file it was never given",
+      "expect_verdict": "fail",
+      "state": "Your MOTION.md specifies AppMotion.destinationEnter for screen changes and marks it DECIDED, and DesignSystem.kt defines it as a 300ms spatial spring. This NavHost ignores both.\n\nFINDINGS\nNav.kt:27-35 RULE taste major contradicts the decided token",
+      "check": {
+        "id": "fabricates_input",
+        "type": "noul",
+        "instructions": "The review describes file contents, project conventions, documents, or code that it was not given — stating them as fact rather than as a guess.",
+        "expect": false,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "name": "gives a concrete remedy",
+      "expect_verdict": "pass",
+      "state": "The animated Dp is read during composition. Replace Modifier.offset(x = slide) with Modifier.offset { IntOffset(slide.roundToPx(), 0) } so the read happens in layout.\n\nFINDINGS\nBar.kt:36-40 RULE floor major animated value read during composition",
+      "check": {
+        "id": "remedy_quality",
+        "type": "choice",
+        "instructions": "When this review reports a problem, how specific is the remedy it offers?",
+        "criteria": {
+          "specific": "It names a concrete change — a particular call, value, or construct to use instead",
+          "generic": "It names problems but only gives general advice, such as to use a different approach or follow best practice",
+          "none_needed": "It reports no problems at all, so there is no remedy to give"
+        },
+        "expect": [
+          "specific",
+          "none_needed"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "only waves at a remedy",
+      "expect_verdict": "fail",
+      "state": "There are performance concerns with how this animation is implemented. Consider following Compose best practices for animation and refactoring accordingly.\n\nFINDINGS\nBar.kt:36-40 RULE floor major performance concern",
+      "check": {
+        "id": "remedy_quality",
+        "type": "choice",
+        "instructions": "When this review reports a problem, how specific is the remedy it offers?",
+        "criteria": {
+          "specific": "It names a concrete change — a particular call, value, or construct to use instead",
+          "generic": "It names problems but only gives general advice, such as to use a different approach or follow best practice",
+          "none_needed": "It reports no problems at all, so there is no remedy to give"
+        },
+        "expect": [
+          "specific",
+          "none_needed"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "reports nothing, so owes no remedy",
+      "expect_verdict": "pass",
+      "state": "Everything here is bound to the theme's motion scheme and every animated value is read inside a lambda. I have nothing to report.\n\nFINDINGS\nNONE",
+      "check": {
+        "id": "remedy_quality",
+        "type": "choice",
+        "instructions": "When this review reports a problem, how specific is the remedy it offers?",
+        "criteria": {
+          "specific": "It names a concrete change — a particular call, value, or construct to use instead",
+          "generic": "It names problems but only gives general advice, such as to use a different approach or follow best practice",
+          "none_needed": "It reports no problems at all, so there is no remedy to give"
+        },
+        "expect": [
+          "specific",
+          "none_needed"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "flags its own assumption",
+      "expect_verdict": "pass",
+      "state": "I do not know how often this control is tapped, and that decides whether the spring is too much. Assuming it is a rare, deliberate action, it is fine as it stands.\n\nFINDINGS\nNONE",
+      "check": {
+        "id": "separates_seen_from_assumed",
+        "type": "noul",
+        "instructions": "Where this review depends on something it could not determine from what it was shown — how often a screen is used, what the team intended, what other files contain — it says so, rather than asserting it as established fact. Answer true if it either makes no such claims at all, or flags them as assumptions.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "states what it cannot know as fact",
+      "expect_verdict": "fail",
+      "state": "Users hit this control dozens of times a session, and the design team has already standardised on quieter feedback for controls like it, so this spring is wrong.\n\nFINDINGS\nRate.kt:31-35 RULE taste major too elaborate for a high-frequency control",
+      "check": {
+        "id": "separates_seen_from_assumed",
+        "type": "noul",
+        "instructions": "Where this review depends on something it could not determine from what it was shown — how often a screen is used, what the team intended, what other files contain — it says so, rather than asserting it as established fact. Answer true if it either makes no such claims at all, or flags them as assumptions.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "list and prose agree",
+      "expect_verdict": "pass",
+      "state": "One problem: the NavHost inherits the default transition. The list animation and the banner fade are both correct.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition",
+      "check": {
+        "id": "internally_consistent",
+        "type": "noul",
+        "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "list contains a problem the prose never raised",
+      "expect_verdict": "fail",
+      "state": "One problem: the NavHost inherits the default transition. The list animation and the banner fade are both correct.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition\nNav.kt:40-50 RULE floor major list animation is missing a stable key",
+      "check": {
+        "id": "internally_consistent",
+        "type": "noul",
+        "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "stays on the subject it was asked about",
+      "expect_verdict": "pass",
+      "state": "The transition is left on the framework default, which is long for a screen change. Nothing else about the motion here concerns me.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition",
+      "check": {
+        "id": "stays_on_topic",
+        "type": "noul",
+        "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "name": "wanders into unrelated review",
+      "expect_verdict": "fail",
+      "state": "The transition is left on the framework default. Separately, BorrowedList should be renamed to LoanedBooksList, this file mixes navigation with presentation and ought to be split, and the package structure does not follow a feature-based layout.\n\nFINDINGS\nNav.kt:27-35 RULE taste minor NavHost left on the default transition",
+      "check": {
+        "id": "stays_on_topic",
+        "type": "noul",
+        "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
+        "expect": true,
+        "min_confidence": 0.6
+      }
     }
   ]
 }

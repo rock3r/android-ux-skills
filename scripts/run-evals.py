@@ -380,6 +380,13 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
     spec = json.loads(spec_path.read_text())
     where = spec_path.name
 
+    # Universal checks run against every transcript, so they are validated here too — an
+    # uncalibrated one would otherwise reach every case at once.
+    checks_path = skill_dir / "evals" / "judge-checks.json"
+    universal_checks = (
+        json.loads(checks_path.read_text())["universal"] if checks_path.exists() else []
+    )
+
     # check id -> the set of verdicts its calibration items cover.
     calibration_coverage: dict[str, set[str]] = {}
     cal_path = skill_dir / "evals" / "judge-calibration.json"
@@ -474,7 +481,7 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
         # that exact question on states whose reading is already settled — in BOTH
         # directions. Calibrating only on states that should pass would be passed by a
         # classifier that answers "pass" to everything.
-        for chk in case.get("checks", []):
+        for chk in list(case.get("checks", [])) + universal_checks:
             for field in ("id", "type", "instructions", "expect"):
                 if field not in chk:
                     problems.append(

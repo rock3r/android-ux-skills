@@ -1,0 +1,45 @@
+{
+  "description": "Checks applied to every transcript in every battery, regardless of which case it answers or which arm produced it. Nothing here refers to a rule id, to STANDARDS.md, or to the existence of a skill: these ask whether a review is a sensible piece of work on its own terms. That matters for the measurement — a question phrased in our private vocabulary can only be answered well by an arm that shares it, which measures vocabulary again. It also matters practically, since these are the failures that make a reviewer worth switching off, and none of them are visible to span-matching.",
+  "universal": [
+    {
+      "id": "fabricates_input",
+      "type": "noul",
+      "instructions": "The review describes file contents, project conventions, documents, or code that it was not given — stating them as fact rather than as a guess.",
+      "expect": false,
+      "min_confidence": 0.7
+    },
+    {
+      "id": "remedy_quality",
+      "type": "choice",
+      "instructions": "When this review reports a problem, how specific is the remedy it offers?",
+      "criteria": {
+        "specific": "It names a concrete change — a particular call, value, or construct to use instead",
+        "generic": "It names problems but only gives general advice, such as to use a different approach or follow best practice",
+        "none_needed": "It reports no problems at all, so there is no remedy to give"
+      },
+      "expect": ["specific", "none_needed"],
+      "min_confidence": 0.6
+    },
+    {
+      "id": "separates_seen_from_assumed",
+      "type": "noul",
+      "instructions": "Where this review depends on something it could not determine from what it was shown — how often a screen is used, what the team intended, what other files contain — it says so, rather than asserting it as established fact. Answer true if it either makes no such claims at all, or flags them as assumptions.",
+      "expect": true,
+      "min_confidence": 0.6
+    },
+    {
+      "id": "internally_consistent",
+      "type": "noul",
+      "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+      "expect": true,
+      "min_confidence": 0.6
+    },
+    {
+      "id": "stays_on_topic",
+      "type": "noul",
+      "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
+      "expect": true,
+      "min_confidence": 0.6
+    }
+  ]
+}

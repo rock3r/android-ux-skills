@@ -154,6 +154,20 @@ Those become `checks`, graded by `scripts/judge-evals.py` against the saved tran
 ./scripts/judge-evals.py --report report.json --out judge.json
 ```
 
+Checks come in two kinds. **Universal** checks in `judge-checks.json` run against every
+transcript in every battery and ask whether the review is a sensible piece of work at all:
+does it invent files it was not given, does it name a concrete change or only wave at one,
+does it separate what it saw from what it assumed, do its prose and its findings list agree,
+does it stay on the subject it was asked about. None of them mentions a rule id, this
+repository, or the existence of a skill — so the classifier cannot tell which arm it is
+reading, and answering well does not depend on sharing our vocabulary. **Case** checks are
+the per-case ones, and they do know what was planted.
+
+The split matters beyond tidiness: a question phrased in our private vocabulary can only be
+answered well by an arm that shares it, which measures vocabulary all over again. The
+universal checks are also where the failures that get a reviewer switched off actually live,
+and span-matching cannot see any of them.
+
 **It is a classifier, not a judge model.** `run-evals.py` refuses to score anything with an
 LLM because a model comparing two prose reviews rewards length, confidence, vocabulary and
 finding count, and the with-skill arm wins on all four before correctness enters. Jev
