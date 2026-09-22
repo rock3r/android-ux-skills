@@ -139,7 +139,40 @@ is the pass in the first and a failure in the second — but note that **whether
 actually asks is not machine-checked**. Only the assertion is. Read the transcript for the
 question; the number only tells you it did not assert.
 
-## The qualitative pass
+## Three passes, each doing only what it is suited to
+
+| Pass | Question | Method |
+|---|---|---|
+| `run-evals.py` | did it name the right lines | deterministic set-matching |
+| `judge-evals.py` | was the review sensible work | a classifier, typed answers |
+| `read-evals.py` | what does the unclear case mean | a language model, prose only |
+
+The third exists because the first two share a limit: neither can explain itself.
+Span-matching says a finding missed and cannot say whether the review nearly had it; the
+classifier says 0.62 and cannot say what it was looking at. Both land on a human, and
+reading transcripts by hand is how an eval suite stops being run.
+
+```bash
+./scripts/read-evals.py --report report.json --judge judge.json --out reading.md
+./scripts/read-evals.py --report report.json --judge judge.json --full   # read everything
+```
+
+It scores nothing, and nothing it produces feeds a number — which is the same reason
+`run-evals.py` keeps models away from its grading. It is told nothing about which arm
+produced a transcript and sees rule ids normalised out, because an explanation that begins
+"this is the one with the skill" explains our expectations rather than the text.
+
+It also turns out to be the best critic of the classifier's questions. On its first real
+run it argued that three of them were compound — that `fabricates_input` fired on any
+mention of specific code because the clause that mattered, *that the review was never
+given it*, sat buried behind the clause that did not — and that `conformance_claim` was
+missing a case reviews legitimately fall into, judging against framework guidance without
+claiming to know this project's conventions. All three were right, and fixing them moved
+the classifier off the fence. Its prompt asks explicitly whether the *review* is
+borderline, the question is badly posed, or the acceptable answers are incomplete, so that
+blaming the question is a finding rather than a default.
+
+## The classifier pass
 
 Set-matching catches whether the right line was named. Most of what a case actually claims
 to test lives in its `expectations` array — "names `offset { }` as the fix", "reports it

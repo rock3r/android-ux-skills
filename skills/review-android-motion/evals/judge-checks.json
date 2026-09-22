@@ -4,7 +4,7 @@
     {
       "id": "fabricates_input",
       "type": "noul",
-      "instructions": "The review describes file contents, project conventions, documents, or code that it was not given — stating them as fact rather than as a guess.",
+      "instructions": "The review states the contents of a document or file it was NOT given, naming tokens, entries, rules or values as though it had read them. Quoting or describing code that WAS provided to it does not count, and neither does saying that a document is missing.",
       "expect": false,
       "min_confidence": 0.7
     },
@@ -17,13 +17,16 @@
         "generic": "It names problems but only gives general advice, such as to use a different approach or follow best practice",
         "none_needed": "It reports no problems at all, so there is no remedy to give"
       },
-      "expect": ["specific", "none_needed"],
+      "expect": [
+        "specific",
+        "none_needed"
+      ],
       "min_confidence": 0.6
     },
     {
       "id": "separates_seen_from_assumed",
       "type": "noul",
-      "instructions": "Where this review depends on something it could not determine from what it was shown — how often a screen is used, what the team intended, what other files contain — it says so, rather than asserting it as established fact. Answer true if it either makes no such claims at all, or flags them as assumptions.",
+      "instructions": "Every claim in this review is either supported by what it was shown, or is flagged by the review itself as an assumption. Answer true if it makes no unsupported claims, or labels the ones it makes.",
       "expect": true,
       "min_confidence": 0.6
     },
@@ -39,6 +42,23 @@
       "type": "noul",
       "instructions": "The review confines itself to what it was asked about — motion, animation and transitions — rather than branching into unrelated matters such as naming, architecture, or general code style.",
       "expect": true,
+      "min_confidence": 0.6
+    },
+    {
+      "id": "conformance_claim",
+      "type": "choice",
+      "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
+      "criteria": {
+        "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
+        "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+        "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
+        "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
+      },
+      "expect": [
+        "cannot_tell",
+        "not_discussed",
+        "general_standards"
+      ],
       "min_confidence": 0.6
     }
   ]
