@@ -274,6 +274,18 @@ empty = ev.grade([], [], [])
 check("an undefined rate does not become 0.0",
       ev.mean_grades([empty, empty])["taste"]["recall"] is None)
 
+print("an empty response is not a clean review")
+
+# A model that exits 0 with an empty body has not reviewed anything, but it scores as
+# though it looked and found nothing: no findings, no false positives, perfect precision.
+# Indistinguishable from a genuinely clean fixture unless it is caught here.
+check("empty output parses to nothing", P("") == [])
+check("and so does whitespace", P("   \n\n  ") == [])
+# The guard itself lives in run_arm, which needs a subprocess; this pins the contract that
+# an empty transcript must never look like a successful arm.
+check("an errored arm is marked failed, not clean",
+      ev.ArmResult(arm="x", error="[EMPTY_OUTPUT] exited 0 with no output").findings == [])
+
 print("actor resolution")
 
 # `pi` on PATH is a symlink into a node package. Passed to pioneer as-is, the sandbox

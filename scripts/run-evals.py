@@ -376,6 +376,15 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         # the boilerplate and discards the actual failure.
         return ArmResult(arm=arm, raw=proc.stdout,
                          error=proc.stderr.strip()[-600:])
+    if not proc.stdout.strip():
+        # Exit 0 and nothing on stdout is not a clean review, it is a review that never
+        # happened. Left alone it scores as "looked and found nothing": zero misses
+        # attributable to anything, zero false positives, perfect precision — and it is
+        # indistinguishable from a genuinely clean fixture. Observed on two cases where a
+        # model returned success with an empty body, which cost the skill both floor
+        # findings in that run.
+        return ArmResult(arm=arm, raw="", error="[EMPTY_OUTPUT] exited 0 with no output")
+
     found, unparsed = parse_findings(proc.stdout)
     return ArmResult(arm=arm, raw=proc.stdout, findings=found, unparsed=unparsed)
 
