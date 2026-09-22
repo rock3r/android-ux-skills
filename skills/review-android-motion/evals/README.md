@@ -177,6 +177,29 @@ no way to say anything outside the schema. Every answer carries a calibrated pro
 so a question it is unsure about becomes an **abstention routed to a human** rather than a
 confident guess folded into a number.
 
+**The classifier is not deterministic.** Measured on one unchanged calibration state,
+the same question returned 0.67 on one call and above 0.70 on the next — enough to flip a
+verdict across a threshold and to make the calibration gate itself flap between runs.
+`--samples` (default 3) asks each question several times and averages the *distributions*,
+which is the right operation because the probability is the quantity being thresholded. All
+questions for one state travel in a single request, so this is cheap.
+
+**Calibration counts three outcomes, not two.** Answering the opposite of a settled reading
+means the classifier cannot be trusted; declining to answer only means it is cautious near
+that boundary. Folding them together made the gate flap on a single borderline item while
+saying nothing about whether it had ever actually been wrong. Only *wrong* answers count
+against the floor; undecided ones are reported separately. On the current 25-item set the
+classifier has not yet been wrong once — it declines on one item and answers the rest.
+
+**Thresholds are about the acceptable set, not the winning option.** For a `choice`, the
+question is "is the answer one we accept", so the test is the probability mass those
+answers hold — not the returned `confidence`, which measures spread across *all* options
+and so falls as options are added. This was a real bug: on a review that plainly asked a
+question, Jev returned `asks` 0.6, `scopes` 0.4 and exactly zero on both wrong answers, at
+`confidence` 0.47. Every bit of mass sat on the two answers we accept, and the old logic
+recorded it as an abstention. It failed worst precisely where several answers are
+deliberately acceptable.
+
 **Schema-safety is not accuracy.** A constrained model can still be confidently wrong about
 a valid option. So `judge-calibration.json` holds hand-written responses whose reading is
 unambiguous, the classifier answers those first on every invocation, and if it gets any of

@@ -156,6 +156,51 @@ def ask(state: str, questions: dict, api_key: str, timeout: int = 60) -> dict:
         raise SystemExit(f"could not reach {ENDPOINT}: {e.reason}") from e
 
 
+def ask_averaged(state: str, questions: dict, api_key: str, samples: int = 3) -> dict:
+    """Ask the same questions several times and average the distributions.
+
+    Jev is not deterministic. Measured here on one unchanged calibration state, the same
+    question came back at 0.67 on one call and above 0.70 on the next — enough to flip a
+    verdict across a threshold, and enough to make the calibration gate itself flap between
+    runs. A single sample near a boundary is a coin toss dressed as a number.
+
+    Averaging the probabilities is the right operation rather than voting on the verdicts,
+    because the probability is the quantity being thresholded. It is affordable because all
+    questions for one state travel in a single request and each round trip is fast.
+    """
+    if samples <= 1:
+        return ask(state, questions, api_key)["answers"]
+
+    runs = [ask(state, questions, api_key)["answers"] for _ in range(samples)]
+    merged: dict = {}
+    for name in questions:
+        answers = [r[name] for r in runs]
+        kind = answers[0]["type"]
+        out: dict = {"type": kind}
+
+        if kind == "noul":
+            out["noul"] = sum(a["noul"] for a in answers) / len(answers)
+        else:
+            keys = {k for a in answers for k in (a.get("probabilities") or {})}
+            if keys:
+                out["probabilities"] = {
+                    k: sum((a.get("probabilities") or {}).get(k, 0.0) for a in answers)
+                    / len(answers)
+                    for k in keys
+                }
+            if kind == "choice":
+                # The winner of the averaged distribution, not a vote of per-run winners.
+                out["choice"] = (max(out["probabilities"], key=out["probabilities"].get)
+                                 if keys else answers[0]["choice"])
+            else:
+                out["score"] = sum(a["score"] for a in answers) / len(answers)
+                if "legend" in answers[0]:
+                    out["legend"] = answers[0]["legend"]
+        out["confidence"] = sum(a.get("confidence", 0.0) for a in answers) / len(answers)
+        merged[name] = out
+    return merged
+
+
 def to_question(check: dict) -> dict:
     """The check as Jev's API wants it. `expect` and `min_confidence` stay on our side."""
     q = {"type": check["type"], "instructions": check["instructions"]}
@@ -184,25 +229,49 @@ def verdict(check: dict, answer: dict) -> tuple[str, float, str]:
             return "abstain", p, f"{p:.2f} is inside the undecided band around {floor}"
         return ("pass" if got is want else "fail"), p, f"read as {got}, wanted {want}"
 
-    if check["type"] == "choice":
-        choice, conf = answer["choice"], answer.get("confidence", 0.0)
-        want = check["expect"]
-        want = want if isinstance(want, list) else [want]
-        if conf < floor:
-            return "abstain", conf, f"chose {choice!r} at only {conf:.2f}"
-        return ("pass" if choice in want else "fail"), conf, f"chose {choice!r}"
+    # For choice and score the question being asked is "is the answer in the acceptable
+    # set", so threshold on the mass that set holds — not on `confidence`, which measures
+    # spread across ALL options and is therefore lower the more options there are.
+    #
+    # This is not hypothetical. Given a review that plainly asks a question, Jev returned
+    # asks 0.6, scopes 0.4, asserts 0.0, silent 0.0 — every bit of mass on the two
+    # acceptable answers, none on either wrong one — with confidence 0.47. It was certain
+    # the answer was acceptable and merely undecided which label fitted best, and the old
+    # logic recorded that as an abstention. The failure was worst exactly where several
+    # answers are deliberately acceptable, which is the subtlest class of question here.
+    if check["type"] in ("choice", "score"):
+        probs = answer.get("probabilities") or {}
 
-    if check["type"] == "score":
-        score, conf = answer["score"], answer.get("confidence", 0.0)
-        lo, hi = check["expect"]
-        if conf < floor:
-            return "abstain", conf, f"scored {score} at only {conf:.2f}"
-        return ("pass" if lo <= score <= hi else "fail"), conf, f"scored {score}"
+        if check["type"] == "choice":
+            want = check["expect"]
+            want = want if isinstance(want, list) else [want]
+            got, picked = answer["choice"], repr(answer["choice"])
+            acceptable = set(want)
+        else:
+            lo, hi = check["expect"]
+            got = answer["score"]
+            picked = f"score {got}"
+            acceptable = {k for k in probs if lo <= float(k) <= hi}
+
+        if not probs:  # no distribution to reason about; fall back to the point answer
+            conf = answer.get("confidence", 0.0)
+            in_set = got in acceptable if check["type"] == "choice" else (
+                check["expect"][0] <= got <= check["expect"][1])
+            if conf < floor:
+                return "abstain", conf, f"{picked} at only {conf:.2f}, no distribution"
+            return ("pass" if in_set else "fail"), conf, picked
+
+        mass = sum(v for k, v in probs.items() if k in acceptable)
+        if mass >= floor:
+            return "pass", mass, f"{picked}; {mass:.2f} on acceptable answers"
+        if mass <= 1 - floor:
+            return "fail", mass, f"{picked}; only {mass:.2f} on acceptable answers"
+        return "abstain", mass, f"{picked}; {mass:.2f} is inside the undecided band"
 
     raise SystemExit(f"unknown check type {check['type']!r}")
 
 
-def calibrate(api_key: str, path: Path, floor: float = 0.9) -> bool:
+def calibrate(api_key: str, path: Path, floor: float = 0.9, samples: int = 3) -> bool:
     """Answer questions whose answers we already know, before trusting any we do not.
 
     Each item is a hand-written response with an unambiguous reading. If the classifier
@@ -215,23 +284,39 @@ def calibrate(api_key: str, path: Path, floor: float = 0.9) -> bool:
     items = json.loads(path.read_text())["items"]
     print(f"calibrating against {len(items)} known answers", file=sys.stderr)
 
-    failures = 0
+    # Three outcomes, not two. Answering the opposite of a settled reading is a different
+    # and far worse failure than declining to answer: the first means the classifier cannot
+    # be trusted, the second only means it is cautious near this boundary. Counting them
+    # together made the gate flap between runs on a single item sitting either side of a
+    # threshold, while telling us nothing about whether it was ever actually wrong.
+    wrong, unsure = 0, 0
     for item in items:
         check = item["check"]
-        answers = ask(item["state"], {check["id"]: to_question(check)}, api_key)
-        got, p, why = verdict(check, answers["answers"][check["id"]])
+        answers = ask_averaged(item["state"], {check["id"]: to_question(check)},
+                               api_key, samples)
+        got, p, why = verdict(check, answers[check["id"]])
         want = item["expect_verdict"]
-        ok = got == want
-        failures += not ok
-        print(f"  {'ok  ' if ok else 'FAIL'}  {item['name']:<44} {got:<7} ({why})",
+
+        if got == want:
+            label = "ok    "
+        elif got == "abstain":
+            label = "unsure"
+            unsure += 1
+        else:
+            label = "WRONG "
+            wrong += 1
+        print(f"  {label}  {item['name']:<44} {got:<7} ({why})", file=sys.stderr)
+
+    if unsure:
+        print(f"\n  {unsure} of {len(items)} undecided — cautious here, not incorrect",
               file=sys.stderr)
 
-    accuracy = 1 - failures / len(items)
-    if failures:
+    accuracy = 1 - wrong / len(items)
+    if wrong:
         # Not all-or-nothing. A constrained model can be confidently wrong about a valid
         # option, and one borderline item is a known, accepted cost rather than grounds to
         # throw away the rest. Below the floor, though, the numbers are noise.
-        print(f"\n  calibration accuracy {accuracy:.0%} ({failures} of {len(items)} wrong)",
+        print(f"\n  calibration accuracy {accuracy:.0%} ({wrong} of {len(items)} wrong)",
               file=sys.stderr)
         if accuracy < floor:
             print(f"  below the {floor:.0%} floor — judge output withheld. A classifier "
@@ -269,7 +354,7 @@ def specs_by_case(skill: str) -> dict[tuple[str, int], dict]:
 
 
 def judge(report: list[dict], skill: str, api_key: str,
-          budget_report: list | None = None) -> list[dict]:
+          budget_report: list | None = None, samples: int = 3) -> list[dict]:
     specs = specs_by_case(skill)
     universal = universal_checks(skill)
     budget_report = budget_report if budget_report is not None else []
@@ -295,9 +380,10 @@ def judge(report: list[dict], skill: str, api_key: str,
                     # truncate the END of an overlong state — which is exactly where
                     # the findings block sits.
                     budget_report.append((len(state) // 4, path))
-                    answers = ask(
-                        state, {c["id"]: to_question(c) for c in checks}, api_key
-                    )["answers"]
+                    answers = ask_averaged(
+                        state, {c["id"]: to_question(c) for c in checks}, api_key,
+                        samples
+                    )
                     for c in checks:
                         got, p, why = verdict(c, answers[c["id"]])
                         results.append({
@@ -347,6 +433,10 @@ def main() -> int:
     ap.add_argument("--skill", default="review-android-motion")
     ap.add_argument("--calibration", default=None)
     ap.add_argument("--calibrate-only", action="store_true")
+    ap.add_argument("--samples", type=int, default=3,
+                    help="calls per question, averaged. The classifier is not "
+                         "deterministic and a single sample near a threshold is a "
+                         "coin toss")
     ap.add_argument("--calibration-floor", type=float, default=0.9,
                     help="withhold judge output below this calibration accuracy")
     ap.add_argument("--out", default=None)
@@ -359,7 +449,7 @@ def main() -> int:
     calibration = Path(args.calibration) if args.calibration else (
         ROOT / "skills" / args.skill / "evals" / "judge-calibration.json"
     )
-    if not calibrate(api_key, calibration, args.calibration_floor):
+    if not calibrate(api_key, calibration, args.calibration_floor, args.samples):
         return 1
     if args.calibrate_only:
         return 0
@@ -370,7 +460,7 @@ def main() -> int:
 
     sizes: list[tuple[int, str]] = []
     results = judge(json.loads(Path(args.report).read_text()), args.skill, api_key,
-                    sizes)
+                    sizes, args.samples)
     if sizes:
         biggest, where = max(sizes)
         print(f'\nlargest state classified: ~{biggest} tokens ({Path(where).name})',

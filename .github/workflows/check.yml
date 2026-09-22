@@ -57,6 +57,12 @@ jobs:
         # failed in CI while every local check passed.
         run: ./scripts/test-run-evals.py
 
+      - name: Classifier verdict logic behaves as specified
+        # Pure functions, no API key and no network. Reading the classifier's answer is
+        # where the one real bug so far lived: thresholding a multi-option choice on its
+        # `confidence` rather than on the mass held by the answers we accept.
+        run: ./scripts/test-judge-evals.py
+
       - name: Eval batteries parse and plan
         run: ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
 

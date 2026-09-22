@@ -37,6 +37,7 @@ run "skill references in sync" ./scripts/sync-references.sh --check
 run "registry contract" ./scripts/check-skills.sh
 run "eval fixtures do not leak" ./scripts/check-fixture-leaks.sh
 run "eval grader tests" ./scripts/test-run-evals.py
+run "judge verdict tests" ./scripts/test-judge-evals.py
 run "eval batteries plan" ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
 
 if [[ $fail -ne 0 ]]; then
