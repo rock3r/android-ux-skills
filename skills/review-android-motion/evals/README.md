@@ -300,7 +300,31 @@ three forms:
 There is deliberately no `--api-key` flag, because an argument is visible in the process
 table and in shell history.
 
-#### When the vault is on a different machine from the runner
+#### Preferred: an Amp secret injected into the runner
+
+If the evals run on an Amp runner, store the key as an Amp secret and let the runner
+inject it. `load_key()` reads `TYPESAFE_API_KEY` before anything else, so nothing here
+needs changing. Set it from the machine that has the vault, piping through stdin so the
+value never reaches argv, shell history or a disk:
+
+```bash
+op read "op://Private/TypeSafe/test api key" \
+  | amp secrets set TYPESAFE_API_KEY --user --secret --data-file -
+```
+
+Then start the runner with `--amp-env` (or set `amp.runner.env.enabled`), which injects
+workspace, project and personal secrets into the shell commands of the threads it serves.
+Without that flag the secret exists but is never delivered — worth checking, because a
+configured secret and an injected one look identical from the settings page.
+
+Two things to weigh. The injected value is in the environment of *every* command the
+runner's threads execute, not only this one, so it leaks more readily into incidental
+output than a file read on demand; Amp redacts known secret values, which reduces that
+without eliminating it. And user scope means every thread that runner serves receives it,
+not only work on this project — project scope is tighter where the repository is an Amp
+project.
+
+#### Otherwise: when the vault is on a different machine from the runner
 
 The obvious spec — `!ssh vaultmachine 'op read "op://..."'` — **does not work**, and it is
 worth knowing why before trying it. 1Password's desktop-app integration is bound to your
