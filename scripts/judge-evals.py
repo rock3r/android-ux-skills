@@ -382,7 +382,12 @@ def judge(report: list[dict], skill: str, api_key: str,
         bname = battery["battery"]
         for case in battery["cases"]:
             spec = specs.get((bname, case["case"]))
-            checks = universal + (spec or {}).get("checks", [])
+            staged = {Path(x).name for x in (spec or {}).get("files", [])}
+            # Some questions only have a right answer when something was NOT provided:
+            # whether a review claims to know conventions it was never shown is moot once
+            # it has been shown them.
+            checks = [c for c in universal + (spec or {}).get("checks", [])
+                      if c.get("skip_when_staged") not in staged]
             if not checks:
                 continue
 

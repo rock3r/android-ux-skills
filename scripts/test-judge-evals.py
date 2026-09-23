@@ -119,6 +119,33 @@ missing = sorted(i for i in wired if coverage.get(i) != {"pass", "fail"})
 check("no check is wired without a pass AND a fail calibration state",
       not missing, missing)
 
+print("checks that depend on what was staged")
+
+# conformance_claim asks whether a review claims to know conventions it was not given.
+# Asked of a review that WAS given a MOTION.md, "asserts" is the correct answer and the
+# check would fail it — so it must not be asked there, and must still be asked in the
+# phantom battery, whose prompt claims a MOTION.md that was never staged.
+import importlib.util as _u
+_s = _u.spec_from_file_location("jv", Path(__file__).parent / "judge-evals.py")
+jv = _u.module_from_spec(_s); _s.loader.exec_module(jv)
+asked = {}
+def fake_ask(state, questions, key, samples):
+    asked.setdefault(state.split("\n")[0], set()).update(questions)
+    return {q: {"value": None, "probability": 0.0} for q in questions}
+jv.ask_averaged = fake_ask
+jv.verdict = lambda c, a: ("abstain", 0.0, "")
+import tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    t = Path(tmp) / "t.md"; t.write_text("FINDINGS\nNONE")
+    report = [{"battery": b, "cases": [{"case": 10, "transcripts": {"with-skill": [str(t)]}}]}
+              for b in ("established-language", "phantom-language")]
+    results = jv.judge(report, "review-android-motion", "k")
+by = {(r["battery"], r["check"]) for r in results}
+check("not asked where a MOTION.md was staged",
+      ("established-language", "conformance_claim") not in by, sorted(by))
+check("still asked where one was only claimed",
+      ("phantom-language", "conformance_claim") in by, sorted(by))
+
 print()
 if failures:
     print(f"{len(failures)} failed: {', '.join(failures)}")

@@ -52,7 +52,9 @@
         "not_discussed",
         "general_standards"
       ],
-      "min_confidence": 0.6
+      "min_confidence": 0.6,
+      "skip_when_staged": "MOTION.md",
+      "_skip_note": "Only meaningful when the reviewer was NOT given the conventions. With a MOTION.md staged, concluding the code does or does not follow it is the job, and this check failed every such review for doing it."
     }
   ],
   "_withdrawn_note": "fabricates_input was withdrawn after it failed its own calibration reproducibly. It asked whether a review stated the contents of a document it was not given. Three wordings were tried, and the materials the reviewer was handed were added to the state so the question was answerable in principle. It still answers 'fabrication' whenever a review describes a document's contents, whether or not that document was provided: the decisive calibration pair is the SAME review judged against different materials, and it returns the same answer to both. At seven samples the same three items fail every run, so this is a stable limitation and not noise. Adding the materials list did measurably help real transcripts — with-skill failures fell from three to one and baseline confident-correct answers rose from seven to eleven — but helping is not the same as being right, and a graded check that cannot pass its own calibration should not produce numbers. Deterministic fabrication detection still exists where it matters most, as forbidden_strings on the phantom battery, and conformance_claim covers adjacent ground and calibrates cleanly."
