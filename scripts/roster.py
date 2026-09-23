@@ -47,6 +47,15 @@ def available_ids() -> set[str]:
     return ids
 
 
+def _one_per_family(entries: list[dict]) -> list[dict]:
+    seen, out = set(), []
+    for e in entries:
+        if e.get("family", e["model"]) not in seen:
+            seen.add(e.get("family", e["model"]))
+            out.append(e)
+    return out
+
+
 def resolve(requested: str | None, tier: str, want: int,
             allow_single: bool = False, check_reachable: bool = True) -> list[dict]:
     """The models to use: an explicit list, or the first reachable ones from a tier.
@@ -66,10 +75,13 @@ def resolve(requested: str | None, tier: str, want: int,
     elif not check_reachable:
         # A plan runs nothing, so what this machine can reach is beside the point. CI has
         # no pi at all, and asking it failed every push from the day this was added.
-        chosen = list(entries)[:want or minimum]
+        chosen = _one_per_family(entries)[:want or minimum]
     else:
         reachable = available_ids()
-        chosen = [e for e in entries if e["model"] in reachable][:want or minimum]
+        # Families are thinned before the cut, not after: a fallback listed under its
+        # preferred model would otherwise take the second slot and leave a pass of one.
+        chosen = _one_per_family([e for e in entries
+                                  if e["model"] in reachable])[:want or minimum]
         skipped = [e["model"] for e in entries if e["model"] not in reachable]
         if skipped:
             print(f"roster: {len(skipped)} entry(ies) not reachable here — "

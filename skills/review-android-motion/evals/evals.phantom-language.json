@@ -37,7 +37,7 @@
             53,
             68
           ],
-          "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
+          "note": "StatusBanner matches the OBSERVED status-banner entry exactly."
         }
       ],
       "expectations": [

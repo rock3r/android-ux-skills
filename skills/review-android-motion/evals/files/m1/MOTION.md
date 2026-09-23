@@ -23,10 +23,12 @@ Where this file and M3E are both silent, ask rather than assume.
 - **Binding** — `AppMotion.surfaceExpand`
 - **Tag** — `DECIDED`
 
-### Status and banner fades
+### Status banners
 
 - **Intent** — Barely noticed. It should register without pulling the eye.
-- **Binding** — `defaultEffectsSpec()` in, `fastEffectsSpec()` out, from `MaterialTheme.motionScheme`
+- **Binding** — From `MaterialTheme.motionScheme`: the banner's slot expands on
+  `defaultSpatialSpec()` while it fades in on `defaultEffectsSpec()`; it fades out on
+  `fastEffectsSpec()` while the slot collapses on `fastSpatialSpec()`
 - **Tag** — `OBSERVED`
 
 ## Exceptions

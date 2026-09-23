@@ -5,9 +5,14 @@
   "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which sees only part of the host's configuration: pioneer copies exactly five root files into the sandboxed pi home — auth.json, models.json, models-store.json, settings.json and AGENTS.md (pioneer src/pi-home.ts, DEFAULT_ROOT_FILES). Per-provider catalogues such as claude-code-models.json and kimi-code-models.json are NOT copied, so those providers resolve on the host and fail inside the sandbox with 'model not found'. That is a pioneer fix, not a roster one. Everything listed here is verified to answer inside the sandbox.",
   "arms": [
     {
+      "model": "openai-codex/gpt-6-luna",
+      "family": "gpt-luna",
+      "note": "Verified inside the sandbox. Cheaper per run than 5.6 and at least as capable."
+    },
+    {
       "model": "openai-codex/gpt-5.6-luna",
       "family": "gpt-luna",
-      "note": "Verified inside the sandbox."
+      "note": "Verified inside the sandbox. Fallback for gpt-6-luna; same family, so never both in one pass."
     },
     {
       "model": "zai/glm-5.3",
@@ -34,7 +39,7 @@
       "note": "The custom Claude Code provider. Host-only: see _arms_note for why it cannot be an arm."
     },
     {
-      "model": "openai-codex/gpt-5.6-luna",
+      "model": "openai-codex/gpt-6-luna",
       "thinking": "high",
       "family": "gpt-luna",
       "note": "A different house from Claude, which is the point of pairing them."
@@ -59,15 +64,10 @@
   "_sota_note": "A periodic manual pass, not something to leave in a loop. Use for a considered re-read when a result matters or a conclusion is about to be acted on.",
   "sota": [
     {
-      "model": "openai-codex/gpt-6-astra",
+      "model": "openrouter/anthropic/claude-opus-5.5",
+      "family": "claude-opus",
       "thinking": "high",
-      "family": "gpt-astra",
-      "note": "Verified inside the sandbox, so this one can be an arm as well as a reader."
-    },
-    {
-      "model": "claude-code/claude-opus-5",
-      "thinking": "high",
-      "family": "claude-opus"
+      "note": "Through OpenRouter, billed per token: the only route to Opus 5.5 that runs inside the sandbox, since claude-code is an extension provider (pioneer#81) and its catalogue does not list 5.5. Run with --runs 1 unless a repeat is worth paying for."
     },
     {
       "model": "claude-code/claude-fable-5-1",
@@ -84,6 +84,17 @@
       "model": "kimi-code/k3",
       "thinking": "high",
       "family": "kimi"
+    },
+    {
+      "model": "claude-code/claude-opus-5",
+      "thinking": "high",
+      "family": "claude-opus"
+    },
+    {
+      "model": "openai-codex/gpt-6-astra",
+      "thinking": "high",
+      "family": "gpt-astra",
+      "note": "Verified inside the sandbox, so this one can be an arm as well as a reader. Demoted: it draws on the same Codex quota as the arms."
     }
   ],
   "_jetbrains_note": "JetBrains is deliberately absent from every default. Its catalogue is incomplete, so a model named there may not be the model you think you are running. Use it only when it genuinely carries the model you want and nothing else does, and then only as a fallback."
