@@ -515,7 +515,7 @@ targeting Android 16+ on an Android 16+ device, "`onBackPressed` is not called a
 Nothing about the animation changes; the user's relationship to it does.
 
 **Scope: motion the user meets through their own input or navigation.** The outcome of
-work they did not start is outside it.
+background work, including work they asked for, is outside it.
 
 **Rule.**
 
@@ -911,26 +911,37 @@ navigational direction. Neither reads the *valence* of a change.
 
 ---
 
-### T-028 — Work the user did not start finishes quietly
+### T-028 — Background work finishes quietly
 
-**Detect: review-only.** Whether the user started the work is not always in the source.
+**Detect: review-only.** Who started the work, and what a failure affects, are not always
+in the source.
 
 **Claim.** Motion claims attention for something that just happened to the user. Spent on
-the outcome of work they never asked for, it interrupts whatever they are doing to report
-on the app's own housekeeping.
+the outcome of background work, it interrupts whatever they are doing to report on the
+app's own housekeeping.
 
-**Scope: the outcome of background work** — a periodic sync, a prefetch, an upload the
-system resumed. Work the user started and is waiting on is outside it.
+**Scope: work that runs in the background and its outcome**, whether the system scheduled
+it or the user asked for it — a periodic or manual sync, a prefetch, an upload the system
+resumed. Work the current screen is blocked on, such as submitting a form, is outside it.
 
-**Rule.** While it runs, background work may show that it is running, quietly and in
-place. When it succeeds, nothing on screen moves. When it fails, the current screen shows
-the failure prominently only if the failure affects what that screen shows; otherwise the
-failure belongs in a notification.
+**Rule.**
+
+- **While it runs**, it may show that it is running, quietly and in place.
+- **When it succeeds**, the running indicator goes away and nothing else moves. Where the
+  user asked for the work through a control — a Sync now button, pull to refresh — one
+  transient confirmation is permitted, provided it neither blocks, covers nor displaces
+  what the user is reading: a snackbar, or the control itself briefly showing done. Never
+  a dialog.
+- **When it fails**, the current screen shows the failure prominently only if the failure
+  affects what that screen shows. Otherwise the failure goes to a notification: the work's
+  own ongoing notification where it has one, updated in place rather than posted anew, so
+  a failure that repeats does not alert the user again.
 
 **Pinned.** developer.android.com, "Foreground services overview": foreground services
 "show a status bar notification, to make users aware that your app is performing a task".
-A long-running background job therefore already has a home for its progress and its
-outcome, and it is not the screen the user is reading.
+"Create a notification": calling `notify()` again with the same ID updates the existing
+notification, and `setOnlyAlertOnce()` makes it interrupt "only the first time the
+notification appears and not for later updates".
 
 **Why it is ours.** Material specifies how to show progress, not whose progress deserves
 the screen. The split between the app's work and the user's is a judgment no source makes.
@@ -1028,7 +1039,7 @@ regardless of MOTION.md.
 | T-020 | Emil — cohesion | Scheme and tier, not one spec |
 | T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, drag parity, restraint |
 | T-027 | Original | Motion answers to the valence of a change, not only its shape |
-| T-028 | Original | Background work does not take the screen to report success |
+| T-028 | Original | Background work does not take the screen to report its outcome |
 
 Eighteen of thirty-four derive from an existing source.
 
