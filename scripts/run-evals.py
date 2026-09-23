@@ -641,6 +641,15 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
             transcripts.mkdir(parents=True, exist_ok=True)
             (transcripts / "prompt.md").write_text(prompt)
 
+        # Pioneer prepares one directory per arm. Each repeat needs its own, copied from
+        # that pristine one before any run touches it: without this every repeat ran in a
+        # directory that did not exist, so --runs 2 failed every arm and reported nothing.
+        if runs > 1 and not dry:
+            for arm in ("baseline", "with-skill"):
+                for n in range(runs):
+                    shutil.copytree(case_dir / arm, case_dir / f"{arm}-run{n + 1}",
+                                    symlinks=True)
+
         arms: dict[str, list[ArmResult]] = {"baseline": [], "with-skill": []}
         saved: dict[str, list[str]] = {"baseline": [], "with-skill": []}
         for n in range(runs):
