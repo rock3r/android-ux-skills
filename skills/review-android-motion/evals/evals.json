@@ -142,6 +142,160 @@
       ]
     },
     {
+      "id": 21,
+      "title": "A · F-003 missing key, keyed twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: LoanHistory.kt",
+      "files": [
+        "evals/files/c21/LoanHistory.kt"
+      ],
+      "expect": [
+        {
+          "path": "LoanHistory.kt",
+          "lines": [
+            14,
+            20
+          ],
+          "rule": "F-003",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "LoanHistory.kt",
+          "lines": [
+            25,
+            36
+          ],
+          "note": "Holds keys each item by its id, so animateItem() has an identity to animate. The same construct as LoanHistory with the key present."
+        }
+      ],
+      "expectations": [
+        "Flags LoanHistory's items() with animateItem() and no key",
+        "Names a key derived from the loan's identity as the fix",
+        "Does NOT flag Holds, which is keyed by id"
+      ]
+    },
+    {
+      "id": 22,
+      "title": "A · T-021 positional key, identity-keyed twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: ReadingQueue.kt",
+      "files": [
+        "evals/files/c22/ReadingQueue.kt"
+      ],
+      "expect": [
+        {
+          "path": "ReadingQueue.kt",
+          "lines": [
+            14,
+            20
+          ],
+          "rule": "T-021",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ReadingQueue.kt",
+          "lines": [
+            25,
+            36
+          ],
+          "note": "FinishedThisYear uses itemsIndexed too, and shows the index, but keys by the book's id. Using the index for display is fine; using it as the key is the defect."
+        }
+      ],
+      "expectations": [
+        "Flags UpNext's key = { index, _ -> index }: stable, present, and derived from position",
+        "Explains that inserting one book shifts every later key, so the whole list re-animates",
+        "Does NOT flag FinishedThisYear, which displays the index but keys by id",
+        "Does NOT report the positional key as a missing key"
+      ]
+    },
+    {
+      "id": 23,
+      "title": "A · T-017 entrance replays on return, remembered twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Artwork.kt",
+      "files": [
+        "evals/files/c23/Artwork.kt"
+      ],
+      "expect": [
+        {
+          "path": "Artwork.kt",
+          "lines": [
+            21,
+            25
+          ],
+          "rule": "T-017",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Artwork.kt",
+          "lines": [
+            35,
+            53
+          ],
+          "note": "AuthorPortrait keeps whether it has introduced itself in rememberSaveable, which the back stack restores, so returning to the author screen does not replay the fade."
+        }
+      ],
+      "expectations": [
+        "Flags BookCover's LaunchedEffect(Unit): it re-runs whenever the composable re-enters composition, so the fade replays on every return from a detail screen",
+        "Names a flag in rememberSaveable or the screen's state holder as the fix",
+        "Does NOT flag AuthorPortrait, which already does exactly that"
+      ]
+    },
+    {
+      "id": 24,
+      "title": "A · T-002 literal spec at a call site, token twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: ShelfMotion.kt",
+      "files": [
+        "evals/files/c24/ShelfMotion.kt"
+      ],
+      "expect": [
+        {
+          "path": "ShelfMotion.kt",
+          "lines": [
+            32,
+            36
+          ],
+          "rule": "T-002",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ShelfMotion.kt",
+          "lines": [
+            18,
+            20
+          ],
+          "note": "A literal tween inside a token definition is where literals belong. Flagging the token is the precision failure this case exists to catch."
+        },
+        {
+          "path": "ShelfMotion.kt",
+          "lines": [
+            45,
+            58
+          ],
+          "note": "SpineLabel resolves its spec through ShelfMotion.spineSlide()."
+        }
+      ],
+      "expectations": [
+        "Flags BookSpine's literal tween(...) at the call site",
+        "Names ShelfMotion.spineSlide(), the token the file already defines with the same values, as the fix",
+        "Does NOT flag the tween inside the ShelfMotion object",
+        "Does NOT flag SpineLabel"
+      ]
+    },
+    {
       "id": 30,
       "title": "C · O-002 absence, with a twin that is legitimately exempt",
       "class": "C. Absence",
