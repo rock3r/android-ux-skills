@@ -49,6 +49,10 @@ Inconsistency with what the team decided is a finding. Disagreement with your ow
 not. A reviewer that argues an app toward Material when the team chose otherwise is noise,
 and will be ignored — correctly.
 
+An exception or entry that states its own condition — "until typed routes land", "first
+run only" — holds only while that condition does. Check the condition against the code
+before relying on it: a lapsed exception waives nothing.
+
 ## Procedure
 
 ### Step 1 — Two assessments, isolated
@@ -131,6 +135,7 @@ six floor findings is a linter run, not a review, and the numbers should say so.
 | `NavHost` left on its default transition | T-001 |
 | Frame-rate state read during composition | F-001 |
 | `animateItem()` with no key | F-003 |
+| A `BackHandler` that closes animated UI in one step | T-008 |
 | A timing judgment made from a debug build | F-009 |
 
 ## Tone
