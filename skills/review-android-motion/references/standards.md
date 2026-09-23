@@ -8,7 +8,8 @@ The rule set every skill in this repository packages. If a rule is not here, no 
 enforce it.
 
 > [!NOTE]
-> **Status: revision 02.** 32 rules — 10 `floor`, 2 `obligation`, 20 `taste`.
+> **Status: revision 02, plus T-027 and T-028.** 34 rules — 10 `floor`, 2 `obligation`,
+> 22 `taste`.
 >
 > Revision 01 applied three independent machine reviews (taste, structural, fact-check),
 > which cut three rules, found two internal contradictions, and caught three rules that
@@ -104,7 +105,8 @@ defaults to minor, which is the honest result when nothing has been decided.
 `Modifier.offset(x = animatedDp)`, `Modifier.alpha(v)` and `graphicsLayer(scaleX = v)`
 read during composition and recompose the subtree every frame.
 
-Scope: properties that *have* a lambda form. Layout properties that do not are F-008.
+Scope: properties that *have* a lambda form — offset, alpha, the `graphicsLayer`
+transforms.
 
 **Violating**
 
@@ -137,12 +139,13 @@ visibly restarts when the finger lifts.
 
 ---
 
-### F-003 — `animateItem()` requires a stable key
+### F-003 — `animateItem()` requires a key
 
-**Rule.** Lazy item animation silently misbehaves without a stable, `Bundle`-compatible
-`key`. It fails by producing wrong animations, not by erroring.
+**Rule.** Lazy item animation silently misbehaves without a `Bundle`-compatible `key`. It
+fails by producing wrong animations, not by erroring.
 
-See also T-021: a key can be stable and still be wrong.
+Scope: the key is absent, or not `Bundle`-compatible. What a present key is derived from is
+outside it.
 
 **Pinned.** developer.android.com: "It is important to provide a key to each item to
 ensure `animateItem()` works as expected."
@@ -180,8 +183,7 @@ What is not covered, and must read the scale itself:
 | Video, `WebView`, `SurfaceView` content | Not Compose animations at all |
 | `Animatable` driven from a scope lacking `MotionDurationScale` | `WindowRecomposer` injects it into the recomposer and effect contexts only |
 
-Read it and branch — **to a static end state, never to nothing**. What that end state must
-convey is O-001.
+Read it and branch to a **static end state**.
 
 ```kotlin
 val resolver = LocalContext.current.contentResolver
@@ -316,6 +318,10 @@ Accessibility duties. Never overridable. **Excluded from the taste delta.**
 
 **Claim.** Motion that carries meaning must still carry it when motion is switched off.
 
+**Scope: meaning carried by the motion of your own layout** — an item moving, a section
+expanding, a shared element travelling. What an animation file shows once it stops is
+outside it.
+
 **Rule.** Android's "Remove animations" writes `0.0f` to all three animation scales. This
 is annihilation, not reduction — a shared-element transition becomes a teleport, a
 positional reveal a jump cut. **There is no substitute animation**, because a substitute
@@ -326,9 +332,6 @@ So the requirement is not a lighter animation. It is that
 item visible in place, the expanded state legible without having seen it expand, the
 origin still indicated. If switching animation off loses information, the information was
 only ever in the motion.
-
-A Lottie's reduced-motion still frame is the model for the whole class, not a special
-case: whatever frame remains must read as a complete, meaningful still (see O-002).
 
 **Why the web model does not transfer.** `prefers-reduced-motion` is a *preference*, and
 the documented response is gentler motion. Android exposes a scale, and its accessible
@@ -381,8 +384,8 @@ painter, a `graphicsLayer`, an interop `AndroidView` holding something other tha
 readable frame has to come from the composition itself or from a `LottieClipSpec` that ends
 somewhere readable.
 
-This is the only place Lottie behaviour under Remove animations is specified. F-005 governs
-the scale bypass; O-001 governs what the remaining frame must convey.
+Scope: the frame a Lottie is left on. Code that keeps a Lottie playing with animations off
+is outside it.
 
 **Pinned — the marker.** `LottieDrawable.java:99-112` — the four accepted spellings
 (`reduced motion`, `reduced_motion`, `reduced-motion`, `reducedmotion`, matched
@@ -411,16 +414,14 @@ screens it is most of a second of two scrollables ghosting through each other, o
 navigation the product has.
 
 **Rule.** The finding is the **spec, not the pattern**. A cross-fade between top-level
-destinations is correct (T-011); a 700ms one is not. Destination motion is chosen
+destinations can be exactly right; a 700ms one is not. Destination motion is chosen
 deliberately, or the default is replaced.
 
 **Severity is contextual, and usually minor.** In a codebase with no motion language this
 is a note: the value is too long, nothing more. In a codebase that resolves its specs to
-tokens everywhere else (T-002), it is **major** — not because 700ms is worse there, but
-because this one surface silently inherits a third-party default instead of the product's
-own language, and that is the kind of gap that spreads.
-
-Precedence with T-002: report as T-001. An untouched default is one defect, not two.
+tokens everywhere else, it is **major** — not because 700ms is worse there, but because
+this one surface silently inherits a third-party default instead of the product's own
+language, and that is the kind of gap that spreads.
 
 **What this is not.** There is no evidence the value is a deliberate prompt to change it.
 It reads as an old default nobody revisited, and the rule should not imply intent.
@@ -443,6 +444,9 @@ one voice or none, and a value nobody can find again is a decision nobody made.
 **Rule.** Every spec resolves to `MaterialTheme.motionScheme` or to the product's own
 token. Literal `tween(…)` and literal `spring(…)` are admissible only inside a token
 definition.
+
+Scope: specs written in the product's own code. A default nobody wrote — one a component or
+library applies when no spec is passed — is outside it.
 
 **Material binding.** `MaterialTheme.motionScheme` as the default token source. It exposes
 no durations, so keyframes and timed reveals resolve to a codebase token rather than the
@@ -509,6 +513,9 @@ targeting Android 16+ on an Android 16+ device, "`onBackPressed` is not called a
 
 **Claim.** The motion that delights once a week is an obstruction forty times a session.
 Nothing about the animation changes; the user's relationship to it does.
+
+**Scope: motion the user meets through their own input or navigation.** The outcome of
+work they did not start is outside it.
 
 **Rule.**
 
@@ -619,7 +626,8 @@ is not listening. The user never waits for an animation to grant permission.
 **Rule.** Input remains live throughout. The violating forms are structural, not spec:
 `enabled = !isAnimating` guards, `snapTo()` before `animateTo()` discarding current
 position, and `delay()`-sequenced `LaunchedEffect` chains that cannot be interrupted
-partway.
+partway. A chain keyed to the state it animates is cancelled by the next input, pending
+`delay()` included, and is not one of them.
 
 **Not a violation:** a `tween` retargeted mid-flight. Compose continues from the current
 value; its defect is spending a full duration on a small remaining distance, which is a
@@ -646,12 +654,10 @@ literally inverts the order, which is worse than the queue it avoids.
 
 **Two cases, one budget.**
 
-- **A group entering.** Viewport only, first entrance only, never on scroll.
+- **A group entering.** Viewport only, never on scroll.
 - **The parts of one control changing in place** — a rating bar filling, a segmented
-  control moving its selection. The cascade is the control's own articulation (T-026), so
-  it runs on every change, not once. Its ceiling is T-009's: the same cascade that delights
-  on a rare action obstructs on a frequent one, and frequency decides, not the fact that
-  a tap triggered it.
+  control moving its selection. The cascade is the control's own articulation, so it runs
+  on every change, not once.
 
 Only the parts that actually changed animate. Re-running the cascade over parts already at
 their target is the same defect as animating something that did not change.
@@ -659,10 +665,8 @@ their target is the same defect as animating something that did not change.
 **Pinned.** A spring carries no start delay: `SpringSpec` exposes `dampingRatio`,
 `stiffness` and `visibilityThreshold` only, and `repeatable`'s `initialStartOffset` takes
 a `DurationBasedAnimationSpec`, which a spring is not. Staggering token-resolved springs
-therefore means one coroutine per part — `delay(index * gap)` then `animateTo` — which is
-the shape T-012 polices. Key each part's effect to the state so a second input cancels the
-pending `delay()` and its animation; `delay()` is cancellable, so a correctly keyed effect
-is *not* the un-interruptible chain T-012 forbids.
+therefore means one coroutine per part — `delay(index * gap)` then `animateTo` — keyed to
+the state, so a second input cancels the pending `delay()` and its animation with it.
 
 ---
 
@@ -772,11 +776,9 @@ cannot say why the screen feels incoherent, only that it does.
 necessarily one spec, since spatial and effects springs properly differ within a tier. The
 common defect is a pane transition on one tier with content on another.
 
-Compare elements moving in the *same direction*: what enters with what enters, what leaves
-with what leaves. An exit is never compared with the entrance it mirrors.
-
-Precedence with T-012: T-012 governs whether input is gated; T-020 governs coherence. A
-uniform screen that blocks input is still a T-012 finding.
+Compare elements moving in the *same direction* of one event: what enters with what
+enters, what leaves with what leaves. An exit is never compared with the entrance it
+mirrors, and a later input starts a new event, even one that undoes the last.
 
 Does not apply across the app/platform boundary — system transitions are not yours.
 
@@ -791,7 +793,7 @@ changed, when one thing did.
 wrong: inserting one item shifts every subsequent key and re-animates the whole list. Keys
 are derived from item identity.
 
-F-003 catches a *missing* key. This catches a present one that lies.
+Scope: a key that is present. Whether one exists at all is outside it.
 
 ---
 
@@ -833,15 +835,20 @@ rendering the reversal live under the user's finger, it is visibly wrong.
 
 ---
 
-### T-025 — Where a gesture exists, motion follows the finger
+### T-025 — A hand-rolled surface drags like the one it replaces
+
+**Detect: review-only.** Which platform surface a custom one stands in for is semantic.
 
 **Claim.** Continuous, velocity-carrying gesture motion is the single strongest signal of
-a native app. Fired transitions where a gesture was available is what ported apps feel
-like.
+a native app. A surface that only opens and closes on a tap, where its platform
+counterpart follows the finger, is what ported apps feel like.
 
-**Rule.** Where a gesture is available, prefer velocity-continuous motion over a fired
-transition: a sheet that drags rather than only animating closed on tap, a pane that
-follows rather than snapping. This is a posture, not a per-site check.
+**Scope: a hand-rolled surface standing in for one the platform lets the user drag** — a
+bottom or side sheet, a navigation drawer, a swipe-to-dismiss card. Back, and how an
+existing drag carries its velocity, are outside it.
+
+**Rule.** It offers the drag its platform counterpart offers, not only a fired open and
+close.
 
 ---
 
@@ -863,7 +870,7 @@ suppression.** Staggering them in a single direction gives the event its leader 
 first part — and makes several movements read as one gesture. Holding four of five stars
 still to leave a single mover would hide the state change the user just made. Suppression
 is for elements that did not change, and for elements belonging to a different control;
-sequence is for the parts of the one that did. T-013 governs the stagger itself.
+sequence is for the parts of the one that did.
 
 **Why it is ours.** Every other rule governs motion in isolation. This is the only one
 about how much motion an event may contain at all.
@@ -892,8 +899,7 @@ you are on M3 Expressive semantics and your UX wants it: advance on the Expressi
 and retract on Standard — within a single scheme the bounciest spatial spring is also the
 quickest, so changing tier alone cannot buy "faster and plainer". A system with different
 tiering, or one mandating a single level of expression throughout, satisfies this another
-way or does not adopt it at all. (T-020 counts one perceived event; an advance and a
-retraction are two.)
+way or does not adopt it at all.
 
 **Not every pair has a direction.** A disclosure arrow, a theme switch, a filter turned on
 and off — where neither direction is the better one, symmetry is correct, and reaching for
@@ -902,6 +908,32 @@ this rule invents a preference the product does not hold.
 **Why it is ours.** No source states it. Emil's asymmetry is interaction *phase* — slow
 where the user is deciding, fast where the system responds — and Material's is
 navigational direction. Neither reads the *valence* of a change.
+
+---
+
+### T-028 — Work the user did not start finishes quietly
+
+**Detect: review-only.** Whether the user started the work is not always in the source.
+
+**Claim.** Motion claims attention for something that just happened to the user. Spent on
+the outcome of work they never asked for, it interrupts whatever they are doing to report
+on the app's own housekeeping.
+
+**Scope: the outcome of background work** — a periodic sync, a prefetch, an upload the
+system resumed. Work the user started and is waiting on is outside it.
+
+**Rule.** While it runs, background work may show that it is running, quietly and in
+place. When it succeeds, nothing on screen moves. When it fails, the current screen shows
+the failure prominently only if the failure affects what that screen shows; otherwise the
+failure belongs in a notification.
+
+**Pinned.** developer.android.com, "Foreground services overview": foreground services
+"show a status bar notification, to make users aware that your app is performing a task".
+A long-running background job therefore already has a home for its progress and its
+outcome, and it is not the screen the user is reading.
+
+**Why it is ours.** Material specifies how to show progress, not whose progress deserves
+the screen. The split between the app's work and the user's is a judgment no source makes.
 
 ---
 
@@ -994,15 +1026,19 @@ regardless of MOTION.md.
 | T-018 | Original | Platform fidelity as a product decision |
 | T-019 | M3 skeleton loaders | Structural match, plus indicator floor |
 | T-020 | Emil — cohesion | Scheme and tier, not one spec |
-| T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, gesture posture, restraint |
+| T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, drag parity, restraint |
 | T-027 | Original | Motion answers to the valence of a change, not only its shape |
+| T-028 | Original | Background work does not take the screen to report success |
 
-Eighteen of thirty-three derive from an existing source.
+Eighteen of thirty-four derive from an existing source.
 
 ## Progress
 
-**33 rules — 10 floor, 2 obligation, 21 taste.** Nine review-only, one partial, the rest
-checkable.
+**34 rules — 10 floor, 2 obligation, 22 taste.** Ten review-only, one heuristic, one
+partial, the rest checkable.
+
+No rule refers to another. Where two could fire on the same code, each states its own
+scope narrowly enough that only one does.
 
 Revision 01 applied three machine reviews. **Revision 02 applied the first human review**
 (Seb, 2026-09-21): 26 keep, 1 revise, 5 discuss, **0 remove**. No rule was cut. The

@@ -12,7 +12,7 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 
-/** Shown on the shelf for a few seconds after a background sync finishes. */
+/** Shown on the shelf for a few seconds after the user taps Sync now. */
 @Composable
 fun SyncComplete(modifier: Modifier = Modifier) {
     val composition by rememberLottieComposition(

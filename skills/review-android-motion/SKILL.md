@@ -130,7 +130,7 @@ six floor findings is a linter run, not a review, and the numbers should say so.
 | Meaning with no static carrier when animation is off | O-001 |
 | `NavHost` left on its default transition | T-001 |
 | Frame-rate state read during composition | F-001 |
-| `animateItem()` with no stable key | F-003 |
+| `animateItem()` with no key | F-003 |
 | A timing judgment made from a debug build | F-009 |
 
 ## Tone

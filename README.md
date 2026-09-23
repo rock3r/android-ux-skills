@@ -9,8 +9,10 @@
 > [!WARNING]
 > **Work in progress. Nothing here is ready to install or rely on.**
 >
-> The 32 rules in [`STANDARDS.md`](STANDARDS.md) have been fact-checked against primary
-> sources, reviewed by three separate models, and had one engineering review by a human.
+> The 32 rules of revision 02 in [`STANDARDS.md`](STANDARDS.md) have been fact-checked
+> against primary sources, reviewed by three separate models, and had one engineering
+> review by a human. The two added since, T-027 and T-028, have not been through those
+> reviews.
 > They have **not** had a designer's review of the taste claims, which is the review that
 > matters most for rules about how things should feel. The skills, the eval harness and the
 > corpus design are scaffolding around a rule set that is still moving. Names, rule ids and
