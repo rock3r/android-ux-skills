@@ -313,6 +313,35 @@ check("work root is outside the repo", ev.ROOT not in root.resolve().parents
 check("work root is not under a path pioneer refuses",
       not str(root.resolve()).startswith(("/srv", "/var", "/usr", "/etc")), root)
 
+print("repeats")
+
+# The summary's per-run range is the only error bar the numbers have. It must sum each
+# repeat across cases, and skip a repeat that never ran rather than count it as zero.
+import contextlib
+import io
+
+def arm(per_run):
+    g = {"hit": 0, "missed": 0, "false_positive": 0, "recall": None, "precision": None}
+    return {"failed": False, "error": None, "floor": g, "obligation": g, "taste": g,
+            "severity_right": 0, "severity_wrong": 0, "blanketing": [], "unlabeled": [],
+            "flagged_correct_code": 0, "per_run": per_run}
+
+run = lambda taste, fp: {"floor": 0, "obligation": 0, "taste": taste, "flagged_correct_code": fp}
+res = [{"battery": "b", "cases": [
+    {"case": 1, "runs": 2, "arms": {"baseline": arm([run(0, 1), run(1, 0)]),
+                                    "with-skill": arm([run(1, 0), None])}},
+    {"case": 2, "runs": 2, "arms": {"baseline": arm([run(1, 0), run(1, 2)]),
+                                    "with-skill": arm([run(1, 1), run(1, 0)])}},
+]}]
+buf = io.StringIO()
+with contextlib.redirect_stderr(buf):
+    ev.summarize(res)
+out = buf.getvalue()
+check("sums each repeat across cases", "baseline: floor 0–0  obligation 0–0  taste 1–2  FPs 1–2" in out, out)
+check("a case with a failed repeat is left out of every repeat, and says so",
+      "with-skill: floor 0–0  obligation 0–0  taste 1–1  FPs 0–1  (1 case(s) with a failed "
+      "repeat left out)" in out, out)
+
 print()
 if failures:
     print(f"{len(failures)} failed: {', '.join(failures)}")

@@ -668,6 +668,13 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                     f.write_text(r.raw or f"(no output — {r.error or 'empty'})")
                     saved[arm].append(str(f))
 
+        graded = {
+            arm: [grade(r.findings, case.get("expect", []), case.get("negatives", []),
+                        match_rule_ids=(arm != "baseline"),
+                        forbidden=case.get("forbidden_strings", []), raw=r.raw)
+                  for r in rs]
+            for arm, rs in arms.items()
+        }
         cases.append({
             "transcripts": saved,
             "case": cid,
@@ -682,13 +689,16 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                     # that never happened.
                     "failed": all(r.error for r in rs),
                     "unparsed": round(sum(r.unparsed for r in rs) / len(rs), 3),
-                    **mean_grades([
-                        grade(r.findings, case.get("expect", []),
-                              case.get("negatives", []),
-                              match_rule_ids=(arm != "baseline"),
-                              forbidden=case.get("forbidden_strings", []), raw=r.raw)
-                        for r in rs
-                    ]),
+                    **mean_grades(graded[arm]),
+                    # The mean alone cannot say whether a delta is larger than the noise;
+                    # the spread across repeats can. None marks a repeat that never ran.
+                    "per_run": [
+                        None if r.error else {
+                            **{cls: g[cls]["hit"] for cls in ("floor", "obligation", "taste")},
+                            "flagged_correct_code": g["flagged_correct_code"],
+                        }
+                        for r, g in zip(rs, graded[arm])
+                    ],
                 }
                 for arm, rs in arms.items()
             },
@@ -726,6 +736,30 @@ def summarize(results: list[dict]) -> None:
             if b_hit or s_hit or b_fp or s_fp:
                 print(f"  {cls:>6}  hits {b_hit} -> {s_hit}   "
                       f"false positives {b_fp} -> {s_fp}", file=sys.stderr)
+
+        # With repeats, the range across them — the error bar the means above do not have.
+        # A delta that fits inside it is not a delta.
+        if max((c.get("runs", 1) for c in res["cases"]), default=1) > 1:
+            n = max(c.get("runs", 1) for c in res["cases"])
+            for arm in ("baseline", "with-skill"):
+                # Every repeat is summed over the same cases. A case where any repeat failed
+                # is left out of all of them: counting it in some repeats and not others
+                # would widen the range with a difference that is not the model's.
+                whole = [c["arms"][arm]["per_run"] for c in res["cases"]
+                         if len(c["arms"][arm].get("per_run", [])) == n
+                         and None not in c["arms"][arm]["per_run"]]
+                if not whole:
+                    continue
+                spread = {}
+                for key in ("floor", "obligation", "taste", "flagged_correct_code"):
+                    totals = [sum(runs[i][key] for runs in whole) for i in range(n)]
+                    spread[key] = f"{min(totals)}–{max(totals)}"
+                dropped = len(res["cases"]) - len(whole)
+                print(f"  per-run range {arm:>10}: "
+                      + "  ".join(f"{k.replace('flagged_correct_code', 'FPs')} {v}"
+                                  for k, v in spread.items())
+                      + (f"  ({dropped} case(s) with a failed repeat left out)"
+                         if dropped else ""), file=sys.stderr)
 
         # Severity is the payload of three of four batteries, so it is scored, not just
         # annotated, and shown for both arms — the question is whether it MOVES with the
