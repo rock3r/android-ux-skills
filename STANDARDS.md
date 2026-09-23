@@ -553,8 +553,8 @@ things are outside it:
 - **Gesture dismissals**, which complete on velocity, and **predictive-back exits**, which
   the system times.
 - **A change of emphasis in place.** A persistent element animating its own alpha, colour
-  or elevation is not entering or leaving, so there is no spatial half to add and a
-  symmetric spec is correct.
+  or elevation is not entering or leaving. There is no spatial half to drop, so nothing in
+  this rule applies to it.
 - **Transitions whose pattern is itself a cross-fade** (T-011: unordered top-level
   destinations). The pattern is chosen to promise *no* spatial relationship; adding
   movement to satisfy this rule would assert the order T-011 says does not exist.
@@ -642,7 +642,25 @@ cap share the final staggered delay rather than extending the sequence.
 Never place later items before earlier ones: "animate the first few, place the rest" read
 literally inverts the order, which is worse than the queue it avoids.
 
-Viewport only, first entrance only, never on scroll.
+**Two cases, one budget.**
+
+- **A group entering.** Viewport only, first entrance only, never on scroll.
+- **The parts of one control changing in place** — a rating bar filling, a segmented
+  control moving its selection. The cascade is the control's own articulation (T-026), so
+  it runs on every change, not once. Its ceiling is T-009's: the same cascade that delights
+  on a rare action obstructs on a frequent one, and frequency decides, not the fact that
+  a tap triggered it.
+
+Only the parts that actually changed animate. Re-running the cascade over parts already at
+their target is the same defect as animating something that did not change.
+
+**Pinned.** A spring carries no start delay: `SpringSpec` exposes `dampingRatio`,
+`stiffness` and `visibilityThreshold` only, and `repeatable`'s `initialStartOffset` takes
+a `DurationBasedAnimationSpec`, which a spring is not. Staggering token-resolved springs
+therefore means one coroutine per part — `delay(index * gap)` then `animateTo` — which is
+the shape T-012 polices. Key each part's effect to the state so a second input cancels the
+pending `delay()` and its animation; `delay()` is cancellable, so a correctly keyed effect
+is *not* the un-interruptible chain T-012 forbids.
 
 ---
 
@@ -835,8 +853,54 @@ the thing that changed.
 correct springs firing at once satisfy every other rule in this file and still produce a
 screen nobody can read.
 
+**Count semantic controls, not composables.** Five star icons in a rating bar are *one*
+control with five discrete parts, and a tap changes that one control. The parts are not
+six competing motions to be cut down to one.
+
+**Where the parts of one control all changed, the resolution is sequence, not
+suppression.** Staggering them in a single direction gives the event its leader — the
+first part — and makes several movements read as one gesture. Holding four of five stars
+still to leave a single mover would hide the state change the user just made. Suppression
+is for elements that did not change, and for elements belonging to a different control;
+sequence is for the parts of the one that did. T-013 governs the stagger itself.
+
 **Why it is ours.** Every other rule governs motion in isolation. This is the only one
 about how much motion an event may contain at all.
+
+---
+
+### T-027 — A correction is not a celebration
+
+**Detect: review-only.** Which direction a product considers progress is semantics, not
+source.
+
+**Claim.** Expressive motion reads as approval. Spent on a user undoing something, it
+congratulates them for the retraction and makes the correction feel as weighty as the
+commitment. A star is pleased to be lit and merely obedient when put out.
+
+**Scope: a control changing state in place** — a rating rising or falling, a favourite set
+or cleared, a counter stepping up or down. Entering and leaving are outside it.
+
+**Rule.** Where the product treats one direction as progress and the other as a
+correction, the two should not move identically. The advance is the direction permitted
+expression; the retraction resolves more plainly, or more quickly, or both.
+
+**How that is expressed is the product's decision.** The rule asks that the directions
+differ, not that they differ in a particular way. One example of an acceptable answer, if
+you are on M3 Expressive semantics and your UX wants it: advance on the Expressive scheme
+and retract on Standard — within a single scheme the bounciest spatial spring is also the
+quickest, so changing tier alone cannot buy "faster and plainer". A system with different
+tiering, or one mandating a single level of expression throughout, satisfies this another
+way or does not adopt it at all. (T-020 counts one perceived event; an advance and a
+retraction are two.)
+
+**Not every pair has a direction.** A disclosure arrow, a theme switch, a filter turned on
+and off — where neither direction is the better one, symmetry is correct, and reaching for
+this rule invents a preference the product does not hold.
+
+**Why it is ours.** No source states it. Emil's asymmetry is interaction *phase* — slow
+where the user is deciding, fast where the system responds — and Material's is
+navigational direction. Neither reads the *valence* of a change.
 
 ---
 
@@ -923,19 +987,20 @@ regardless of MOTION.md.
 | T-010 | M3 tier guidance | Tier and property count, not a duration ratio |
 | T-011 | M3 transition patterns | Direction promises order; defines "peer" |
 | T-012 | Emil — interruptibility | Re-grounded: gating input, not spec choice |
-| T-013 | Emil — stagger | Budgets the sequence; fixes ordering |
+| T-013 | Emil — stagger | Budgets the sequence; fixes ordering; extends it to one control's own parts |
 | T-016 | M3 enter and exit | Scoped to unanchored centre scale |
 | T-017, T-021 | Original | Compose-specific lifecycle traps |
 | T-018 | Original | Platform fidelity as a product decision |
 | T-019 | M3 skeleton loaders | Structural match, plus indicator floor |
 | T-020 | Emil — cohesion | Scheme and tier, not one spec |
 | T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, gesture posture, restraint |
+| T-027 | Original | Motion answers to the valence of a change, not only its shape |
 
-Eighteen of thirty-two derive from an existing source.
+Eighteen of thirty-three derive from an existing source.
 
 ## Progress
 
-**32 rules — 10 floor, 2 obligation, 20 taste.** Eight review-only, one partial, the rest
+**33 rules — 10 floor, 2 obligation, 21 taste.** Nine review-only, one partial, the rest
 checkable.
 
 Revision 01 applied three machine reviews. **Revision 02 applied the first human review**
