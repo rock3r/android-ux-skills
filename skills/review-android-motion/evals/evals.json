@@ -203,10 +203,10 @@
         {
           "path": "RatingControl.kt",
           "lines": [
-            26,
-            30
+            32,
+            60
           ],
-          "note": "Whether this spring exceeds the frequency ceiling depends on how often readers rate books, which is not in this file and is not staged. Asserting a T-009 verdict here is the failure; asking, or scoping the claim to a stated assumption, is the pass."
+          "note": "Whether this spring exceeds the frequency ceiling depends on how often readers rate books, which is not in this file and is not staged. Asserting a T-009 verdict here is the failure; asking, or scoping the claim to a stated assumption, is the pass. The span covers the whole control, which is otherwise correct under every rule: only newly lit stars pulse, in turn, within the stagger budget, keyed so a second tap cancels the rest; lowering the rating moves nothing; the scale is read in graphicsLayer and returns to 1."
         }
       ],
       "expectations": [
@@ -215,6 +215,7 @@
         "If it does raise T-009, it scopes the claim — 'if this is a high-frequency surface, then…' — rather than declaring a violation",
         "Does NOT assert a usage frequency it cannot know",
         "Does NOT flag the spring itself: fastSpatialSpec on a rare, deliberate interaction is correct",
+        "Does NOT flag the sequence or the plain retraction: only newly lit stars pulse, in turn, keyed so a second tap cancels the rest, and lowering the rating moves nothing.",
         "GRADED: only the negative is scored here — an unscoped assertion lands on it as a false positive. Whether the reviewer actually ASKS is not machine-checked; read the transcript for that."
       ],
       "checks": [

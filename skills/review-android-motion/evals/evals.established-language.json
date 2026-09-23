@@ -101,17 +101,26 @@
         {
           "path": "RatingControl.kt",
           "lines": [
-            26,
-            30
+            32,
+            48
           ],
           "rule": "T-009",
           "class": "taste",
-          "severity": "major"
+          "severity": "major",
+          "also_at": [
+            {
+              "path": "RatingControl.kt",
+              "lines": [
+                57,
+                60
+              ]
+            }
+          ]
         }
       ],
       "negatives": [],
       "expectations": [
-        "Flags the per-star spring: MOTION.md's frequency map puts star ratings under 'Never animate'",
+        "Flags the star pulse: MOTION.md's frequency map puts star ratings under 'Never animate'",
         "Treats it as major — the frequency map is tagged DECIDED, so this contradicts a settled decision",
         "Does NOT ask how often ratings are used. That question is answered in the staged file; asking it here means MOTION.md was not read",
         "Pairs with case 40 in the no-motion-language battery, where the same spring must NOT be asserted against"

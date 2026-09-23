@@ -646,8 +646,9 @@ current value.
 queue, and the last arrival feels late rather than choreographed.
 
 **Rule.** Budget the sequence, not the gap. Default where the product has not set one:
-**~300ms total**, the effects settle. Beyond the budget, cap the *count* — items past the
-cap share the final staggered delay rather than extending the sequence.
+**~300ms from the first item starting to the last item starting.** Each item's own motion
+runs on its own spec after that and is not counted. Beyond the budget, cap the *count* —
+items past the cap share the final staggered delay rather than extending the sequence.
 
 Never place later items before earlier ones: "animate the first few, place the rest" read
 literally inverts the order, which is worse than the queue it avoids.
