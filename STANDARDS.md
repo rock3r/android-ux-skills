@@ -825,6 +825,10 @@ perceived performance, and it is the highest-yield judgment in app motion.
 **Claim.** Reversal is how a user builds a model of where things live. An exit that is not
 the inverse of its entrance breaks the model, and predictive back now shows it happening.
 
+**Scope: something that travelled to where it is** — a screen, a sheet or panel from an
+edge, a shared element. A component that appears in place, like a menu or a popup, has no
+path to retrace.
+
 **Rule.** If forward enters from the right, back exits to the right. Enter-from-right
 paired with exit-by-fade was survivable when back was instantaneous; with predictive back
 rendering the reversal live under the user's finger, it is visibly wrong.

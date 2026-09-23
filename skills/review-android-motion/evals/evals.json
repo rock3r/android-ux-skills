@@ -203,8 +203,8 @@
         {
           "path": "RatingControl.kt",
           "lines": [
-            31,
-            35
+            26,
+            30
           ],
           "note": "Whether this spring exceeds the frequency ceiling depends on how often readers rate books, which is not in this file and is not staged. Asserting a T-009 verdict here is the failure; asking, or scoping the claim to a stated assumption, is the pass."
         }
@@ -248,8 +248,8 @@
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            25,
-            35
+            28,
+            38
           ],
           "rule": "T-026",
           "class": "taste",
@@ -260,42 +260,42 @@
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            37,
-            49
+            40,
+            52
           ],
           "note": "TotalRow: token spec, lambda offset."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            51,
-            62
+            54,
+            65
           ],
           "note": "SavingsBadge: AnimatedVisibility that animates its own SIZE as well as its opacity, so the three siblings below are pushed down on the same clock as their own springs rather than jumping in one frame. Spatial+effects in, effects-plus-a-faster-shrink out. An earlier version specified enter/exit without a size animation, which silently overrode AnimatedVisibility's default expandIn and left an untimed reflow in the middle of a timed event — a real T-020 defect inside a fixture whose entire premise is that every part is individually clean. A model found it before we did."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            64,
-            76
+            67,
+            79
           ],
           "note": "PostageNote: token spec, lambda offset."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            78,
-            90
+            81,
+            93
           ],
           "note": "LoyaltyPoints: effects spec, graphicsLayer read."
         },
         {
           "path": "CheckoutSummary.kt",
           "lines": [
-            92,
-            103
+            95,
+            116
           ],
-          "note": "CheckoutButton: effects spec, colour only, read in drawBehind."
+          "note": "CheckoutButton: effects spec, colour only, read in drawBehind, clipped to its shape. It was a Card with the tint drawn behind it, which never showed: Surface paints its opaque container over the caller's drawBehind, so the one element meant to show a draw-phase read animated nothing, and baseline models said so. A clipped Box has no container to hide it."
         }
       ],
       "expectations": [
@@ -364,8 +364,8 @@
         {
           "path": "ReaderScreen.kt",
           "lines": [
-            57,
-            59
+            58,
+            60
           ],
           "rule": "T-008",
           "class": "taste",
@@ -376,26 +376,26 @@
         {
           "path": "ReaderScreen.kt",
           "lines": [
-            37,
-            50
+            38,
+            51
           ],
           "note": "NavHost already installs its own predictive-back handler and seeks with SeekableTransitionState. Zero app code is required, and flagging it is the failure this span exists to catch."
         },
         {
           "path": "ReaderScreen.kt",
           "lines": [
-            68,
-            75
+            70,
+            80
           ],
-          "note": "The notes panel is dismissed by back, so its exit is the inverse of its entrance: slide and fade in, slide and fade out (T-024). T-010's effects-only exit does not apply: its scope is components that appear in place, and a panel that arrived from an edge returns to it however it is dismissed. Two earlier versions were each a defect of their own: slide alone in both directions (T-010, no effects on enter), then a fade-only exit (T-024, flagged by all three models in the run at d5fbacd). Declared clean so either regression is caught rather than tolerated."
+          "note": "The notes popup grows from the button that opens it and leaves on a fade: a component appearing in place, anchored to its trigger, which is how a menu enters and exits. Two earlier versions were each a defect of their own: a panel sliding up from the bottom read as a bottom sheet with no drag, and in one version left on a fade instead of the way it came. Declared clean so a regression toward either is caught rather than tolerated."
         }
       ],
       "expectations": [
         "Does NOT flag the NavHost — the framework already seeks predictive back correctly",
-        "Flags the BackHandler closing the notes panel, which fires on commit and cannot follow the finger",
+        "Flags the BackHandler closing the notes popup, which fires on commit and cannot follow the finger",
         "Names PredictiveBackHandler with a seekable progress value as the fix",
-        "Scopes the finding to the hand-rolled panel, not to back handling in general",
-        "Does NOT flag the panel's enter/exit pair: back dismisses it, so its exit is the inverse of its entrance, as T-024 asks. T-010 does not apply to a panel that arrived from an edge."
+        "Scopes the finding to the hand-rolled popup, not to back handling in general",
+        "Does NOT flag the popup's enter/exit pair: it grows from its anchor and fades out, as a menu does, and has no edge or path to return along."
       ],
       "checks": [
         {

@@ -11,9 +11,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -22,9 +19,7 @@ import androidx.compose.ui.unit.dp
  * Five tappable stars. Each one springs when it is tapped.
  */
 @Composable
-fun RatingControl(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
-    var rating by remember { mutableIntStateOf(0) }
-
+fun RatingControl(rating: Int, onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
     Row(modifier) {
         repeat(5) { index ->
             val filled = index < rating
@@ -43,10 +38,7 @@ fun RatingControl(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
                         scaleX = scale
                         scaleY = scale
                     }
-                    .clickable {
-                        rating = index + 1
-                        onRate(rating)
-                    },
+                    .clickable { onRate(index + 1) },
             )
         }
     }

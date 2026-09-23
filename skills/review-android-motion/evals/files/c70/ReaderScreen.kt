@@ -4,9 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -61,18 +62,22 @@ private fun ReadingScreen() {
     Box(Modifier.fillMaxSize()) {
         Text("\u2026page content\u2026", style = MaterialTheme.typography.bodyLarge)
 
-        IconButton(onClick = { notesOpen = true }) {
-            Icon(Icons.Outlined.EditNote, contentDescription = "Notes")
-        }
+        Column {
+            IconButton(onClick = { notesOpen = true }) {
+                Icon(Icons.Outlined.EditNote, contentDescription = "Notes")
+            }
 
-        AnimatedVisibility(
-            visible = notesOpen,
-            enter = slideInVertically(AppMotion.panelEnter) { it } +
-                fadeIn(AppMotion.panelFade),
-            exit = slideOutVertically(AppMotion.panelExit) { it } +
-                fadeOut(AppMotion.panelFade),
-        ) {
-            NotesPanel(onClose = { notesOpen = false })
+            AnimatedVisibility(
+                visible = notesOpen,
+                enter = scaleIn(
+                    AppMotion.popupEnter,
+                    initialScale = 0.8f,
+                    transformOrigin = TransformOrigin(0f, 0f),
+                ) + fadeIn(AppMotion.popupFade),
+                exit = fadeOut(AppMotion.popupFade),
+            ) {
+                NotesPopup(onClose = { notesOpen = false })
+            }
         }
     }
 }

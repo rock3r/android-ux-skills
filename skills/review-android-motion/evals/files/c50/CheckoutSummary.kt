@@ -8,15 +8,18 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
@@ -97,7 +100,17 @@ private fun CheckoutButton(discounted: Boolean) {
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "buttonTint",
     )
-    Card(Modifier.fillMaxWidth().drawBehind { drawRect(tint) }) {
-        Text("Checkout", style = MaterialTheme.typography.titleMedium)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .drawBehind { drawRect(tint) }
+            .padding(16.dp),
+    ) {
+        Text(
+            "Checkout",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimary,
+        )
     }
 }
