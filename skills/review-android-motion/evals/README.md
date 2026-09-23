@@ -94,7 +94,7 @@ an arm. Each battery is a separate `evals*.json`.
 
 | Battery | Cases | Stages | Asks |
 |---|---|---|---|
-| `no-motion-language` | 10, 11, 20–24, 30, 40, 50, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
+| `no-motion-language` | 10, 11, 20–25, 30, 40, 50, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
 | `established-language` | 10, 11, 40 | code + a MOTION.md with `DECIDED` entries | Does severity rise, is the token named as the fix, and does a fact settled in the file stop being treated as unknowable? |
 | `stale-exception` | 10 | code + a MOTION.md exception that has lapsed | Is a standing approval enforced after the condition it was granted under has been met? |
 | `phantom-language` | 10 | code only, prompt claims a MOTION.md exists | Are conventions invented from a file that was never provided? |
@@ -125,7 +125,7 @@ the code.
 
 One exemplar per eval class in `TAXONOMY.md`, so every harness shape is proven before the
 remaining rules are filled in behind it.
-Class A is the first to be filled in: 21–24 follow case 20's shape.
+Class A is the first to be filled in: 21–25 follow case 20's shape.
 
 | Case | Class | Rule | What it pins down |
 |---|---|---|---|
@@ -135,6 +135,7 @@ Class A is the first to be filled in: 21–24 follow case 20's shape.
 | 22 | A. Static twin | T-021 | A present, stable key derived from position, beside one derived from identity. |
 | 23 | A. Static twin | T-017 | An entrance in `LaunchedEffect(Unit)`, beside one remembered across returns. |
 | 24 | A. Static twin | T-002 | A literal spec at a call site, beside the same literal inside its token. |
+| 25 | A. Static twin | T-022 | Layout switched on a keyboard boolean, beside one following the inset. |
 | 30 | C. Absence | O-002 | A missing marker, with a twin whose composition legitimately needs none. |
 | 40 | D. Not in the source | T-009 | Both directions: unknowable without MOTION.md, required with it. |
 | 50 | E. Composite-only | T-026 | Five individually correct children, one wrong screen. |

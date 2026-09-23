@@ -296,6 +296,42 @@
       ]
     },
     {
+      "id": 25,
+      "title": "A · T-022 layout jumps on a keyboard boolean, inset-tracking twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: ReviewEditors.kt",
+      "files": [
+        "evals/files/c25/ReviewEditors.kt"
+      ],
+      "expect": [
+        {
+          "path": "ReviewEditors.kt",
+          "lines": [
+            22,
+            35
+          ],
+          "rule": "T-022",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ReviewEditors.kt",
+          "lines": [
+            40,
+            52
+          ],
+          "note": "ReplyEditor applies imePadding(), which follows the animated WindowInsets.ime value, so the button rises with the keyboard frame by frame."
+        }
+      ],
+      "expectations": [
+        "Flags ReviewEditor's padding switched on WindowInsets.isImeVisible: a boolean, so the button jumps to its final place while the keyboard is still animating",
+        "Names imePadding() or the animated WindowInsets.ime value as the fix",
+        "Does NOT flag ReplyEditor, which already uses imePadding()"
+      ]
+    },
+    {
       "id": 30,
       "title": "C · O-002 absence, with a twin that is legitimately exempt",
       "class": "C. Absence",
