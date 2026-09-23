@@ -15,8 +15,8 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            27,
-            35
+            28,
+            36
           ],
           "rule": "T-001",
           "class": "taste",
@@ -27,18 +27,18 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            40,
-            50
+            41,
+            51
           ],
           "note": "BorrowedList keys items by identity and animates placement with animateItem. Clean under F-003 and T-021."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            52,
-            66
+            53,
+            68
           ],
-          "note": "StatusBanner resolves its spec to the scheme and reads the animated value in a graphicsLayer lambda. Clean under T-002 and F-001."
+          "note": "StatusBanner shows and hides with AnimatedVisibility: its slot expands while it fades in, and fades out while the slot collapses on the fast tier, so hidden means gone from layout and from TalkBack. Specs resolve to the scheme. It reports being offline, not work in progress, so it is neither a loading indicator nor background work's outcome. It used to fade alpha to 0 and stay composed — invisible, still announced, still holding its space — which baseline models reported repeatedly on a span declared clean."
         }
       ],
       "expectations": [
@@ -60,23 +60,23 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            29,
-            43
+            28,
+            42
           ],
           "note": "All four transitions bound to product tokens, between three top-level destinations with no ordering between them. The compliant form under T-001 and T-011."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            45,
-            56
+            44,
+            55
           ],
           "note": "BorrowedList, as above."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            58,
+            57,
             72
           ],
           "note": "StatusBanner, as above."

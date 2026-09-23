@@ -1,7 +1,10 @@
 package com.example.catalogue.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,9 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -51,15 +52,16 @@ private fun BorrowedList(books: List<Book>, modifier: Modifier = Modifier) {
 
 @Composable
 private fun StatusBanner(visible: Boolean, modifier: Modifier = Modifier) {
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-        label = "bannerAlpha",
-    )
-
-    Box(modifier.graphicsLayer { this.alpha = alpha }) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
+    ) {
         Text(
-            text = "Syncing your library",
+            text = "You're offline. Showing books saved on this device.",
             style = MaterialTheme.typography.labelLarge,
         )
     }

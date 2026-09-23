@@ -19,9 +19,9 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun FilterBar(expanded: Boolean, modifier: Modifier = Modifier) {
     Row(modifier) {
+        FilterCount(expanded)
         FilterHandle(expanded)
         FilterSummary(expanded)
-        FilterCount(expanded)
     }
 }
 

@@ -15,8 +15,8 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            27,
-            35
+            28,
+            36
           ],
           "rule": "T-001",
           "class": "taste",
@@ -27,8 +27,8 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            52,
-            66
+            53,
+            68
           ],
           "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
         }

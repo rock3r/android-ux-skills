@@ -26,7 +26,7 @@ Where this file and M3E are both silent, ask rather than assume.
 ### Status and banner fades
 
 - **Intent** — Barely noticed. It should register without pulling the eye.
-- **Binding** — `MaterialTheme.motionScheme.defaultEffectsSpec()`
+- **Binding** — `defaultEffectsSpec()` in, `fastEffectsSpec()` out, from `MaterialTheme.motionScheme`
 - **Tag** — `OBSERVED`
 
 ## Exceptions

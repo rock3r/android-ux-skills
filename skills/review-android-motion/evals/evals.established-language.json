@@ -15,8 +15,8 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            27,
-            35
+            28,
+            36
           ],
           "rule": "T-001",
           "class": "taste",
@@ -27,16 +27,16 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            40,
-            50
+            41,
+            51
           ],
           "note": "BorrowedList, clean."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            52,
-            66
+            53,
+            68
           ],
           "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
         }
@@ -61,23 +61,23 @@
         {
           "path": "AppNavigation.kt",
           "lines": [
-            29,
-            43
+            28,
+            42
           ],
           "note": "Binds to exactly the tokens MOTION.md declares."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            45,
-            56
+            44,
+            55
           ],
           "note": "BorrowedList, clean."
         },
         {
           "path": "AppNavigation.kt",
           "lines": [
-            58,
+            57,
             72
           ],
           "note": "StatusBanner matches the OBSERVED banner-fade entry exactly."
