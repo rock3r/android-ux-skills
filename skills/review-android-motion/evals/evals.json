@@ -387,7 +387,7 @@
             68,
             75
           ],
-          "note": "The notes panel is dismissed by back, so its exit is the inverse of its entrance: slide and fade in, slide and fade out (T-024). T-010's effects-only exit does not apply — its scope excludes predictive-back exits, which is what this becomes once the T-008 finding is fixed. Two earlier versions were each a defect of their own: slide alone in both directions (T-010, no effects on enter), then a fade-only exit (T-024, flagged by all three models in the run at d5fbacd). Declared clean so either regression is caught rather than tolerated."
+          "note": "The notes panel is dismissed by back, so its exit is the inverse of its entrance: slide and fade in, slide and fade out (T-024). T-010's effects-only exit does not apply: its scope is components that appear in place, and a panel that arrived from an edge returns to it however it is dismissed. Two earlier versions were each a defect of their own: slide alone in both directions (T-010, no effects on enter), then a fade-only exit (T-024, flagged by all three models in the run at d5fbacd). Declared clean so either regression is caught rather than tolerated."
         }
       ],
       "expectations": [
@@ -395,7 +395,7 @@
         "Flags the BackHandler closing the notes panel, which fires on commit and cannot follow the finger",
         "Names PredictiveBackHandler with a seekable progress value as the fix",
         "Scopes the finding to the hand-rolled panel, not to back handling in general",
-        "Does NOT flag the panel's enter/exit pair: back dismisses it, so its exit is the inverse of its entrance, as T-024 asks and T-010's predictive-back exemption allows."
+        "Does NOT flag the panel's enter/exit pair: back dismisses it, so its exit is the inverse of its entrance, as T-024 asks. T-010 does not apply to a panel that arrived from an edge."
       ],
       "checks": [
         {

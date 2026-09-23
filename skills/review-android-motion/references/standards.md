@@ -544,6 +544,10 @@ already moved on.
 **Rule.** On Android, asymmetry is expressed as **tier and property count, not a duration
 ratio**: enter with spatial *and* effects; exit with effects only.
 
+Closing the space a component held is not a spatial half. A slot that collapses on the fast
+tier while its content fades is an effects-only exit; a slot left to snap shut once the
+fade ends is a jump.
+
 **Material binding.** The tier vocabulary and M3's own position that exits are usually
 just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
 `fastEffectsSpec` out.
@@ -551,26 +555,20 @@ just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
 **Outside Material.** Enter moves *and* fades; exit only fades. The property count is the
 mechanism; the tier names are Material's way of saying it.
 
-**Scope — this is about a component entering and leaving, not about every fade.** Three
-things are outside it:
+**Scope — a component that appears and disappears in place**: a menu, a tooltip, a popup,
+a badge, the contents of a collapsing container. It appears where it will sit rather than
+travelling there, so its exit has no path to retrace. Outside it:
 
-- **Gesture dismissals**, which complete on velocity, and **predictive-back exits**, which
-  the system times.
+- **Anything that returns where it came from.** A sheet, drawer or panel that arrived from
+  an edge leaves toward that edge, however it is dismissed; a shared element or container
+  transform reverses into its source. That exit is the entrance played backwards, and
+  dropping its movement breaks the reversal the user reads the layout from.
+- **Anything the finger drives** — a swipe dismissal completing on velocity, a
+  predictive-back exit seeking with progress. The timing is the gesture's, not the spec's.
 - **A change of emphasis in place.** A persistent element animating its own alpha, colour
-  or elevation is not entering or leaving. There is no spatial half to drop, so nothing in
-  this rule applies to it.
-- **Transitions whose pattern is itself a cross-fade** (T-011: unordered top-level
-  destinations). The pattern is chosen to promise *no* spatial relationship; adding
-  movement to satisfy this rule would assert the order T-011 says does not exist.
-
-Read literally and without these, the rule would make every cross-fade a violation and
-contradict T-011 outright.
-
-**Precedence with T-020.** An exit on a faster tier or with fewer properties, exactly as
-this rule prescribes, is **not** a T-020 tier mismatch. T-020 compares elements moving in
-the same direction of the same event; enter-versus-exit asymmetry is this rule's whole
-subject. Without this, the two rules would forbid each other in every correct Material
-transition.
+  or elevation is not entering or leaving. There is no spatial half to drop.
+- **A transition between destinations.** A screen is not a component appearing in place,
+  and a cross-fade between two of them is a pattern, not an exit missing its movement.
 
 **Why the ratio was wrong.** "Half the entrance" is one legacy pairing (emphasized
 400/200) promoted to law; M2 standard was 225/195, M3 standard 250/200. Under springs
@@ -774,12 +772,11 @@ cannot say why the screen feels incoherent, only that it does.
 necessarily one spec, since spatial and effects springs properly differ within a tier. The
 common defect is a pane transition on one tier with content on another.
 
+Compare elements moving in the *same direction*: what enters with what enters, what leaves
+with what leaves. An exit is never compared with the entrance it mirrors.
+
 Precedence with T-012: T-012 governs whether input is gated; T-020 governs coherence. A
 uniform screen that blocks input is still a T-012 finding.
-
-Precedence with T-010: compare elements moving in the *same direction* of the event. An
-exit that is faster or uses fewer properties than the entrance it mirrors is T-010 working
-as specified, not a tier mismatch.
 
 Does not apply across the app/platform boundary — system transitions are not yours.
 
@@ -988,7 +985,7 @@ regardless of MOTION.md.
 | T-004 | M3 Expressive vs Standard | Per-element, not per-surface |
 | T-008 | d.android.com predictive back | Scoped to custom back |
 | T-009 | Emil — frequency gate | State layer survives; ceiling governs additions |
-| T-010 | M3 tier guidance | Tier and property count, not a duration ratio |
+| T-010 | M3 tier guidance | Tier and property count, not a duration ratio; scoped to components appearing in place |
 | T-011 | M3 transition patterns | Direction promises order; defines "peer" |
 | T-012 | Emil — interruptibility | Re-grounded: gating input, not spec choice |
 | T-013 | Emil — stagger | Budgets the sequence; fixes ordering; extends it to one control's own parts |

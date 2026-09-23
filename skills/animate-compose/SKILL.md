@@ -121,8 +121,9 @@ exit (T-016).
 
 Through the ladder above. Spatial springs move things; effects springs fade and recolour,
 and are identical across schemes — changing scheme to alter a fade does nothing (T-004).
-Keep Expressive spatial off dense data (T-004). Exits at roughly half the entrance
-(T-010).
+Keep Expressive spatial off dense data (T-004). A component appearing in place exits on
+effects alone; anything that arrived from an edge or a source leaves the way it came
+(T-010, T-024).
 
 ### 5. Interruption and gesture
 
