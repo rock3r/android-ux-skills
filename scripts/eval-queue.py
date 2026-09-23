@@ -9,9 +9,10 @@ how two genuine fixture defects sat unnoticed until a model reported them twice.
 
     ./scripts/eval-queue.py /tmp/clean/report.*.json
 
-Then open the printed URL. j/k to move, e/n/d to decide, u to undo. Decisions are applied
-to the battery files on save, which are tracked by git, so a wrong call is one checkout
-away from undone.
+Then open the printed URL. j/k to move, e/n/d to decide, u to undo. Decisions survive a
+refresh — they are kept in the browser, per finding, and the page reopens on the first one
+you have not judged. They are applied to the battery files only on save, and those are
+tracked by git, so a wrong call is one checkout away from undone.
 
 Not a dashboard. There are no metrics here on purpose: the numbers are six rows in a
 terminal and they do not need a web page.
@@ -322,6 +323,11 @@ def collect(reports: list[Path], arms: tuple[str, ...] = ("with-skill",)) -> lis
                             "path": Path(u["path"]).name,
                             "start": u["lines"][0], "end": u["lines"][1],
                             "models": [], "note": "", "title": case.get("title", ""),
+                            # What a remembered verdict is a verdict *about*. Keyed on the
+                            # finding rather than its position, so a re-run with different
+                            # models or an extra case restores the calls that still apply
+                            # and silently drops the ones that no longer exist.
+                            "sig": "|".join(str(k) for k in key),
                         })
                         tag = f"{model} ({arm})"
                         if tag not in it["models"]:
@@ -510,12 +516,31 @@ PAGE = r"""<!doctype html>
   <span><kbd>d</kbd> dismiss</span>
   <span><kbd>u</kbd> undo</span>
   <span><kbd>s</kbd> save &amp; apply</span>
+  <span><kbd>x</kbd> forget remembered</span>
 </footer>
 <script>
 const ITEMS = __ITEMS__;
-let at = 0;
 const verdicts = new Array(ITEMS.length).fill(null);
 const history = [];
+
+// Decisions survive a refresh. They are kept per finding rather than per position, so
+// re-running the evals with another model restores the calls that still apply. This is a
+// convenience, not a record: the battery files are the source of truth, and nothing here
+// is written to them until you press s.
+const STORE = 'eval-queue.v1';
+const recall = () => {
+  try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch { return {}; }
+};
+const retain = () => {
+  const m = recall();
+  ITEMS.forEach((it, i) => verdicts[i] ? m[it.sig] = verdicts[i] : delete m[it.sig]);
+  try { localStorage.setItem(STORE, JSON.stringify(m)); } catch {}
+};
+const known = recall();
+ITEMS.forEach((it, i) => { if (known[it.sig]) verdicts[i] = known[it.sig]; });
+// Pick up where you left off rather than at the top of a queue you have half finished.
+let at = Math.max(0, verdicts.findIndex(v => !v));
+if (verdicts.length && verdicts.every(Boolean)) at = 0;
 
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
@@ -525,7 +550,7 @@ function render() {
     ITEMS.length ? `${at + 1} of ${ITEMS.length}` : 'nothing to adjudicate';
   const decided = verdicts.filter(Boolean).length;
   document.getElementById('saved').textContent =
-    decided ? `${decided} decided` : '';
+    decided ? `${decided} decided · kept in this browser` : '';
 
   if (!ITEMS.length) {
     main.innerHTML = '<p class="rule">No findings fell outside the labels in these ' +
@@ -609,6 +634,7 @@ function decide(v) {
   if (!ITEMS.length) return;
   history.push([at, verdicts[at]]);
   verdicts[at] = v;
+  retain();
   if (at < ITEMS.length - 1) at++;
   render();
 }
@@ -622,6 +648,12 @@ async function save() {
     body: JSON.stringify(payload)
   });
   const out = await res.json();
+  // A call that reached a battery file lives in git now, so forget it here; two records
+  // of the same decision is one too many. Dismissals are kept, because nothing else
+  // remembers them and they are the ones you would otherwise re-read every run.
+  const m = recall();
+  payload.forEach(p => { if (p.verdict !== 'dismiss') delete m[p.sig]; });
+  try { localStorage.setItem(STORE, JSON.stringify(m)); } catch {}
   document.getElementById('main').innerHTML =
     `<h2>Applied</h2><ul class="done">${
       out.log.length ? out.log.map(l => `<li>${esc(l)}</li>`).join('')
@@ -639,8 +671,16 @@ addEventListener('keydown', e => {
   else if (k === 'e') decide('expect');
   else if (k === 'n') decide('negative');
   else if (k === 'd') decide('dismiss');
-  else if (k === 'u') { const h = history.pop(); if (h) { [at, verdicts[at]] = [h[0], h[1]]; render(); } }
+  else if (k === 'u') {
+    const h = history.pop();
+    if (h) { at = h[0]; verdicts[at] = h[1]; retain(); render(); }
+  }
   else if (k === 's') save();
+  else if (k === 'x') {
+    if (!confirm('Forget every remembered decision, including ones from earlier runs?')) return;
+    try { localStorage.removeItem(STORE); } catch {}
+    verdicts.fill(null); history.length = 0; at = 0; render();
+  }
   else return;
   e.preventDefault();
 });
