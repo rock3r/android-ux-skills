@@ -397,6 +397,7 @@ def collect(reports: list[Path], arms: tuple[str, ...] = ("with-skill",)) -> lis
     for it in items.values():
         it["rule_text"] = rule_text(it["rule"])
         it["ctx"] = case_context(it["battery"], it["case"])
+        it["blocked_by"] = overlapping_label(it)
         it["source"] = source_lines(it["path"], it["start"], it["end"])
         it["specs"] = motion_specs(it["source"])
         out.append(it)
@@ -405,12 +406,37 @@ def collect(reports: list[Path], arms: tuple[str, ...] = ("with-skill",)) -> lis
     return out
 
 
+def overlapping_label(it: dict) -> str:
+    """The existing label this finding's span overlaps, if any.
+
+    The battery plan rejects a new span that overlaps an existing one, so such a finding
+    can only be dismissed: labelling it would fail every eval run until someone hand-edits
+    the JSON. Better to say so on the page than to let the save break the suite.
+    """
+    for p in EVALS.glob("evals*.json"):
+        spec = json.loads(p.read_text())
+        if spec.get("battery") != it["battery"]:
+            continue
+        case = next((c for c in spec["evals"] if c["id"] == it["case"]), None)
+        for kind in ("expect", "negatives"):
+            for e in (case or {}).get(kind, []):
+                for span in [e] + e.get("also_at", []):
+                    a, b = span["lines"]
+                    if Path(span["path"]).name == it["path"] and a <= it["end"] \
+                            and it["start"] <= b:
+                        what = e.get("rule") or "must-not-flag"
+                        return f"{what} {it['path']}:{a}-{b}"
+    return ""
+
+
 def apply(decisions: list[dict]) -> list[str]:
     """Write the decisions into the battery files. Git is the undo of last resort."""
     log = []
     by_file: dict[Path, list[dict]] = {}
     for d in decisions:
         if d["verdict"] == "dismiss":
+            continue
+        if overlapping_label(d):
             continue
         for p in EVALS.glob("evals*.json"):
             spec = json.loads(p.read_text())
@@ -703,6 +729,13 @@ function render() {
       itself worth knowing — dismiss it here and raise it separately.</p>`}
 
     <h3>Your call</h3>
+    ${it.blocked_by ? `
+    <p class="lede">This finding overlaps a label the case already has,
+      <b>${esc(it.blocked_by)}</b>. Two labels cannot share lines, so the only call
+      is <kbd>d</kbd>. If the existing label is the wrong one, change it by hand.</p>
+    <ul class="choices">
+      <li><kbd>d</kbd> <b>Leave it unlabelled.</b> Nothing changes.</li>
+    </ul>` : `
     <ul class="choices">
       <li><kbd>e</kbd> <b>It is right and every reviewer should find it.</b>
         Becomes a required finding: missing it counts as a miss from now on.</li>
@@ -710,7 +743,7 @@ function render() {
         Becomes a must-not-flag span: reporting it counts as a false positive.</li>
       <li><kbd>d</kbd> <b>Defensible, but not something to require or forbid.</b>
         Nothing changes; it stays unlabelled and unscored.</li>
-    </ul>
+    </ul>`}
   `;
   mountLotties(it);
   window.scrollTo(0, 0);
@@ -742,6 +775,7 @@ function mountLotties(it) {
 
 function decide(v) {
   if (!ITEMS.length) return;
+  if (ITEMS[at].blocked_by && v !== 'dismiss') return;
   history.push([at, verdicts[at]]);
   verdicts[at] = v;
   retain();
