@@ -350,7 +350,9 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
             timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None,
             thinking: str = "") -> ArmResult:
     arm = run_dir.name
-    actor_path, grants = actor or resolve_actor("pi")
+    # A dry run only prints the command, so the bare name will do; resolving it would
+    # make the plan fail wherever pi is not installed, which is CI.
+    actor_path, grants = actor or (("pi", []) if dry else resolve_actor("pi"))
     cmd = [
         "pioneer", "eval", "run",
         "--run-dir", str(run_dir),
@@ -832,7 +834,7 @@ def main() -> int:
     print(f"{len(specs)} batteries validated against their fixtures", file=sys.stderr)
 
     models = roster.resolve(args.model, args.tier or "arms", 2,
-                            args.allow_single)
+                            args.allow_single, check_reachable=not args.dry_run)
     if len(models) > 1:
         print(f"sweeping {len(models)} models: "
               f"{', '.join(m['model'] for m in models)}", file=sys.stderr)

@@ -48,7 +48,7 @@ def available_ids() -> set[str]:
 
 
 def resolve(requested: str | None, tier: str, want: int,
-            allow_single: bool = False) -> list[dict]:
+            allow_single: bool = False, check_reachable: bool = True) -> list[dict]:
     """The models to use: an explicit list, or the first reachable ones from a tier.
 
     Refuses to proceed with one model unless told to. A single model's habits are
@@ -63,6 +63,10 @@ def resolve(requested: str | None, tier: str, want: int,
             model, _, thinking = item.partition(":")
             chosen.append({"model": model, "thinking": thinking or "high",
                            "family": model})
+    elif not check_reachable:
+        # A plan runs nothing, so what this machine can reach is beside the point. CI has
+        # no pi at all, and asking it failed every push from the day this was added.
+        chosen = list(entries)[:want or minimum]
     else:
         reachable = available_ids()
         chosen = [e for e in entries if e["model"] in reachable][:want or minimum]

@@ -38,7 +38,11 @@ run "registry contract" ./scripts/check-skills.sh
 run "eval fixtures do not leak" ./scripts/check-fixture-leaks.sh
 run "eval grader tests" ./scripts/test-run-evals.py
 run "judge verdict tests" ./scripts/test-judge-evals.py
-run "eval batteries plan" ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
+# Without pi on PATH, as in CI. Run with it, this check passed here for a day and a half
+# while every CI run failed on it.
+run "eval batteries plan" env -i HOME="$HOME" PATH=/usr/bin:/bin \
+    ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
+run "shell scripts parse" bash -c 'for f in scripts/*.sh; do bash -n "$f" || exit 1; done'
 
 if [[ $fail -ne 0 ]]; then
     echo
