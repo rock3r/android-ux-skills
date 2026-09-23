@@ -262,8 +262,8 @@
         {
           "path": "ShelfMotion.kt",
           "lines": [
-            32,
-            36
+            24,
+            28
           ],
           "rule": "T-002",
           "class": "taste",
@@ -274,25 +274,25 @@
         {
           "path": "ShelfMotion.kt",
           "lines": [
-            18,
-            20
+            17,
+            19
           ],
           "note": "A literal tween inside a token definition is where literals belong. Flagging the token is the precision failure this case exists to catch."
         },
         {
           "path": "ShelfMotion.kt",
           "lines": [
-            45,
-            58
+            37,
+            51
           ],
-          "note": "SpineLabel resolves its spec through ShelfMotion.spineSlide()."
+          "note": "NowReadingLabel resolves its spec through ShelfMotion.spineSlide(). It is on a different screen from BookSpine, so the two are not one event."
         }
       ],
       "expectations": [
         "Flags BookSpine's literal tween(...) at the call site",
         "Names ShelfMotion.spineSlide(), the token the file already defines with the same values, as the fix",
         "Does NOT flag the tween inside the ShelfMotion object",
-        "Does NOT flag SpineLabel"
+        "Does NOT flag NowReadingLabel"
       ]
     },
     {
@@ -611,10 +611,10 @@
         {
           "path": "SyncSettings.kt",
           "lines": [
-            22,
-            53
+            17,
+            52
           ],
-          "note": "Every moving thing here belongs to Material: the Switch thumb and track, the Slider thumb and its discrete ticks, and the Button's state layer and ripple. The app authors no animation at all, specifies no spec, and should not. There is nothing to report."
+          "note": "Every moving thing here belongs to Material: the Switch thumb and track, the Slider thumb and its discrete ticks, and the Button's state layer and ripple. The app authors no animation at all, specifies no spec, and should not. There is nothing to report. The settings are the caller's state: they were held in remember, which rotation resets, until a model reported it."
         }
       ],
       "expectations": [

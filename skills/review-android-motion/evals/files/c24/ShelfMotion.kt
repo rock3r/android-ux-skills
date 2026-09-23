@@ -4,7 +4,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,16 +18,9 @@ object ShelfMotion {
     fun <T> spineSlide() = tween<T>(durationMillis = 300, easing = FastOutSlowInEasing)
 }
 
+/** A book on the shelf screen. Tapping it pulls the spine up. */
 @Composable
-fun ShelfRow(pulledOut: Boolean, title: String, modifier: Modifier = Modifier) {
-    Row(modifier) {
-        BookSpine(pulledOut, title)
-        SpineLabel(pulledOut, title)
-    }
-}
-
-@Composable
-private fun BookSpine(pulledOut: Boolean, title: String) {
+fun BookSpine(pulledOut: Boolean, title: String, modifier: Modifier = Modifier) {
     val lift by animateDpAsState(
         targetValue = if (pulledOut) 24.dp else 0.dp,
         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
@@ -37,22 +29,23 @@ private fun BookSpine(pulledOut: Boolean, title: String) {
 
     Text(
         text = title,
-        modifier = Modifier.offset { IntOffset(0, -lift.roundToPx()) },
+        modifier = modifier.offset { IntOffset(0, -lift.roundToPx()) },
         style = MaterialTheme.typography.titleMedium,
     )
 }
 
+/** The title in the reading bar, which shifts right while the book is open. */
 @Composable
-private fun SpineLabel(pulledOut: Boolean, title: String) {
+fun NowReadingLabel(reading: Boolean, title: String, modifier: Modifier = Modifier) {
     val slide by animateFloatAsState(
-        targetValue = if (pulledOut) 1f else 0f,
+        targetValue = if (reading) 1f else 0f,
         animationSpec = ShelfMotion.spineSlide(),
         label = "labelSlide",
     )
 
     Text(
         text = "Now reading: $title",
-        modifier = Modifier.graphicsLayer { translationX = slide * 48.dp.toPx() },
+        modifier = modifier.graphicsLayer { translationX = slide * 48.dp.toPx() },
         style = MaterialTheme.typography.labelMedium,
     )
 }

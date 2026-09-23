@@ -10,20 +10,19 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SyncSettings(onSyncNow: () -> Unit, modifier: Modifier = Modifier) {
-    var syncOverCellular by remember { mutableStateOf(false) }
-    var downloadAhead by remember { mutableFloatStateOf(3f) }
-
+fun SyncSettings(
+    syncOverCellular: Boolean,
+    onSyncOverCellular: (Boolean) -> Unit,
+    downloadAhead: Float,
+    onDownloadAhead: (Float) -> Unit,
+    onSyncNow: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier.fillMaxWidth().padding(16.dp)) {
         Text("Syncing", style = MaterialTheme.typography.titleMedium)
 
@@ -34,14 +33,14 @@ fun SyncSettings(onSyncNow: () -> Unit, modifier: Modifier = Modifier) {
             Text("Sync over cellular", style = MaterialTheme.typography.bodyLarge)
             Switch(
                 checked = syncOverCellular,
-                onCheckedChange = { syncOverCellular = it },
+                onCheckedChange = onSyncOverCellular,
             )
         }
 
         Text("Chapters to download ahead", style = MaterialTheme.typography.bodyLarge)
         Slider(
             value = downloadAhead,
-            onValueChange = { downloadAhead = it },
+            onValueChange = onDownloadAhead,
             valueRange = 1f..10f,
             steps = 8,
         )

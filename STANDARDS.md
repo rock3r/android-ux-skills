@@ -559,8 +559,8 @@ just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
 mechanism; the tier names are Material's way of saying it.
 
 **Scope — a component that appears and disappears in place**: a menu, a tooltip, a popup,
-a badge, the contents of a collapsing container. It appears where it will sit rather than
-travelling there, so its exit has no path to retrace. Outside it:
+a badge, a section shown and hidden as its container expands. It appears where it will sit
+rather than travelling there, so its exit has no path to retrace. Outside it:
 
 - **Anything that returns where it came from.** A sheet, drawer or panel that arrived from
   an edge leaves toward that edge, however it is dismissed; a shared element or container
@@ -570,6 +570,8 @@ travelling there, so its exit has no path to retrace. Outside it:
   predictive-back exit seeking with progress. The timing is the gesture's, not the spec's.
 - **A change of emphasis in place.** A persistent element animating its own alpha, colour
   or elevation is not entering or leaving. There is no spatial half to drop.
+- **Content clamped rather than removed** — a blurb cut to three lines, a list capped at a
+  height. It stays on screen; less of it shows.
 - **A transition between destinations.** A screen is not a component appearing in place,
   and a cross-fade between two of them is a pattern, not an exit missing its movement.
 
