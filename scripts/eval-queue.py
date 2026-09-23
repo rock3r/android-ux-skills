@@ -265,6 +265,54 @@ def motion_specs(source: list[dict]) -> list[dict]:
     return out
 
 
+# The spellings Lottie accepts, matched case-insensitively (LottieDrawable.java:99-112).
+REDUCED_MOTION = {"reduced motion", "reduced_motion", "reduced-motion", "reducedmotion"}
+
+
+def _linear_where_unset(node):
+    """Give every keyframe without easing handles the linear ones Android assumes.
+
+    lottie-android treats a keyframe with no "i"/"o" as linear (KeyframeParser.java
+    L139-147). lottie-web instead draws nothing at all, silently — so without this the
+    page shows a blank frame for a composition that renders fine on a phone, which is
+    precisely the question it is being asked to answer.
+    """
+    if isinstance(node, list):
+        return [_linear_where_unset(n) for n in node]
+    if not isinstance(node, dict):
+        return node
+    out = {k: _linear_where_unset(v) for k, v in node.items()}
+    if "t" in out and "s" in out and not out.get("h"):
+        out.setdefault("o", {"x": 0, "y": 0})
+        out.setdefault("i", {"x": 1, "y": 1})
+    return out
+
+
+def lottie_view(name: str, comp: dict) -> dict:
+    """Which frame Android shows once animations are off, and why that one.
+
+    With Remove animations on, Lottie lands on the start of a "reduced motion" marker if
+    the composition has one, and otherwise on its last frame.
+    """
+    ip, op, fr = comp.get("ip", 0), comp.get("op", 0), comp.get("fr", 60) or 60
+    markers = comp.get("markers", [])
+    marker = next((m for m in markers
+                   if str(m.get("cm", "")).lower() in REDUCED_MOTION), None)
+    if marker:
+        off, why = marker["tm"], f"the start of its \u201c{marker['cm']}\u201d marker"
+    else:
+        off, why = op, "its last frame, because it has no \u201creduced motion\u201d marker"
+    return {
+        "name": name, "comp": _linear_where_unset(comp), "why": why, "off": off,
+        # lottie-web counts from the in-point and cannot land on the out-point itself,
+        # where Android does. A whole frame short is visibly wrong — a fade to nothing
+        # still shows a ghost of its last 3% — so stop a thousandth of a frame short.
+        "seek": max(0, min(off, op - 0.001) - ip),
+        "length": f"{(op - ip) / fr:.1f}s at {fr:g}fps",
+        "markers": [f"{m.get('cm', '')} @ {m.get('tm', 0)}" for m in markers],
+    }
+
+
 def case_context(battery: str, case_id: int) -> dict:
     """What this case already says it is testing, and what it already covers.
 
@@ -279,16 +327,24 @@ def case_context(battery: str, case_id: int) -> dict:
         if case is None:
             continue
         # The documents the reviewer was handed, in full. A finding that argues from
-        # "MOTION.md says X" cannot be judged without reading whether it does.
-        docs = []
+        # "MOTION.md says X" cannot be judged without reading whether it does. A Lottie is
+        # not a document: nobody can judge a frame from its JSON, so it is rendered.
+        docs, lotties = [], []
         for rel in case.get("files", []):
             src = (EVALS.parent / rel).resolve()
-            if src.suffix.lower() in (".md", ".json") and src.exists():
+            if not src.exists():
+                continue
+            if src.suffix.lower() == ".md":
                 docs.append({"name": src.name, "body": src.read_text()})
+            elif src.suffix.lower() == ".json":
+                comp = json.loads(src.read_text())
+                if isinstance(comp, dict) and "layers" in comp:
+                    lotties.append(lottie_view(src.name, comp))
         return {
             "prompt": case.get("prompt", ""),
             "cls": case.get("class", ""),
             "docs": docs,
+            "lotties": lotties,
             "staged": [Path(f).name for f in case.get("files", [])],
             "expect": [f'{e["rule"]} {e["class"]} {Path(e["path"]).name}:'
                        f'{e["lines"][0]}-{e["lines"][1]}' for e in case.get("expect", [])],
@@ -500,7 +556,20 @@ PAGE = r"""<!doctype html>
   .verdict.dismiss { color: var(--ink-soft); }
   .done { max-width: 68ch; }
   .done li { margin-bottom: 6px; }
+  .lottie-pair { display: flex; gap: 24px; flex-wrap: wrap; margin: 14px 0 0; }
+  .lottie-pair figure { margin: 0; width: 240px; }
+  .stage {
+    width: 240px; aspect-ratio: 1; background: var(--card);
+    border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  }
+  .stage.fail {
+    display: flex; align-items: center; padding: 16px;
+    color: var(--ink-soft); font-size: 15px;
+  }
+  .lottie-pair figcaption { margin-top: 8px; font-size: 15px; color: var(--ink-soft); }
+  .lottie-pair figcaption b { color: var(--ink); font-weight: 600; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 </head>
 <body>
 <header>
@@ -596,6 +665,22 @@ function render() {
       `<span class="ln${l.hot ? ' hot' : ''}"><span class="num">${l.n}</span>${esc(l.text)}</span>`
     ).join('')}</pre>
 
+    ${(it.ctx.lotties || []).map((l, i) => `
+      <h3>What ${esc(l.name)} shows</h3>
+      <p class="rule">${esc(l.length)}. Markers: ${
+        l.markers.length ? l.markers.map(esc).join(', ') : 'none'}.</p>
+      <div class="lottie-pair">
+        <figure>
+          <div class="stage" data-lottie="${i}" data-mode="play"></div>
+          <figcaption><b>Playing</b>, on a loop</figcaption>
+        </figure>
+        <figure>
+          <div class="stage" data-lottie="${i}" data-mode="off"></div>
+          <figcaption><b>With animations off</b>: frame ${l.off}, ${esc(l.why)}.
+            This is all that user ever sees.</figcaption>
+        </figure>
+      </div>`).join('')}
+
     ${(it.specs || []).length ? `
       <h3>How that moves</h3>
       <p class="rule">Computed from the same damping and stiffness the runtime uses, so
@@ -627,7 +712,32 @@ function render() {
         Nothing changes; it stays unlabelled and unscored.</li>
     </ul>
   `;
+  mountLotties(it);
   window.scrollTo(0, 0);
+}
+
+function mountLotties(it) {
+  if (window.lottie) lottie.destroy();
+  document.querySelectorAll('.stage[data-lottie]').forEach(stage => {
+    if (!window.lottie) {
+      stage.classList.add('fail');
+      stage.textContent = 'lottie-web did not load, so this cannot be drawn.';
+      return;
+    }
+    const l = it.ctx.lotties[+stage.dataset.lottie];
+    const play = stage.dataset.mode === 'play';
+    try {
+      const anim = lottie.loadAnimation({
+        container: stage, renderer: 'svg', loop: true, autoplay: play,
+        // lottie-web mutates the data it is given; each player gets its own copy.
+        animationData: structuredClone(l.comp),
+      });
+      if (!play) anim.addEventListener('DOMLoaded', () => anim.goToAndStop(l.seek, true));
+    } catch (err) {
+      stage.classList.add('fail');
+      stage.textContent = `lottie-web could not draw this: ${err.message}`;
+    }
+  });
 }
 
 function decide(v) {
