@@ -22,7 +22,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Search filters, raised from the bottom edge over the results by the Filters button. */
 @Composable
@@ -37,7 +39,7 @@ fun FiltersPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifi
             progress.collect { event -> hidden.snapTo(event.progress) }
             onClose()
         } catch (e: CancellationException) {
-            hidden.animateTo(0f, settle)
+            withContext(NonCancellable) { hidden.animateTo(0f, settle) }
             throw e
         }
     }
@@ -67,7 +69,7 @@ fun SortPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier)
             progress.collect { event -> hidden.snapTo(event.progress) }
             onClose()
         } catch (e: CancellationException) {
-            hidden.animateTo(0f, settle)
+            withContext(NonCancellable) { hidden.animateTo(0f, settle) }
             throw e
         }
     }

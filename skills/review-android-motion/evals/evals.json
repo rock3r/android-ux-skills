@@ -1175,8 +1175,8 @@
         {
           "path": "Panels.kt",
           "lines": [
-            27,
-            53
+            29,
+            55
           ],
           "rule": "T-025",
           "class": "taste",
@@ -1187,8 +1187,8 @@
         {
           "path": "Panels.kt",
           "lines": [
-            55,
-            101
+            57,
+            103
           ],
           "note": "SortPanel follows the finger and settles with the release velocity, as a bottom sheet does."
         }
