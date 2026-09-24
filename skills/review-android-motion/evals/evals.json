@@ -91,16 +91,16 @@
       "id": 12,
       "title": "B · T-001 with no convention anywhere: severity stays minor",
       "class": "B. Context-dependent severity",
-      "prompt": "Review the motion in this screen. File: Onboarding.kt",
+      "prompt": "Review the motion in this screen. File: Kiosk.kt",
       "files": [
-        "evals/files/c12/Onboarding.kt"
+        "evals/files/c12/Kiosk.kt"
       ],
       "expect": [
         {
-          "path": "Onboarding.kt",
+          "path": "Kiosk.kt",
           "lines": [
-            21,
-            25
+            40,
+            44
           ],
           "rule": "T-001",
           "class": "taste",
@@ -109,17 +109,18 @@
       ],
       "negatives": [
         {
-          "path": "Onboarding.kt",
+          "path": "Kiosk.kt",
           "lines": [
-            38,
-            44
+            52,
+            57
           ],
-          "note": "StepPage has no motion of its own; the Button's press feedback is the platform's."
+          "note": "SectionPage has no motion of its own."
         }
       ],
       "expectations": [
         "Flags the NavHost as inheriting the 700ms default",
         "Reports it as minor: no MOTION.md, and nothing else in the file resolves a spec to tokens or the scheme, so there is no convention for it to depart from",
+        "Does NOT object to the cross-fade pattern itself: bottom-bar sections are unordered, so a cross-fade is the right pattern and only its 700ms default is at fault",
         "Does NOT invent a motion convention the file does not show"
       ]
     },
