@@ -64,8 +64,8 @@ fun YearChart(months: List<Float>, modifier: Modifier = Modifier) {
 /** The stats card on the profile screen. Tap it to show the year as well as the week. */
 @Composable
 fun StatsCard(week: List<Float>, year: List<Float>, expanded: Boolean, modifier: Modifier = Modifier) {
-    Card(modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec())) {
-        Column {
+    Card(modifier) {
+        Column(Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec())) {
             Text("This week", style = MaterialTheme.typography.titleMedium)
             WeekChart(week)
             if (expanded) {
