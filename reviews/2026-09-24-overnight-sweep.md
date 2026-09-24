@@ -115,6 +115,27 @@ thing one function away. Case 12 is new and holds the other direction — the sa
 default in a file with no convention anywhere stays minor. Under these labels, all six of
 GLM's severity "errors" in this sweep become correct.
 
+## Opus 5.5, one run
+
+Claude Opus 5.5 through `claude-code` (subscription, not metered), pioneer 0.3.6, at
+`614ea32` — before the severity change. One run, so no spread. Graded against the current
+labels:
+
+| Arm | floor | obligation | taste | false positives | severity right/wrong |
+|---|---|---|---|---|---|
+| baseline | 1/3 | 1/1 | 11/11 | 25 | 9/4 |
+| with-skill | **3/3** | 1/1 | 11/11 | **0** | 13/2 |
+
+Opus finds every taste defect unaided, so on taste the skill adds nothing; what it adds is
+the floor — 1/3 to 3/3 — and precision: 25 false positives to none. Its two severity misses
+are cases 22 and 23 reported minor where the new labels, set after this run, say major. Its
+one unlabelled finding is `T-028` on case 30, applied to the fixture that rule was written
+for.
+
+An earlier Opus run was discarded: Pi was upgraded to 0.87.1 mid-sweep, which stopped
+passing tools to the `claude-code` extension, and every later case answered "I don't have
+the files". The extension is patched on bepi until Compose-Pi's fix lands.
+
 ## Known limits
 
 - Two runs is the minimum that shows a spread, not enough to estimate one.
