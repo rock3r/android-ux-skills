@@ -518,8 +518,8 @@
         {
           "path": "ExpandableRow.kt",
           "lines": [
-            17,
-            33
+            20,
+            40
           ],
           "rule": "F-006",
           "class": "floor",
@@ -530,8 +530,8 @@
         {
           "path": "ExpandableRow.kt",
           "lines": [
-            35,
-            47
+            42,
+            54
           ],
           "note": "CollapsibleBlurb clips deliberately: clipToBounds is explicit and a height cap bounds it, with animateContentSize ahead of both so the collapse still animates. Asserting a defect here is the failure this span exists to catch."
         }

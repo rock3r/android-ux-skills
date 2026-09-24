@@ -1,6 +1,9 @@
 package com.example.catalogue.ui.library
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -25,7 +28,11 @@ fun BookRow(expanded: Boolean, blurb: String, modifier: Modifier = Modifier) {
     ) {
         Column {
             Text("The Wind in the Willows", style = MaterialTheme.typography.titleMedium)
-            if (expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
                 Text(blurb, style = MaterialTheme.typography.bodyMedium)
             }
         }
