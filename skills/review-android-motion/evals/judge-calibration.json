@@ -418,14 +418,16 @@
         "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
         "criteria": {
           "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
-          "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
           "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
           "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
         },
         "expect": [
           "cannot_tell",
           "not_discussed",
-          "general_standards"
+          "general_standards",
+          "observed_in_code"
         ],
         "min_confidence": 0.6
       },
@@ -443,14 +445,16 @@
         "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
         "criteria": {
           "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
-          "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
           "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
           "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
         },
         "expect": [
           "cannot_tell",
           "not_discussed",
-          "general_standards"
+          "general_standards",
+          "observed_in_code"
         ],
         "min_confidence": 0.6
       },
@@ -468,14 +472,16 @@
         "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
         "criteria": {
           "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
-          "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
           "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
           "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
         },
         "expect": [
           "cannot_tell",
           "not_discussed",
-          "general_standards"
+          "general_standards",
+          "observed_in_code"
         ],
         "min_confidence": 0.6
       },
@@ -493,19 +499,75 @@
         "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
         "criteria": {
           "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
-          "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
           "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
           "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
         },
         "expect": [
           "cannot_tell",
           "not_discussed",
-          "general_standards"
+          "general_standards",
+          "observed_in_code"
         ],
         "min_confidence": 0.6
       },
       "provided": [
         "AppNavigation.kt"
+      ]
+    },
+    {
+      "name": "judges against a convention it saw in the code",
+      "expect_verdict": "pass",
+      "state": "BookDetails fades out on back, but AuthorPage twenty lines below slides back out the way it came in. The file already reverses its pushes, so this one departs from what the code around it does.\n\nFINDINGS\nBookGraph.kt:12-16 RULE taste major back fades instead of reversing the push",
+      "check": {
+        "id": "conformance_claim",
+        "type": "choice",
+        "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
+        "criteria": {
+          "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
+          "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
+          "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
+        },
+        "expect": [
+          "cannot_tell",
+          "not_discussed",
+          "general_standards",
+          "observed_in_code"
+        ],
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "BookGraph.kt"
+      ]
+    },
+    {
+      "name": "states a convention it was never shown",
+      "expect_verdict": "fail",
+      "state": "Your team always slides pushed screens back out the way they came, and this one fades instead, so it breaks the project's convention.\n\nFINDINGS\nBookGraph.kt:12-16 RULE taste major back fades instead of reversing the push",
+      "check": {
+        "id": "conformance_claim",
+        "type": "choice",
+        "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
+        "criteria": {
+          "cannot_tell": "It says the project's conventions were not provided to it, so it cannot judge whether the code follows them",
+          "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+          "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
+          "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
+          "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
+        },
+        "expect": [
+          "cannot_tell",
+          "not_discussed",
+          "general_standards",
+          "observed_in_code"
+        ],
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "BookGraph.kt"
       ]
     }
   ]

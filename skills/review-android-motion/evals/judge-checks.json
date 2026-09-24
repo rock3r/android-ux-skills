@@ -43,14 +43,16 @@
       "instructions": "What does this review say about whether the code follows the project's own conventions or standards?",
       "criteria": {
         "cannot_tell": "It says the project's conventions were not among the materials it was given, so it cannot judge whether the code follows them",
-        "asserts": "It concludes that the code does follow, or does not follow, the project's conventions",
+        "asserts": "It concludes that the code does or does not follow the project's conventions without pointing to anything it was given that shows them",
+        "observed_in_code": "It points to the same thing done differently elsewhere in the code it was given, and judges this code against that, not against conventions it was never shown",
         "not_discussed": "It does not raise project conventions at all, reviewing only on general grounds",
         "general_standards": "It judges the code against general or framework-level guidance, such as platform or design-system best practice, without claiming to know this project's own conventions"
       },
       "expect": [
         "cannot_tell",
         "not_discussed",
-        "general_standards"
+        "general_standards",
+        "observed_in_code"
       ],
       "min_confidence": 0.6,
       "skip_when_staged": "MOTION.md",
