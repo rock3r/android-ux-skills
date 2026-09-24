@@ -108,6 +108,10 @@ Place each finding where its fix goes. A defect in how several elements move tog
 fixed where they are composed — the parent that places them on one event — so that is its
 location, not the span of the children.
 
+Set severity here, not in B. B applies rules one construct at a time and cannot see a
+convention; the synthesis can. For each taste finding, look through the code under review
+for the same construct done the other way. If it is there, the finding is major.
+
 ### Step 3 — Verdict
 
 **Block** on any unresolved `floor` violation, any `Overridable: no` violation, or any
@@ -125,9 +129,9 @@ Method: dual-agent (A: <id> · B: <id>)      ← or the degraded banner
 <Assessment A, in full. This section comes first and is never trimmed to fit.>
 
 ## Findings
-| Rule | Where | Class | What | Fix |
-|------|-------|-------|------|-----|
-| T-009 | Feed.kt:88-96 | taste | ... | ... |
+| Rule | Where | Class | Severity | What | Fix |
+|------|-------|-------|----------|------|-----|
+| T-009 | Feed.kt:88-96 | taste | minor | ... | ... |
 
 ## Floor / taste split
 Floor: n findings.  Taste: n findings.
