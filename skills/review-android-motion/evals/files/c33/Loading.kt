@@ -1,5 +1,6 @@
 package com.example.catalogue.ui.search
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,13 +37,18 @@ fun SearchResults(loading: Boolean, results: @Composable () -> Unit, modifier: M
 @Composable
 fun BranchHours(loading: Boolean, hours: @Composable () -> Unit, modifier: Modifier = Modifier) {
     var showIndicator by remember { mutableStateOf(false) }
+    var shownAt by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(loading) {
         if (loading) {
             delay(INDICATOR_DELAY_MS)
+            shownAt = SystemClock.uptimeMillis()
             showIndicator = true
         } else {
-            if (showIndicator) delay(INDICATOR_MIN_VISIBLE_MS)
+            if (showIndicator) {
+                val shownFor = SystemClock.uptimeMillis() - shownAt
+                delay((INDICATOR_MIN_VISIBLE_MS - shownFor).coerceAtLeast(0L))
+            }
             showIndicator = false
         }
     }

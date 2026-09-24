@@ -649,8 +649,8 @@
         {
           "path": "Loading.kt",
           "lines": [
-            18,
-            32
+            20,
+            34
           ],
           "rule": "T-019",
           "class": "taste",
@@ -661,10 +661,10 @@
         {
           "path": "Loading.kt",
           "lines": [
-            34,
-            63
+            36,
+            70
           ],
-          "note": "BranchHours waits 150ms before showing the indicator and, once shown, keeps it for 400ms: the delay and minimum T-019 asks for."
+          "note": "BranchHours waits 150ms before showing the indicator and, once shown, keeps it until 400ms have passed since it appeared — the delay and minimum T-019 asks for. It used to wait a flat 400ms after loading ended, which a baseline run caught as lingering."
         }
       ],
       "expectations": [
