@@ -41,8 +41,10 @@ fun RatingControl(rating: Int, onRate: (Int) -> Unit, modifier: Modifier = Modif
                 if (index in lit) {
                     delay((index - lit.first) * STAR_STAGGER_MS)
                     scale.animateTo(1.2f, pulse)
+                    scale.animateTo(1f, pulse)
+                } else if (scale.value != 1f) {
+                    scale.animateTo(1f, pulse)
                 }
-                scale.animateTo(1f, pulse)
             }
         }
     }

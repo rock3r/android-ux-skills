@@ -394,7 +394,7 @@
           "path": "RatingControl.kt",
           "lines": [
             32,
-            60
+            62
           ],
           "note": "Whether this spring exceeds the frequency ceiling depends on how often readers rate books, which is not in this file and is not staged. Asserting a T-009 verdict here is the failure; asking, or scoping the claim to a stated assumption, is the pass. The span covers the whole control, which is otherwise correct under every rule: only newly lit stars pulse, in turn, within the stagger budget, keyed so a second tap cancels the rest; lowering the rating moves nothing; the scale is read in graphicsLayer and returns to 1."
         }

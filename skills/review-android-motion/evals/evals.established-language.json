@@ -102,7 +102,7 @@
           "path": "RatingControl.kt",
           "lines": [
             32,
-            48
+            50
           ],
           "rule": "T-009",
           "class": "taste",
@@ -111,8 +111,8 @@
             {
               "path": "RatingControl.kt",
               "lines": [
-                57,
-                60
+                59,
+                62
               ]
             }
           ]

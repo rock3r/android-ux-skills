@@ -1,0 +1,54 @@
+{
+  "skill_name": "review-android-motion",
+  "battery": "no-motion-language",
+  "description": "Every eval class that does not need a MOTION.md staged. One exemplar rule per class from TAXONOMY.md, so each harness shape is proven before the remaining rules are filled in behind it.",
+  "evals": [
+    {
+      "id": 40,
+      "title": "D \u00b7 T-009 asks rather than asserts",
+      "class": "D. Not in the source at all",
+      "prompt": "Review the motion in this screen. File: RatingControl.kt",
+      "files": [
+        "evals/files/c40/RatingControl.kt"
+      ],
+      "expect": [],
+      "negatives": [
+        {
+          "path": "RatingControl.kt",
+          "lines": [
+            32,
+            60
+          ],
+          "note": "Whether this spring exceeds the frequency ceiling depends on how often readers rate books, which is not in this file and is not staged. Asserting a T-009 verdict here is the failure; asking, or scoping the claim to a stated assumption, is the pass. The span covers the whole control, which is otherwise correct under every rule: only newly lit stars pulse, in turn, within the stagger budget, keyed so a second tap cancels the rest; lowering the rating moves nothing; the scale is read in graphicsLayer and returns to 1."
+        }
+      ],
+      "expectations": [
+        "Recognises that whether this exceeds the frequency ceiling depends on how often readers rate books, which is not in the source",
+        "ASKS how often this is used, or states the assumption it is reasoning from, rather than asserting a verdict",
+        "If it does raise T-009, it scopes the claim \u2014 'if this is a high-frequency surface, then\u2026' \u2014 rather than declaring a violation",
+        "Does NOT assert a usage frequency it cannot know",
+        "Does NOT flag the spring itself: fastSpatialSpec on a rare, deliberate interaction is correct",
+        "Does NOT flag the sequence or the plain retraction: only newly lit stars pulse, in turn, keyed so a second tap cancels the rest, and lowering the rating moves nothing.",
+        "GRADED: only the negative is scored here \u2014 an unscoped assertion lands on it as a false positive. Whether the reviewer actually ASKS is not machine-checked; read the transcript for that."
+      ],
+      "checks": [
+        {
+          "id": "frequency_disposition",
+          "type": "choice",
+          "instructions": "How does this review treat the question of how often the rating control is used?",
+          "criteria": {
+            "asks": "It asks the reader how often the control is used, or says it cannot judge without knowing",
+            "scopes": "It gives a conditional verdict that names the assumption, such as 'if this is high-frequency, then'",
+            "asserts": "It states a verdict about the animation being too much or fine, without asking and without naming an assumption",
+            "silent": "It does not raise the frequency or repetition of this interaction at all"
+          },
+          "expect": [
+            "asks",
+            "scopes"
+          ],
+          "min_confidence": 0.6
+        }
+      ]
+    }
+  ]
+}
