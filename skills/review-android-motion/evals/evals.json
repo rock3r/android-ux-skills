@@ -727,7 +727,7 @@
             67,
             79
           ],
-          "note": "PostageNote: token spec, lambda offset."
+          "note": "PostageNote: its text changes with the discount (postage now charged), so it is a part of the event, not an unchanged element moving. Token spec, lambda offset."
         },
         {
           "path": "CheckoutSummary.kt",
@@ -735,7 +735,7 @@
             81,
             93
           ],
-          "note": "LoyaltyPoints: effects spec, graphicsLayer read."
+          "note": "LoyaltyPoints: the points earned change with the discount. Effects spec, graphicsLayer read."
         },
         {
           "path": "CheckoutSummary.kt",
@@ -749,6 +749,7 @@
       "expectations": [
         "Identifies that five elements animate on one event and none of them leads",
         "Reports it against the screen or CheckoutSummary itself, not against any individual composable",
+        "Treats every child as changed: the total, badge, postage, points and button colour all carry new information, so the defect is that nothing leads, not that unchanged elements move",
         "Does NOT report the five children as five separate findings — every one of them is individually correct",
         "Suggests choosing what the event is about, rather than tuning any single spec",
         "Does NOT report the badge's appearance as reflowing its siblings instantly: the size change is animated on the same tier as the movement around it."

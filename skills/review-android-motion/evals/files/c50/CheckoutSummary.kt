@@ -72,7 +72,7 @@ private fun PostageNote(discounted: Boolean) {
         label = "postageShift",
     )
     Text(
-        text = "Free postage over £35",
+        text = if (discounted) "Postage now £3.50" else "Free postage over £35",
         modifier = Modifier.offset { IntOffset(0, shift.roundToPx()) },
         style = MaterialTheme.typography.bodySmall,
     )
@@ -86,7 +86,7 @@ private fun LoyaltyPoints(discounted: Boolean) {
         label = "pointsFade",
     )
     Text(
-        text = "Earn 38 points",
+        text = if (discounted) "Earn 38 points" else "Earn 48 points",
         modifier = Modifier.graphicsLayer { alpha = fade },
         style = MaterialTheme.typography.bodySmall,
     )
