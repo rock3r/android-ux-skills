@@ -2,7 +2,7 @@
   "description": "Which models to run evals and readings against. Never one model alone.\n\nThe point of more than one is not redundancy, it is bias. Every model has a house style — one terse and prone to missing things, another expansive and prone to inventing them. A skill measured against a single model is measured against that model's habits as much as its own merit, and a reading produced by one model is a single opinion wearing the clothes of a conclusion. Where two disagree, that disagreement is the finding.\n\nAvailability is discovered at run time: an entry here is an intention, not a promise the machine can reach it. Entries are ordered by reliability first, because a roster entry that reliably fails is worse than one that is merely a version behind.",
   "min_models_per_pass": 2,
   "_no_gemini_note": "Gemini is deliberately not a default anywhere in this file. The API errors out or times out the overwhelming majority of the time from this account, and a default that usually fails is worse than one that is merely imperfect. The entries remain, demoted, so they can be promoted if that changes.",
-  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which sees only part of the host's configuration: pioneer copies exactly five root files into the sandboxed pi home — auth.json, models.json, models-store.json, settings.json and AGENTS.md (pioneer src/pi-home.ts, DEFAULT_ROOT_FILES). Per-provider catalogues such as claude-code-models.json and kimi-code-models.json are NOT copied, so those providers resolve on the host and fail inside the sandbox with 'model not found'. That is a pioneer fix, not a roster one. Everything listed here is verified to answer inside the sandbox.",
+  "_arms_note": "Models that play the reviewer under test. These run INSIDE pioneer's sandbox, which sees only part of the host's configuration: pioneer copies exactly five root files into the sandboxed pi home — auth.json, models.json, models-store.json, settings.json and AGENTS.md (pioneer src/pi-home.ts, DEFAULT_ROOT_FILES). Per-provider catalogues such as claude-code-models.json and kimi-code-models.json are NOT copied, so those providers resolve on the host and fail inside the sandbox with 'model not found'. That is a pioneer fix, not a roster one. Everything listed here is verified to answer inside the sandbox. Update 2026-09-24: pioneer #82 (merged, unreleased) copies enabled extensions into the sandbox, so claude-code and kimi-code can run as arms once it ships; until then, put a pioneer built from main first on PATH.",
   "arms": [
     {
       "model": "openai-codex/gpt-6-luna",
@@ -64,10 +64,16 @@
   "_sota_note": "A periodic manual pass, not something to leave in a loop. Use for a considered re-read when a result matters or a conclusion is about to be acted on.",
   "sota": [
     {
+      "model": "claude-code/claude-opus-5-5",
+      "family": "claude-opus",
+      "thinking": "high",
+      "note": "Subscription-backed through the claude-code extension, not metered. Verified as an arm on 2026-09-24 with pioneer built from main (#82, which copies extensions into the sandbox; unreleased as of 0.3.5), after bumping the extension's CLAUDE_CODE_VERSION to 2.1.281 — Anthropic refuses Opus 5.5 below 2.1.280, and Compose-Pi main still sends 2.1.266."
+    },
+    {
       "model": "claude-code/claude-opus-5",
       "thinking": "high",
       "family": "claude-opus",
-      "note": "The route to Opus: subscription-backed, not metered. Needs pioneer with #82 (unreleased as of 0.3.5) to run as an arm, and a live claude-code login."
+      "note": "Fallback for Opus 5.5; same family, so never both in one pass."
     },
     {
       "model": "claude-code/claude-fable-5-1",
