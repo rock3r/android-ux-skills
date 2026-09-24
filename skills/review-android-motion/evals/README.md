@@ -124,9 +124,11 @@ the code.
 
 ## Coverage
 
-One exemplar per eval class in `TAXONOMY.md`, so every harness shape is proven before the
-remaining rules are filled in behind it.
-Class A is the first to be filled in: 21–29, 31 and 32 follow case 20's shape.
+Every rule that a fixture can exercise has a case: 33 of 34. F-009 governs where evidence
+comes from, a debug build or a release one, which no source file shows. Each class in
+`TAXONOMY.md` has at least one case. Most rules are class A, following case 20's shape:
+the defect and its correct twin in one file, so the one difference the reviewer can key on
+is the one the rule names.
 
 | Case | Class | Rule | What it pins down |
 |---|---|---|---|
