@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 /** Search filters, raised from the bottom edge over the results by the Filters button. */
 @Composable
 fun FiltersPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    val hidden = remember { Animatable(1f) }
+    val hidden = remember { Animatable(if (open) 0f else 1f) }
     val settle = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
 
     LaunchedEffect(open) { hidden.animateTo(if (open) 0f else 1f, settle) }
@@ -57,7 +57,7 @@ fun FiltersPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifi
 /** Sort order, raised from the bottom edge over the results by the Sort button. */
 @Composable
 fun SortPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    val hidden = remember { Animatable(1f) }
+    val hidden = remember { Animatable(if (open) 0f else 1f) }
     val settle = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     val scope = rememberCoroutineScope()
     var heightPx by remember { mutableFloatStateOf(1f) }

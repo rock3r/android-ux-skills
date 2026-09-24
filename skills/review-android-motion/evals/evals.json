@@ -699,7 +699,7 @@
           "path": "Navigation.kt",
           "lines": [
             29,
-            43
+            49
           ],
           "note": "The join steps are ordered — name, then branch, then card, moved between with Next and Back — so a lateral slide states that order correctly."
         }

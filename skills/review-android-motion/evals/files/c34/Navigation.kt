@@ -30,14 +30,20 @@ fun MainSections(navController: NavHostController, modifier: Modifier = Modifier
 fun NavGraphBuilder.joinSteps() {
     composable<JoinStep.Name>(
         enterTransition = { slideIntoContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        exitTransition = { slideOutOfContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        popEnterTransition = { slideIntoContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
     ) { NameStep() }
     composable<JoinStep.Branch>(
         enterTransition = { slideIntoContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        exitTransition = { slideOutOfContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        popEnterTransition = { slideIntoContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
     ) { BranchStep() }
     composable<JoinStep.Card>(
         enterTransition = { slideIntoContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        exitTransition = { slideOutOfContainer(SlideDirection.Start, AppMotion.sectionSpatial()) },
+        popEnterTransition = { slideIntoContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End, AppMotion.sectionSpatial()) },
     ) { CardStep() }
 }
