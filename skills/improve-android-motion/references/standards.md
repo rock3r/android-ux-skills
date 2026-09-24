@@ -873,6 +873,10 @@ the thing that changed.
 correct springs firing at once satisfy every other rule in this file and still produce a
 screen nobody can read.
 
+It is **one finding per event**, placed where the elements are composed onto it. Each
+mover is evidence for that finding, not a finding of its own; listing them separately
+reports one defect several times.
+
 **Count semantic controls, not composables.** Five star icons in a rating bar are *one*
 control with five discrete parts, and a tap changes that one control. The parts are not
 six competing motions to be cut down to one.
