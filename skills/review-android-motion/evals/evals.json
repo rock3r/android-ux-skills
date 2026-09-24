@@ -613,7 +613,7 @@
           "path": "BookGraph.kt",
           "lines": [
             9,
-            22
+            20
           ],
           "rule": "T-024",
           "class": "taste",
@@ -624,8 +624,8 @@
         {
           "path": "BookGraph.kt",
           "lines": [
-            24,
-            40
+            22,
+            36
           ],
           "note": "The author page slides in from the end and, on back, slides out toward it: back plays the inverse of forward."
         }

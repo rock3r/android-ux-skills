@@ -13,8 +13,6 @@ fun NavGraphBuilder.bookDetails() {
             slideIntoContainer(SlideDirection.Start, AppMotion.pushSpatial()) +
                 fadeIn(AppMotion.pushEffects())
         },
-        exitTransition = { fadeOut(AppMotion.pushEffects()) },
-        popEnterTransition = { fadeIn(AppMotion.pushEffects()) },
         popExitTransition = { fadeOut(AppMotion.pushEffects()) },
     ) {
         BookDetailsScreen()
@@ -28,8 +26,6 @@ fun NavGraphBuilder.authorPage() {
             slideIntoContainer(SlideDirection.Start, AppMotion.pushSpatial()) +
                 fadeIn(AppMotion.pushEffects())
         },
-        exitTransition = { fadeOut(AppMotion.pushEffects()) },
-        popEnterTransition = { fadeIn(AppMotion.pushEffects()) },
         popExitTransition = {
             slideOutOfContainer(SlideDirection.End, AppMotion.pushSpatial()) +
                 fadeOut(AppMotion.pushEffects())
