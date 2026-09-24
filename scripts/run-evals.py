@@ -494,15 +494,25 @@ def validate(spec_path: Path, skill_dir: Path) -> list[str]:
                         f"{where} case {cid}: {kind} names {e['path']}, which is not staged"
                     )
                     continue
-                total = len(src.read_text().splitlines())
+                text = src.read_text().splitlines()
+                total = len(text)
                 a, b = e["lines"]
                 if a < 1 or a > b or b > total:
                     problems.append(
                         f"{where} case {cid}: {e['path']}:{a}-{b} is outside the file "
                         f"({total} lines)"
                     )
-                else:
-                    spans.append((kind, e["path"], a, b))
+                    continue
+                # A span drawn around a construct starts and ends on code. One that begins
+                # or ends on a blank line has almost always slid when the file above it
+                # changed — an added import moves everything below by one, and the range
+                # still fits inside the file.
+                if not text[a - 1].strip() or not text[b - 1].strip():
+                    problems.append(
+                        f"{where} case {cid}: {e['path']}:{a}-{b} starts or ends on a blank "
+                        f"line, so it has probably drifted off its construct"
+                    )
+                spans.append((kind, e["path"], a, b))
 
         # A span cannot be both the finding we want and a must-not-flag region.
         for i, (k1, p1, a1, b1) in enumerate(spans):
