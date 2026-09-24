@@ -858,6 +858,43 @@
       ]
     },
     {
+      "id": 39,
+      "title": "A · F-005 frame loop ignores the animator scale, twin that reads it",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Tickers.kt",
+      "files": [
+        "evals/files/c39/Tickers.kt"
+      ],
+      "expect": [
+        {
+          "path": "Tickers.kt",
+          "lines": [
+            19,
+            39
+          ],
+          "rule": "F-005",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Tickers.kt",
+          "lines": [
+            41,
+            70
+          ],
+          "note": "EventsTicker reads ANIMATOR_DURATION_SCALE and, when animations are off, never starts its frame loop, leaving the text at rest."
+        }
+      ],
+      "expectations": [
+        "Flags NewsTicker: its withFrameNanos loop advances on its own clock, so it keeps scrolling after the user has turned animations off",
+        "Names reading ANIMATOR_DURATION_SCALE and branching to a static end state as the fix",
+        "Does NOT flag EventsTicker, which already does that",
+        "Does NOT claim Compose's animation APIs need the same treatment"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
