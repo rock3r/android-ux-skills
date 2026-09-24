@@ -749,6 +749,42 @@
       ]
     },
     {
+      "id": 36,
+      "title": "C · O-001 due-soon told only by a pulse, twin with a label",
+      "class": "C. Absence",
+      "prompt": "Review the motion in this screen. File: BookRows.kt",
+      "files": [
+        "evals/files/c36/BookRows.kt"
+      ],
+      "expect": [
+        {
+          "path": "BookRows.kt",
+          "lines": [
+            12,
+            25
+          ],
+          "rule": "O-001",
+          "class": "obligation",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "BookRows.kt",
+          "lines": [
+            27,
+            41
+          ],
+          "note": "LoanedBook pulses and also says 'Due soon' in text, so the meaning survives with animations off."
+        }
+      ],
+      "expectations": [
+        "Flags QueuedBook: the only sign that a book has become due soon is a pulse, and with Remove animations on the row looks unchanged",
+        "Names a static carrier — text, an icon, a colour at rest — as the fix, not a gentler animation",
+        "Does NOT flag LoanedBook, which labels the state"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
