@@ -21,12 +21,13 @@ Two environment notes, both of which cost an evening to find once:
   resolves the actor's *real* path and grants its package directory to the sandbox, because
   `pi` on PATH is a symlink into a node package and the sandbox otherwise leaves Node
   hunting for the bundle's `chunks/` beside the symlink.
-- **Extension providers need pioneer newer than 0.3.5.** Up to 0.3.5 pioneer copies only
+- **Extension providers need pioneer 0.3.6 or newer.** Up to 0.3.5 pioneer copies only
   pi's root config files into the sandbox, not `extensions/`, so providers implemented by
   an extension — `claude-code`, `kimi-code` — fail inside it with *"model not found"*.
-  pioneer #82 fixes this and is merged but unreleased; until it ships, build pioneer from
-  `main` and put it first on PATH for the run. That is the only unmetered route to Claude
-  as an arm. Routes billed per token are refused unless `--allow-metered` is passed.
+  0.3.6 (pioneer #82) copies enabled extensions into the sandbox. Install that release;
+  do not build pioneer from `main` and put it first on PATH. That is the only unmetered
+  route to Claude as an arm. Routes billed per token are refused unless `--allow-metered`
+  is passed.
 - **Prepared batteries never live in the repo.** Pioneer refuses a run directory under a
   protected root, `/srv` among them, and this checkout is reached through a symlink into
   `/srv`. Output goes to `~/.cache/android-ux-skills` by default; `--work-dir` or
