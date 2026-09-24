@@ -712,6 +712,43 @@
       ]
     },
     {
+      "id": 35,
+      "title": "A · T-023 motion waits for the response, twin that starts on the tap",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Holds.kt",
+      "files": [
+        "evals/files/c35/Holds.kt"
+      ],
+      "expect": [
+        {
+          "path": "Holds.kt",
+          "lines": [
+            20,
+            46
+          ],
+          "rule": "T-023",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Holds.kt",
+          "lines": [
+            48,
+            77
+          ],
+          "note": "RenewButton moves to its in-progress state on the tap, before the network call, and resolves when the response lands."
+        }
+      ],
+      "expectations": [
+        "Flags PlaceHoldButton: nothing changes on the tap; the button holds still until placeHold() returns, so a fast system feels slow",
+        "Names moving to the in-progress state on the tap, before the request, as the fix",
+        "Does NOT flag RenewButton",
+        "Reports it as major: RenewButton in the same file starts its motion on the tap"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
