@@ -808,6 +808,10 @@ cannot say why the screen feels incoherent, only that it does.
 necessarily one spec, since spatial and effects springs properly differ within a tier. The
 common defect is a pane transition on one tier with content on another.
 
+**Scope: elements moving for the same reason** — a pane and the content arriving with it.
+An element whose position is read as a value — a bar, a plotted point, a figure — moves
+to show that value, not with the pane, and is outside it.
+
 Compare elements moving in the *same direction* of one event: what enters with what
 enters, what leaves with what leaves. An exit is never compared with the entrance it
 mirrors, and a later input starts a new event, even one that undoes the last.
