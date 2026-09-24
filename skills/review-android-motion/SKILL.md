@@ -104,6 +104,10 @@ Weave, do not concatenate. Record explicitly where A and B agree, what B caught 
 missed, and which of B's findings are false positives in context. A remains authoritative
 on whether the motion is right; B supplies mechanical evidence.
 
+Place each finding where its fix goes. A defect in how several elements move together is
+fixed where they are composed — the parent that places them on one event — so that is its
+location, not the span of the children.
+
 ### Step 3 — Verdict
 
 **Block** on any unresolved `floor` violation, any `Overridable: no` violation, or any
