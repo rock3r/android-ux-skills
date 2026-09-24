@@ -95,7 +95,7 @@ an arm. Each battery is a separate `evals*.json`.
 
 | Battery | Cases | Stages | Asks |
 |---|---|---|---|
-| `no-motion-language` | 10–12, 20–29, 30–32, 40, 50, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
+| `no-motion-language` | 10–12, 20–29, 30–32, 40, 50, 51, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
 | `established-language` | 10, 11, 40 | code + a MOTION.md with `DECIDED` entries | Does severity rise, is the token named as the fix, and does a fact settled in the file stop being treated as unknowable? |
 | `stale-exception` | 10 | code + a MOTION.md exception that has lapsed | Is a standing approval enforced after the condition it was granted under has been met? |
 | `phantom-language` | 10 | code only, prompt claims a MOTION.md exists | Are conventions invented from a file that was never provided? |
@@ -147,6 +147,7 @@ Class A is the first to be filled in: 21–29, 31 and 32 follow case 20's shape.
 | 30 | C. Absence | O-002 | A missing marker, with a twin whose composition legitimately needs none. |
 | 40 | D. Not in the source | T-009 | Both directions: unknowable without MOTION.md, required with it. |
 | 50 | E. Composite-only | T-026 | Five individually correct children, one wrong screen. |
+| 51 | E. Composite-only | T-020 | A panel on the slow tier opening onto options on the fast one. |
 | 60 | F. Legitimate twin | F-006 | The same clip, once a defect and once deliberate. |
 | 70 | G. Framework-correct (hybrid) | T-008 | The framework path must stay silent while the hand-rolled twin is flagged. |
 | 80 | G. Framework-correct (pure) | — | Nothing to find. Any finding is a failure. |

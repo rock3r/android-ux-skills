@@ -765,6 +765,34 @@
       ]
     },
     {
+      "id": 51,
+      "title": "E · T-020 panel and its content on different tiers",
+      "class": "E. Composite-only",
+      "prompt": "Review the motion in this screen. File: FilterPanel.kt",
+      "files": [
+        "evals/files/c51/FilterPanel.kt"
+      ],
+      "expect": [
+        {
+          "path": "FilterPanel.kt",
+          "lines": [
+            21,
+            54
+          ],
+          "rule": "T-020",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [],
+      "expectations": [
+        "Identifies that opening the panel is one event, and the panel expands on the slow tier while its options slide and fade in on the fast tier",
+        "Recommends one tier for the event — the options on the panel's tier, or the panel on theirs",
+        "Does NOT flag the panel's fast-tier, effects-first exit against its slow entrance: an exit is compared with other exits, not with the entrance it mirrors",
+        "Does NOT treat either animation as wrong on its own: each spec is a scheme token"
+      ]
+    },
+    {
       "id": 60,
       "title": "F · F-006 legitimate twin, same construct both ways",
       "class": "F. Legitimate twin",
