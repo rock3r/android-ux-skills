@@ -638,6 +638,43 @@
       ]
     },
     {
+      "id": 33,
+      "title": "C · T-019 indicator with no delay or minimum, twin that has both",
+      "class": "C. Absence",
+      "prompt": "Review the motion in this screen. File: Loading.kt",
+      "files": [
+        "evals/files/c33/Loading.kt"
+      ],
+      "expect": [
+        {
+          "path": "Loading.kt",
+          "lines": [
+            18,
+            32
+          ],
+          "rule": "T-019",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Loading.kt",
+          "lines": [
+            34,
+            63
+          ],
+          "note": "BranchHours waits 150ms before showing the indicator and, once shown, keeps it for 400ms: the delay and minimum T-019 asks for."
+        }
+      ],
+      "expectations": [
+        "Flags SearchResults: the indicator appears the moment loading starts and leaves the moment it ends, so a fast query flashes it",
+        "Names a delay before showing and a minimum visible duration as the fix",
+        "Does NOT flag BranchHours, which already has both",
+        "Reports it as major: the same file does it right one function away"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
