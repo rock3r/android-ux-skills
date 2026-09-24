@@ -675,6 +675,43 @@
       ]
     },
     {
+      "id": 34,
+      "title": "F · T-011 the same lateral slide on unordered sections and on ordered steps",
+      "class": "F. Legitimate twin",
+      "prompt": "Review the motion in this screen. File: Navigation.kt",
+      "files": [
+        "evals/files/c34/Navigation.kt"
+      ],
+      "expect": [
+        {
+          "path": "Navigation.kt",
+          "lines": [
+            11,
+            27
+          ],
+          "rule": "T-011",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Navigation.kt",
+          "lines": [
+            29,
+            43
+          ],
+          "note": "The join steps are ordered — name, then branch, then card, moved between with Next and Back — so a lateral slide states that order correctly."
+        }
+      ],
+      "expectations": [
+        "Flags the bottom-bar sections sliding sideways: they have no order, so a directional slide asserts one that does not exist",
+        "Names the top-level cross-fade as the pattern for them",
+        "Does NOT flag the join steps, which are ordered and correctly slide",
+        "Reports it as minor: the correct slide on the join steps is a different relationship, not the same construct done right"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
