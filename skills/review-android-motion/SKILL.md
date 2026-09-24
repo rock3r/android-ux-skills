@@ -83,6 +83,10 @@ with no rule findings. Judges:
 as `path`, `line-range`, `rule-id`, `severity`, one line of evidence. Mechanical, no
 judgment.
 
+Take every line number from a numbered view — `cat -n`, `grep -n`, an editor's gutter.
+Many file readers return plain text, and lines counted by eye drift by several, onto the
+imports or the function next door.
+
 The two must not see each other's output. Prefer no inherited context and self-contained
 prompts. B may run concurrently with A, but **B's findings must not enter the synthesis
 context until A has returned and been recorded.**
