@@ -44,10 +44,15 @@ conformance scoring to `hamen/material-3-skill`; implementing the fix to
 
 Default to flagging. Approval is earned.
 
-But flag against **the product's standard, not your preferences**. Read `MOTION.md` first.
-Inconsistency with what the team decided is a finding. Disagreement with your own taste is
-not. A reviewer that argues an app toward Material when the team chose otherwise is noise,
-and will be ignored — correctly.
+But flag against **the product's standard, not your preferences**. Read `MOTION.md` first,
+then the code around the change. Inconsistency with what the team decided is a finding.
+Disagreement with your own taste is not. A reviewer that argues an app toward Material when
+the team chose otherwise is noise, and will be ignored — correctly.
+
+The code is part of the standard. Where the surrounding code does the same thing the right
+way and this spot does not, that is a convention being broken, and the finding is **major**
+even with no `MOTION.md` — this is how a regression usually arrives. Where nothing in the
+code sets a convention, a taste finding is minor.
 
 An exception or entry that states its own condition — "until typed routes land", "first
 run only" — holds only while that condition does. Check the condition against the code
