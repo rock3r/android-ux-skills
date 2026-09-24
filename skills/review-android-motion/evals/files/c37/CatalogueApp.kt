@@ -21,7 +21,10 @@ fun CatalogueApp(content: @Composable () -> Unit) {
 /** The featured-books carousel on the home screen. It wraps around endlessly. */
 @Composable
 fun FeaturedCarousel(books: List<Book>, modifier: Modifier = Modifier) {
-    val pager = rememberPagerState(pageCount = { Int.MAX_VALUE })
+    val pager = rememberPagerState(
+        initialPage = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2) % books.size,
+        pageCount = { Int.MAX_VALUE },
+    )
     HorizontalPager(
         state = pager,
         modifier = modifier,

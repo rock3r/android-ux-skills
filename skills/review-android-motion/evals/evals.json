@@ -809,7 +809,7 @@
           "path": "CatalogueApp.kt",
           "lines": [
             21,
-            32
+            35
           ],
           "note": "A carousel that wraps around endlessly has no edge to stretch against, so turning overscroll off for it is correct without a comment."
         }
