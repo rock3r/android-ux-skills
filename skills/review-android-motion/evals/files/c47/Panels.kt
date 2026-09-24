@@ -76,6 +76,7 @@ fun SortPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier)
         modifier
             .fillMaxWidth()
             .onSizeChanged { heightPx = it.height.toFloat() }
+            .graphicsLayer { translationY = hidden.value * size.height }
             .draggable(
                 state = rememberDraggableState { delta ->
                     scope.launch { hidden.snapTo((hidden.value + delta / heightPx).coerceIn(0f, 1f)) }
@@ -90,8 +91,7 @@ fun SortPanel(open: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier)
                     )
                     if (dismiss) onClose()
                 },
-            )
-            .graphicsLayer { translationY = hidden.value * size.height },
+            ),
         tonalElevation = 3.dp,
     ) {
         Column {
