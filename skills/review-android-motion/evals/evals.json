@@ -811,14 +811,14 @@
             21,
             32
           ],
-          "note": "A carousel that wraps around endlessly has no edge to stretch against; turning overscroll off for this one component is the per-component replacement T-018 permits, with its reason stated."
+          "note": "A carousel that wraps around endlessly has no edge to stretch against, so turning overscroll off for it is correct without a comment."
         }
       ],
       "expectations": [
         "Flags CatalogueApp: providing LocalOverscrollFactory as null removes the platform stretch from every scrolling surface in the app",
         "Says a product-wide change belongs in MOTION.md as a decision, if it is intended",
         "Does NOT flag the carousel's overscrollEffect = null",
-        "Distinguishes the two by scope — the whole app versus one component with a reason"
+        "Distinguishes the two by scope — the whole app versus one component with no edge to stretch against"
       ]
     },
     {
@@ -869,8 +869,8 @@
         {
           "path": "Tickers.kt",
           "lines": [
-            19,
-            39
+            20,
+            40
           ],
           "rule": "F-005",
           "class": "floor",
@@ -881,15 +881,15 @@
         {
           "path": "Tickers.kt",
           "lines": [
-            41,
-            70
+            42,
+            75
           ],
-          "note": "EventsTicker reads ANIMATOR_DURATION_SCALE and, when animations are off, never starts its frame loop, leaving the text at rest."
+          "note": "EventsTicker reads the MotionDurationScale its effect carries on every frame, so it stops when animations are switched off, even mid-scroll, and shows the events wrapped in full."
         }
       ],
       "expectations": [
         "Flags NewsTicker: its withFrameNanos loop advances on its own clock, so it keeps scrolling after the user has turned animations off",
-        "Names reading ANIMATOR_DURATION_SCALE and branching to a static end state as the fix",
+        "Names reading the animator duration scale — the effect's MotionDurationScale, or ANIMATOR_DURATION_SCALE — and resting at a static end state as the fix",
         "Does NOT flag EventsTicker, which already does that",
         "Does NOT claim Compose's animation APIs need the same treatment"
       ]

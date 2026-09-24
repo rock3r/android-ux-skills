@@ -1,18 +1,19 @@
 package com.example.catalogue.ui.home
 
-import android.provider.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 
 private const val PIXELS_PER_SECOND = 40f
 
@@ -41,30 +42,34 @@ fun NewsTicker(headlines: String, modifier: Modifier = Modifier) {
 /** Branch events scrolling across the top of the branch screen. */
 @Composable
 fun EventsTicker(events: String, modifier: Modifier = Modifier) {
-    val resolver = LocalContext.current.contentResolver
-    val animationsOff = remember(resolver) {
-        try {
-            Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE) == 0f
-        } catch (_: Settings.SettingNotFoundException) {
-            false
-        }
-    }
     var scroll by remember { mutableFloatStateOf(0f) }
+    var still by remember { mutableStateOf(false) }
 
-    LaunchedEffect(animationsOff) {
-        if (animationsOff) return@LaunchedEffect
-        var last = withFrameNanos { it }
+    LaunchedEffect(Unit) {
+        val scale = coroutineContext[MotionDurationScale]
+        var last = -1L
         while (true) {
+            val factor = scale?.scaleFactor ?: 1f
+            still = factor == 0f
+            if (still) {
+                last = -1L
+                delay(500)
+                continue
+            }
             withFrameNanos { now ->
-                scroll -= (now - last) / 1_000_000_000f * PIXELS_PER_SECOND
+                if (last >= 0) scroll -= (now - last) / 1_000_000_000f / factor * PIXELS_PER_SECOND
                 last = now
             }
         }
     }
 
-    Text(
-        text = events,
-        modifier = modifier.graphicsLayer { translationX = scroll },
-        style = MaterialTheme.typography.labelLarge,
-    )
+    if (still) {
+        Text(events, modifier, style = MaterialTheme.typography.labelLarge)
+    } else {
+        Text(
+            text = events,
+            modifier = modifier.graphicsLayer { translationX = scroll },
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
 }

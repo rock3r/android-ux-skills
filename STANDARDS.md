@@ -185,23 +185,43 @@ What is not covered, and must read the scale itself:
 | Video, `WebView`, `SurfaceView` content | Not Compose animations at all |
 | `Animatable` driven from a scope lacking `MotionDurationScale` | `WindowRecomposer` injects it into the recomposer and effect contexts only |
 
-Read it and branch to a **static end state**.
+Read it and branch to a **static end state**. Inside an effect, read the scale the effect
+already carries, on every frame: it follows the setting while the screen is up, so a user
+who turns animations off mid-scroll stops the motion without leaving the screen.
 
 ```kotlin
-val resolver = LocalContext.current.contentResolver
-val animationsOff = remember(resolver) {
-    try {
-        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE) == 0f
-    } catch (_: Settings.SettingNotFoundException) {
-        false // the key can be undefined when it has never been set
+LaunchedEffect(Unit) {
+    val scale = coroutineContext[MotionDurationScale]
+    var last = -1L
+    while (true) {
+        val factor = scale?.scaleFactor ?: 1f
+        if (factor == 0f) {
+            last = -1L
+            delay(500) // at rest: no frames requested, the setting checked twice a second
+            continue
+        }
+        withFrameNanos { now ->
+            if (last >= 0) advance((now - last) / factor)
+            last = now
+        }
     }
 }
 ```
 
+At a factor of zero the loop advances nothing and requests no frames, and the screen rests
+at its static end state.
+
+Outside an effect — a video player, a `WebView` — read
+`Settings.Global.ANIMATOR_DURATION_SCALE` with a `SettingNotFoundException` fallback, and
+register a `ContentObserver` on it if the screen can outlive a change.
+
 **Pinned.** `androidx.compose.ui.MotionDurationScale`, honoured since Compose Animation
-`1.2.0-alpha05`. `Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause
-animations to end immediately." Read with a `SettingNotFoundException` fallback; the key
-can be undefined. `LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled`
+`1.2.0-alpha05`. On Android, `WindowRecomposer` puts a `MotionDurationScaleImpl` into
+the recomposer's context, which `LaunchedEffect` inherits, and updates its `scaleFactor`
+from a `ContentObserver` on `ANIMATOR_DURATION_SCALE`. `withFrameNanos` applies no scale.
+`Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause animations to end
+immediately." Read with a `SettingNotFoundException` fallback; the key can be undefined.
+`LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled`
 but never reads it in the implementation, so direct calls bypass the scale regardless.
 
 ---
@@ -716,10 +736,14 @@ composition, including popping back to it. The "already entered" flag belongs in
 **Claim.** The stretch at the end of a list is what an Android user expects, and one of
 the strongest signals that an app is native rather than ported.
 
-**Rule.** Do not disable or replace the platform overscroll effect to install a custom
-bounce. Per-component replacement is permitted with a stated reason — a pager carousel
-setting `overscrollEffect = null` is legitimate. Replacing it product-wide belongs in
-MOTION.md.
+**Rule.** Do not disable the platform overscroll effect, or replace it with a custom
+bounce.
+
+- **A component with no edge** — a carousel that loops endlessly — has nothing to stretch
+  against, and `overscrollEffect = null` there is correct. Its structure is the reason; it
+  needs no comment.
+- **Any other per-component replacement** is permitted with its reason stated beside it.
+- **Replacing it product-wide** belongs in MOTION.md.
 
 **Pinned.** Stretch overscroll is platform behaviour from Android 12 (API 31).
 
