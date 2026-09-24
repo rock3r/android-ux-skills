@@ -136,8 +136,8 @@
         {
           "path": "FilterBar.kt",
           "lines": [
-            36,
-            40
+            27,
+            31
           ],
           "rule": "F-001",
           "class": "floor",
@@ -148,16 +148,16 @@
         {
           "path": "FilterBar.kt",
           "lines": [
-            43,
-            56
+            34,
+            48
           ],
           "note": "FilterSummary animates the identical value through offset { } — the lambda form, read in layout. The fix, fifteen lines below the defect."
         },
         {
           "path": "FilterBar.kt",
           "lines": [
-            58,
-            80
+            50,
+            73
           ],
           "note": "FilterCount reads its animated alpha in graphicsLayer and its colour in drawBehind. Both correct."
         }

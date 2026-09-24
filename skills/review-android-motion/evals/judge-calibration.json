@@ -100,7 +100,7 @@
     {
       "name": "names the concrete fix",
       "expect_verdict": "pass",
-      "state": "FilterHandle reads the animated Dp during composition. Change Modifier.offset(x = slide) to Modifier.offset { IntOffset(slide.roundToPx(), 0) } so the value is read in the layout phase instead. FilterSummary fifteen lines down already does exactly this.\n\nFINDINGS\nFilterBar.kt:36-40 RULE floor major animated offset read during composition",
+      "state": "FilterHandle reads the animated Dp during composition. Change Modifier.offset(x = slide) to Modifier.offset { IntOffset(slide.roundToPx(), 0) } so the value is read in the layout phase instead. FilterSummary fifteen lines down already does exactly this.\n\nFINDINGS\nFilterBar.kt:27-31 RULE floor major animated offset read during composition",
       "check": {
         "id": "names_lambda_offset",
         "type": "noul",
@@ -115,7 +115,7 @@
     {
       "name": "gestures at the fix without naming it",
       "expect_verdict": "fail",
-      "state": "FilterHandle reads a frame-rate value too early. You should defer this read to a later phase by using a lambda-based modifier so the animation does not cause recomposition every frame.\n\nFINDINGS\nFilterBar.kt:36-40 RULE floor major animated offset read during composition",
+      "state": "FilterHandle reads a frame-rate value too early. You should defer this read to a later phase by using a lambda-based modifier so the animation does not cause recomposition every frame.\n\nFINDINGS\nFilterBar.kt:27-31 RULE floor major animated offset read during composition",
       "check": {
         "id": "names_lambda_offset",
         "type": "noul",

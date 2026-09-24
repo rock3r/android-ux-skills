@@ -3,7 +3,6 @@ package com.example.catalogue.ui.filters
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -16,17 +15,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 
+/** The Filters handle in the search toolbar. It slides aside while the filter sheet is open. */
 @Composable
-fun FilterBar(expanded: Boolean, modifier: Modifier = Modifier) {
-    Row(modifier) {
-        FilterCount(expanded)
-        FilterHandle(expanded)
-        FilterSummary(expanded)
-    }
-}
-
-@Composable
-private fun FilterHandle(expanded: Boolean) {
+fun FilterHandle(expanded: Boolean) {
     val slide by animateDpAsState(
         targetValue = if (expanded) 96.dp else 0.dp,
         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
@@ -40,8 +31,9 @@ private fun FilterHandle(expanded: Boolean) {
     )
 }
 
+/** The active-filter summary on a saved search. It slides aside while that search is open. */
 @Composable
-private fun FilterSummary(expanded: Boolean) {
+fun FilterSummary(expanded: Boolean) {
     val slide by animateDpAsState(
         targetValue = if (expanded) 96.dp else 0.dp,
         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
@@ -55,8 +47,9 @@ private fun FilterSummary(expanded: Boolean) {
     )
 }
 
+/** The filter count on the results tab. It lights up while the tab is selected. */
 @Composable
-private fun FilterCount(expanded: Boolean) {
+fun FilterCount(expanded: Boolean) {
     val tint by animateColorAsState(
         targetValue = if (expanded) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.outline,
