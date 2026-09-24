@@ -760,6 +760,10 @@ bounce.
 **Claim.** A skeleton promises content of a shape. If the real content does not match
 structurally, the promise breaks and the screen jumps.
 
+**Scope: a placeholder shown where content is loading** — a skeleton, a spinner in place
+of a list. What a control shows the moment it is pressed — a button becoming "Saving…" —
+acknowledges the input, and is outside it.
+
 **Rule.** The bar is *structural* match, not exact match — a heterogeneous feed may ship
 an approximate card skeleton and it works, because the structure holds. Where the
 structure is unknown, an indeterminate indicator.
