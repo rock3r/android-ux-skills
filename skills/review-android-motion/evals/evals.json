@@ -785,6 +785,43 @@
       ]
     },
     {
+      "id": 37,
+      "title": "F · T-018 overscroll off app-wide, and off for one looping pager",
+      "class": "F. Legitimate twin",
+      "prompt": "Review the motion in this screen. File: CatalogueApp.kt",
+      "files": [
+        "evals/files/c37/CatalogueApp.kt"
+      ],
+      "expect": [
+        {
+          "path": "CatalogueApp.kt",
+          "lines": [
+            11,
+            19
+          ],
+          "rule": "T-018",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "CatalogueApp.kt",
+          "lines": [
+            21,
+            32
+          ],
+          "note": "A carousel that wraps around endlessly has no edge to stretch against; turning overscroll off for this one component is the per-component replacement T-018 permits, with its reason stated."
+        }
+      ],
+      "expectations": [
+        "Flags CatalogueApp: providing LocalOverscrollFactory as null removes the platform stretch from every scrolling surface in the app",
+        "Says a product-wide change belongs in MOTION.md as a decision, if it is intended",
+        "Does NOT flag the carousel's overscrollEffect = null",
+        "Distinguishes the two by scope — the whole app versus one component with a reason"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
