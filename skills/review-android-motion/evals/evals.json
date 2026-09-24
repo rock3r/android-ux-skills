@@ -369,6 +369,152 @@
       ]
     },
     {
+      "id": 26,
+      "title": "A · F-008 animated padding, lambda-offset twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: ShelfCard.kt",
+      "files": [
+        "evals/files/c26/ShelfCard.kt"
+      ],
+      "expect": [
+        {
+          "path": "ShelfCard.kt",
+          "lines": [
+            18,
+            30
+          ],
+          "rule": "F-008",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ShelfCard.kt",
+          "lines": [
+            33,
+            49
+          ],
+          "note": "ReadingListRow animates the same nudge through offset { }, read in layout; its padding is static."
+        }
+      ],
+      "expectations": [
+        "Flags ShelfCard's animated padding: Modifier.padding has no lambda form, so it remeasures every frame",
+        "Names offset { } or graphicsLayer as the fix, since the intent is positional",
+        "Does NOT flag ReadingListRow",
+        "Does NOT report it as F-001: padding has no lambda form to switch to"
+      ]
+    },
+    {
+      "id": 27,
+      "title": "A · F-004 shared element into a bottom sheet, full-screen twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: CoverTransition.kt",
+      "files": [
+        "evals/files/c27/CoverTransition.kt"
+      ],
+      "expect": [
+        {
+          "path": "CoverTransition.kt",
+          "lines": [
+            23,
+            31
+          ],
+          "rule": "F-004",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "CoverTransition.kt",
+          "lines": [
+            34,
+            49
+          ],
+          "note": "CoverDetailsScreen shares the cover into a Compose screen, which works."
+        }
+      ],
+      "expectations": [
+        "Flags the sharedElement inside ModalBottomSheet: shared elements do not cross a View-backed container such as ModalBottomSheet or Dialog",
+        "Suggests restructuring (a Compose-hosted sheet or a full screen) or dropping the continuity",
+        "Does NOT flag CoverDetailsScreen"
+      ]
+    },
+    {
+      "id": 28,
+      "title": "A · T-016 unanchored centre scale, anchored menu twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Welcome.kt",
+      "files": [
+        "evals/files/c28/Welcome.kt"
+      ],
+      "expect": [
+        {
+          "path": "Welcome.kt",
+          "lines": [
+            21,
+            30
+          ],
+          "rule": "T-016",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Welcome.kt",
+          "lines": [
+            33,
+            53
+          ],
+          "note": "SortMenu scales from its top-left corner, under the button that opens it: anchored to its origin, which is how a menu enters."
+        }
+      ],
+      "expectations": [
+        "Flags BranchAnnouncement scaling up from its own centre with no anchor, which reads as flying toward the viewer",
+        "Suggests expanding on an axis or fading instead",
+        "Does NOT flag SortMenu, whose scale is anchored to its trigger",
+        "Reports it as minor: the anchored menu is a different situation, not the same construct done right, so the file holds no convention it departs from"
+      ]
+    },
+    {
+      "id": 29,
+      "title": "A · F-002 swipe discards release velocity, Animatable twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: LoanCards.kt",
+      "files": [
+        "evals/files/c29/LoanCards.kt"
+      ],
+      "expect": [
+        {
+          "path": "LoanCards.kt",
+          "lines": [
+            32,
+            51
+          ],
+          "rule": "F-002",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "LoanCards.kt",
+          "lines": [
+            56,
+            86
+          ],
+          "note": "HoldCard follows the finger with snapTo and hands the release velocity to animateTo."
+        }
+      ],
+      "expectations": [
+        "Flags LoanCard: the finger drives an animateFloatAsState target, so the card lags behind the drag and the release velocity is thrown away",
+        "Names Animatable with snapTo while dragging and initialVelocity on release as the fix",
+        "Does NOT flag HoldCard"
+      ]
+    },
+    {
       "id": 30,
       "title": "C · O-002 absence, with a twin that is legitimately exempt",
       "class": "C. Absence",
