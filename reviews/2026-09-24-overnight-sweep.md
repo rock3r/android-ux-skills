@@ -178,4 +178,109 @@ frequency and to check an exception's condition.
 - Luna 6 returned empty output often enough to cost it four case-arms of eighteen.
 - Luna 6 names the right defect on case 70 and cites the wrong lines for it; span
   matching scores that as a miss and a false positive, which is correct.
-- Opus 5.5 did not run: OpenRouter returns 402, the account has no credits.
+
+## Third sweep, 24–25 September: every rule a fixture can exercise
+
+Cases 33–47 brought coverage to 33 of 34 rules: 41 case-battery pairs. GLM 5.3 and Luna 6
+ran two runs each; Opus 5.5 ran once, through `claude-code` on the subscription.
+
+A first attempt at `cc103d0` was stopped once it had turned up defects in four fixtures
+and two gaps in the skill. Those were fixed and the sweep restarted at `8a5e05f`. The
+restarted sweep found defects in six more fixtures (34, 35, 37, 44, 45 and 47). Those were
+fixed and re-run at `edb97a3`–`7589995`, and the table uses the re-runs. GLM also re-ran
+case 11, where one with-skill repeat returned nothing.
+
+| Model | Run | floor | obligation | taste | false positives | severity right/wrong |
+|---|---|---|---|---|---|---|
+| GLM 5.3 | 1 | 4/9 → **9/9** | 1/2 → **2/2** | 20/26 → **26/26** | 59 → **5** | 20/5 → **37/0** |
+| GLM 5.3 | 2 | 3/9 → **9/9** | 2/2 → 2/2 | 19/26 → **25/26** | 63 → **6** | 17/7 → 33/3 |
+| Luna 6 | 1 | 1/9 → **9/9** | 0/2 → **2/2** | 11/26 → **24/26** | 10 → **3** | 8/4 → 25/10 |
+| Luna 6 | 2 | 2/9 → **9/9** | 0/2 → 1/2 | 6/26 → **24/26** | 14 → **1** | 6/2 → 27/7 |
+| Opus 5.5 | 1 | 3/9 → **9/9** | 2/2 → 2/2 | 16/26 → **26/26** | 38 → **0** | 18/3 → **37/0** |
+
+**The skill finds every floor defect in every run of every model.** Without it, one to
+four of nine. False positives fall in every run: by a factor of ten for GLM, and to none
+for Opus. Opus with the skill misses nothing and flags nothing it should not; without
+it, it finds 16 of 26 taste defects and flags declared-clean code 38 times.
+
+**Luna 6's taste rises from 6–11 to 24 of 26**, in both repeats. Its remaining misses are
+single runs spread over five cases, three of them class C absences (33, 36, 46).
+
+**Luna 6 still calls a convention held only in code minor.** Every one of its severity
+errors is that call. The skill now sets severity in the synthesis and says a convention
+needs no MOTION.md, and Luna 6 gets it right on cases 23, 32, 43, 45 and 47 in one run of
+two. It does not yet do so reliably. Opus makes the call correctly every time; GLM misses
+three calls, in both directions.
+
+**The judge agrees in `no-motion-language`.** With the skill, failed checks fall from 21
+to 12 for GLM, 85 to 52 for Luna 6 and 13 to 1 for Opus. Where a MOTION.md is staged,
+with-skill reviews fail `separates_seen_from_assumed` more often than baseline: they cite
+the document's entries, and the classifier sees the review but not the document, so it
+cannot tell a citation from an assumption. That is the limit that withdrew
+`fabricates_input`.
+
+### Fixture defects the sweep found
+
+Every one was in code declared clean, and each was reported by a model first.
+
+- **Case 20** moved three children on one flag with no leader, a T-026 defect in a case
+  built for F-001. Luna 6 reported T-026 instead of F-001.
+- **Case 30**'s manual-sync confirmation was a full-width 400×400 Lottie replacing a
+  button, which displaces content. T-028 forbids that even for work the user asked for.
+- **Case 34**'s ordered steps set two of their four transitions, so the outgoing step
+  fell back to the host's default fade while the incoming one slid.
+- **Case 35**'s correct twin swapped straight to a spinner with no delay or minimum hold
+  (T-019).
+- **Case 37**'s "endless" carousel began at page 0, so it had an edge after all.
+- **Case 42** read its animated bar values in composition (F-001, both halves of the twin),
+  and its card clipped its own shadow (F-006).
+- **Case 44** waited on a raw `delay()` that ignores the animator scale (F-005), and put
+  two cascades on one screen (T-026).
+- **Case 45** snapped its scale before the pop, discarding an in-flight animation (T-012).
+- **Case 47**'s panels could not recover from a cancelled back: the restore ran a
+  suspending call in a cancelled coroutine. Rotating with a panel open replayed its
+  entrance, and the drag area stayed put while the sheet moved.
+- **Case 39**'s correct twin copied F-005's own snippet, which read the animator scale once
+  and missed a change made while the screen was up. That was a defect in the rule, below.
+
+### Rule, skill and judge changes the sweep drove
+
+- **F-005** now reads the `MotionDurationScale` an effect already carries, every frame.
+  `WindowRecomposer` keeps it current through a `ContentObserver`. At zero the loop
+  requests no frames.
+- **T-018** gives a component with no edge its own bullet. It had asked for a stated
+  reason and then called an uncommented `overscrollEffect = null` legitimate.
+- **T-019** covers placeholders shown where content is loading. A control acknowledging
+  its own press is outside it. Case 35's twin, written to change on the tap as T-023
+  asks, had been flagged under T-019 for doing so without a delay.
+- **T-020** excludes an element read as a value: a bar moves to show its value, not with
+  the pane. That had overlapped T-004, which asks for exactly that split.
+- **review-android-motion** now sets severity in the synthesis, where the convention is
+  visible, and reports it in the findings table. It says a convention needs no MOTION.md,
+  and that line numbers come from a numbered view. Pi's `read` returns plain text, and Luna
+  6 had been citing lines in the imports.
+- **The judge's `conformance_claim`** failed Opus with the skill on 24 cases for citing the
+  twin as the convention, which the severity decision requires. It now accepts a
+  convention the reviewer points to in the code it was given. Calibration passes 29 of 29.
+  With the fix, Opus with the skill fails one judge check in `no-motion-language`, against
+  13 without it.
+- **`validate()`** rejects a span that starts or ends on a blank line. An added import had
+  slid case 39's span off its function while it still fitted inside the file.
+
+### After the sweep: the Fix column
+
+The judge read 25 of Luna 6's with-skill reviews as offering only generic remedies, such
+as "use a non-expressive spec", so the skill now says the Fix column names the call, value
+or construct to write. On the eight cases where both of Luna 6's with-skill runs had been
+generic, 16 of 16, a re-run at `5245434` was generic 6 times, undecided 3 and specific 7.
+Detection on those cases held: taste 5/6 and 6/6 against 6/6 and 6/6.
+
+### Known limits
+
+- Two runs, one for Opus, is the minimum that shows a spread, not enough to estimate one.
+- Cases 34, 35, 37, 44, 45 and 47 were re-run after their fixes, not re-swept with the
+  rest, and so ran against a slightly later skill.
+- `separates_seen_from_assumed` cannot credit a citation of a staged MOTION.md, so read
+  its results in `established-language` and `stale-exception` as noise.
+- Case 39's tickers never wrap their text or loop. Baselines flag it, with-skill arms do
+  not, and it counts as a baseline false positive in both halves.
