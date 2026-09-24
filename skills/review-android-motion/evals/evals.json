@@ -822,6 +822,42 @@
       ]
     },
     {
+      "id": 38,
+      "title": "A · F-010 sharedElement on text whose style changes, image twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: BookShared.kt",
+      "files": [
+        "evals/files/c38/BookShared.kt"
+      ],
+      "expect": [
+        {
+          "path": "BookShared.kt",
+          "lines": [
+            13,
+            28
+          ],
+          "rule": "F-010",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "BookShared.kt",
+          "lines": [
+            30,
+            43
+          ],
+          "note": "BookCover shares the same image on both sides, which is what sharedElement expects."
+        }
+      ],
+      "expectations": [
+        "Flags BookTitle: its text style changes from bodyLarge to headlineMedium between the two screens, so sharedElement cross-fades two different renderings",
+        "Names sharedBounds as the fix for content that differs between the two sides",
+        "Does NOT flag BookCover"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",

@@ -95,7 +95,7 @@ an arm. Each battery is a separate `evals*.json`.
 
 | Battery | Cases | Stages | Asks |
 |---|---|---|---|
-| `no-motion-language` | 10–12, 20–29, 30–37, 40, 50, 51, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
+| `no-motion-language` | 10–12, 20–29, 30–38, 40, 50, 51, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
 | `established-language` | 10, 11, 40 | code + a MOTION.md with `DECIDED` entries | Does severity rise, is the token named as the fix, and does a fact settled in the file stop being treated as unknowable? |
 | `stale-exception` | 10 | code + a MOTION.md exception that has lapsed | Is a standing approval enforced after the condition it was granted under has been met? |
 | `phantom-language` | 10 | code only, prompt claims a MOTION.md exists | Are conventions invented from a file that was never provided? |
@@ -149,6 +149,7 @@ Class A is the first to be filled in: 21–29, 31 and 32 follow case 20's shape.
 | 35 | A. Static twin | T-023 | A button that waits for the response before changing, beside one that changes on the tap. |
 | 36 | C. Absence | O-001 | A state shown only by a pulse, beside the same pulse with a text label. |
 | 37 | F. Legitimate twin | T-018 | Overscroll turned off for the whole app, beside the same switch on one looping carousel. |
+| 38 | A. Static twin | F-010 | `sharedElement` on text whose style changes between screens, beside an identical image. |
 | 30 | C. Absence | O-002 | A missing marker, with a twin whose composition legitimately needs none. |
 | 40 | D. Not in the source | T-009 | Both directions: unknowable without MOTION.md, required with it. |
 | 50 | E. Composite-only | T-026 | Five individually correct children, one wrong screen. |
