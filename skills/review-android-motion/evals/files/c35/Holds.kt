@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +38,7 @@ fun PlaceHoldButton(placeHold: suspend () -> Boolean, modifier: Modifier = Modif
                     state = if (placed) HoldState.Placed else HoldState.None
                 }
             }) { Text("Place hold") }
-            HoldState.Placing -> CircularProgressIndicator()
+            HoldState.Placing -> Text("Placing hold…", style = MaterialTheme.typography.labelLarge)
             HoldState.Placed -> Text("On hold", style = MaterialTheme.typography.labelLarge)
         }
     }
@@ -68,7 +67,7 @@ fun RenewButton(renew: suspend () -> Boolean, modifier: Modifier = Modifier) {
                     state = if (renewed) HoldState.Placed else HoldState.None
                 }
             }) { Text("Renew") }
-            HoldState.Placing -> CircularProgressIndicator()
+            HoldState.Placing -> Text("Renewing…", style = MaterialTheme.typography.labelLarge)
             HoldState.Placed -> Text("Renewed", style = MaterialTheme.typography.labelLarge)
         }
     }
