@@ -527,8 +527,8 @@
         {
           "path": "SyncStatus.kt",
           "lines": [
-            16,
-            28
+            17,
+            30
           ],
           "rule": "O-002",
           "class": "obligation",
@@ -548,8 +548,8 @@
         {
           "path": "SyncStatus.kt",
           "lines": [
-            30,
-            49
+            32,
+            51
           ],
           "note": "empty_box.json's last frame is its resting state — the carton settled and fully opaque — so seeking there with animations off shows the intended image and no marker is needed. O-002's own 'needs no marker' branch. Demanding one here is the failure this span exists to catch."
         }
@@ -1067,8 +1067,8 @@
         {
           "path": "Chips.kt",
           "lines": [
-            22,
-            31
+            24,
+            35
           ],
           "rule": "T-013",
           "class": "taste",
@@ -1079,8 +1079,8 @@
         {
           "path": "Chips.kt",
           "lines": [
-            33,
-            46
+            37,
+            52
           ],
           "note": "AuthorChips caps the stagger at the seventh chip, so the last chip starts 300ms after the first however many there are."
         }

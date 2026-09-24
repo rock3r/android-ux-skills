@@ -9,11 +9,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
 
@@ -25,7 +27,9 @@ private const val STAGGER_MILLIS = 50L
 fun GenreChips(genres: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
     FlowRow(modifier) {
         genres.forEachIndexed { index, genre ->
-            FadingChip(genre, delayMillis = index * STAGGER_MILLIS, onClick = { onPick(genre) })
+            key(genre) {
+                FadingChip(genre, delayMillis = index * STAGGER_MILLIS, onClick = { onPick(genre) })
+            }
         }
     }
 }
@@ -36,11 +40,13 @@ fun GenreChips(genres: List<String>, onPick: (String) -> Unit, modifier: Modifie
 fun AuthorChips(authors: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
     FlowRow(modifier) {
         authors.forEachIndexed { index, author ->
-            FadingChip(
-                author,
-                delayMillis = minOf(index, 6) * STAGGER_MILLIS,
-                onClick = { onPick(author) },
-            )
+            key(author) {
+                FadingChip(
+                    author,
+                    delayMillis = minOf(index, 6) * STAGGER_MILLIS,
+                    onClick = { onPick(author) },
+                )
+            }
         }
     }
 }
@@ -53,7 +59,8 @@ private fun FadingChip(label: String, delayMillis: Long, onClick: () -> Unit) {
 
     LaunchedEffect(Unit) {
         if (!shown) {
-            delay(delayMillis)
+            val scale = coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f
+            delay((delayMillis * scale).toLong())
             alpha.animateTo(1f, fade)
             shown = true
         }

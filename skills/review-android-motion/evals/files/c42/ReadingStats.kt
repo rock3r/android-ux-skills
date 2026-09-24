@@ -41,7 +41,7 @@ fun WeekChart(days: List<Float>, modifier: Modifier = Modifier) {
                 animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                 label = "dayBar",
             )
-            Bar(shown)
+            Bar { shown }
         }
     }
 }
@@ -56,7 +56,7 @@ fun YearChart(months: List<Float>, modifier: Modifier = Modifier) {
                 animationSpec = StandardMotion.fastSpatialSpec(),
                 label = "monthBar",
             )
-            Bar(shown)
+            Bar { shown }
         }
     }
 }
@@ -77,13 +77,13 @@ fun StatsCard(week: List<Float>, year: List<Float>, expanded: Boolean, modifier:
 }
 
 @Composable
-private fun Bar(fraction: Float) {
+private fun Bar(fraction: () -> Float) {
     Box(
         Modifier
             .width(12.dp)
             .fillMaxHeight()
             .graphicsLayer {
-                scaleY = fraction
+                scaleY = fraction()
                 transformOrigin = TransformOrigin(0.5f, 1f)
             }
             .background(MaterialTheme.colorScheme.primary),
