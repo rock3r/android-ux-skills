@@ -17,3 +17,6 @@
 # Python bytecode from local script checks
 __pycache__/
 *.pyc
+
+# Temporary one-case specs written by ad-hoc eval runs.
+skills/*/evals/tmp-*.json
