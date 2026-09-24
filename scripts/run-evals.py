@@ -88,8 +88,12 @@ If you found nothing, write FINDINGS and then NONE."""
 # Retries for an arm that exits 0 with nothing on stdout.
 EMPTY_RETRIES = 2
 
+# A finding spread over the composing code of one event — a panel's spec and its content's
+# spec, say — is naturally written with several ranges, "Panel.kt:27-28,46-47". Rejecting it
+# dropped exactly the composite findings class E exists to measure; it now spans from the
+# first range's start to the last range's end.
 FINDING_RE = re.compile(
-    r"^(?P<path>[^\s:]+):(?P<start>\d+)(?:-(?P<end>\d+))?\s+"
+    r"^(?P<path>[^\s:]+):(?P<ranges>\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)\s+"
     r"(?P<rule>\S+)\s+(?P<cls>floor|obligation|taste)\s+(?P<sev>minor|major)\b",
     re.IGNORECASE,
 )
@@ -148,11 +152,12 @@ def parse_findings(text: str) -> tuple[list[Finding], int]:
                 unparsed += 1
             continue
         if m:
+            bounds = [int(n) for n in re.findall(r"\d+", m["ranges"])]
             out.append(
                 Finding(
                     path=m["path"],
-                    start=int(m["start"]),
-                    end=int(m["end"] or m["start"]),
+                    start=min(bounds),
+                    end=max(bounds),
                     rule=m["rule"].upper(),
                     cls=m["cls"].lower(),
                     severity=m["sev"].lower(),

@@ -303,6 +303,14 @@ if _shutil.which("pi"):
 else:
     print("  skip  pi is not on PATH in this shell (nvm not loaded?)")
 
+print("multi-range findings")
+
+multi, bad = ev.parse_findings("FINDINGS\nPanel.kt:27-28,46-47 T-020 taste minor two tiers\n")
+check("a finding with several ranges parses", bad == 0 and len(multi) == 1, (multi, bad))
+check("and spans first start to last end", multi and (multi[0].start, multi[0].end) == (27, 47), multi)
+spaced, _ = ev.parse_findings("FINDINGS\nPanel.kt:27, 46-47 T-020 taste minor two tiers\n")
+check("with a space after the comma too", spaced and (spaced[0].start, spaced[0].end) == (27, 47), spaced)
+
 print("work directory")
 
 # Pioneer refuses a run directory under a protected root, and this checkout resolves
