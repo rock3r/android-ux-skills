@@ -942,6 +942,264 @@
       ]
     },
     {
+      "id": 41,
+      "title": "A · F-007 dragged position lost on rotation, saveable twin",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Docking.kt",
+      "files": [
+        "evals/files/c41/Docking.kt"
+      ],
+      "expect": [
+        {
+          "path": "Docking.kt",
+          "lines": [
+            30,
+            61
+          ],
+          "rule": "F-007",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Docking.kt",
+          "lines": [
+            63,
+            95
+          ],
+          "note": "DownloadChip keeps the side the user docked it to in rememberSaveable and rebuilds its Animatable from it, so rotation leaves it where it was put."
+        }
+      ],
+      "expectations": [
+        "Flags NowPlayingChip: the docked side lives only in a remembered Animatable, so rotating the device snaps the chip back to the start edge",
+        "Names rememberSaveable, or equivalent saved state, as the fix",
+        "Does NOT flag DownloadChip, which already saves the docked side"
+      ]
+    },
+    {
+      "id": 42,
+      "title": "A · T-004 Expressive spatial spring on chart bars, Standard twin",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: ReadingStats.kt",
+      "files": [
+        "evals/files/c42/ReadingStats.kt"
+      ],
+      "expect": [
+        {
+          "path": "ReadingStats.kt",
+          "lines": [
+            34,
+            47
+          ],
+          "rule": "T-004",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ReadingStats.kt",
+          "lines": [
+            49,
+            62
+          ],
+          "note": "YearChart's bars settle on the Standard scheme's spatial spring, which does not overshoot the value it shows."
+        },
+        {
+          "path": "ReadingStats.kt",
+          "lines": [
+            64,
+            77
+          ],
+          "note": "The card around the charts is a container, where the Expressive spring is correct."
+        }
+      ],
+      "expectations": [
+        "Flags WeekChart: under the Expressive scheme its bars overshoot, briefly showing values that are not the data",
+        "Does NOT flag YearChart's bars or the card's size change"
+      ]
+    },
+    {
+      "id": 43,
+      "title": "A · T-010 badge exits with the scale it entered with, fade-only twin",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Badges.kt",
+      "files": [
+        "evals/files/c43/Badges.kt"
+      ],
+      "expect": [
+        {
+          "path": "Badges.kt",
+          "lines": [
+            17,
+            36
+          ],
+          "rule": "T-010",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Badges.kt",
+          "lines": [
+            38,
+            56
+          ],
+          "note": "LoansIcon's badge enters with scale and fade and leaves with a fade only."
+        }
+      ],
+      "expectations": [
+        "Flags HoldsIcon: the badge appears in place, so its exit should drop the scale and only fade",
+        "Does NOT flag LoansIcon"
+      ]
+    },
+    {
+      "id": 44,
+      "title": "A · T-013 stagger grows with the list, capped twin",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Chips.kt",
+      "files": [
+        "evals/files/c44/Chips.kt"
+      ],
+      "expect": [
+        {
+          "path": "Chips.kt",
+          "lines": [
+            22,
+            31
+          ],
+          "rule": "T-013",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Chips.kt",
+          "lines": [
+            33,
+            46
+          ],
+          "note": "AuthorChips caps the stagger at the seventh chip, so the last chip starts 300ms after the first however many there are."
+        }
+      ],
+      "expectations": [
+        "Flags GenreChips: the delay grows with the index and has no cap, so a long genre list keeps chips arriving for seconds",
+        "Names capping the count, or a total budget, as the fix rather than a smaller per-item gap",
+        "Does NOT flag AuthorChips"
+      ]
+    },
+    {
+      "id": 45,
+      "title": "A · T-027 favourite pops when cleared as well as set, twin that pops only on save",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Toggles.kt",
+      "files": [
+        "evals/files/c45/Toggles.kt"
+      ],
+      "expect": [
+        {
+          "path": "Toggles.kt",
+          "lines": [
+            19,
+            46
+          ],
+          "rule": "T-027",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Toggles.kt",
+          "lines": [
+            48,
+            77
+          ],
+          "note": "SaveToggle pops when the book is saved and changes its icon plainly when it is removed."
+        }
+      ],
+      "expectations": [
+        "Flags FavouriteToggle: removing a favourite gets the same pop as adding one",
+        "Does NOT flag SaveToggle, whose plainer removal is the fix",
+        "Does NOT ask for the pop to be removed from adding a favourite"
+      ]
+    },
+    {
+      "id": 46,
+      "title": "A · T-028 banner for a background sync, snackbar for a manual one",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: SyncNotices.kt",
+      "files": [
+        "evals/files/c46/SyncNotices.kt"
+      ],
+      "expect": [
+        {
+          "path": "SyncNotices.kt",
+          "lines": [
+            24,
+            52
+          ],
+          "rule": "T-028",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "SyncNotices.kt",
+          "lines": [
+            54,
+            61
+          ],
+          "note": "ManualSyncNotice confirms a sync the reader started with a snackbar, which T-028 permits."
+        }
+      ],
+      "expectations": [
+        "Flags ScheduledSyncNotice: a sync the app ran on its own schedule opens a banner above the shelf when it succeeds",
+        "Names removing the success banner as the fix, leaving any running indicator and any failure reporting",
+        "Does NOT flag ManualSyncNotice"
+      ]
+    },
+    {
+      "id": 47,
+      "title": "A · T-025 hand-rolled sheet that only opens and closes, twin that drags",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: Panels.kt",
+      "files": [
+        "evals/files/c47/Panels.kt"
+      ],
+      "expect": [
+        {
+          "path": "Panels.kt",
+          "lines": [
+            27,
+            53
+          ],
+          "rule": "T-025",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Panels.kt",
+          "lines": [
+            55,
+            101
+          ],
+          "note": "SortPanel follows the finger and settles with the release velocity, as a bottom sheet does."
+        }
+      ],
+      "expectations": [
+        "Flags FiltersPanel: it stands in for a bottom sheet but can only be opened and closed, never dragged",
+        "Names a drag that follows the finger and carries its release velocity as the fix",
+        "Does NOT flag SortPanel"
+      ]
+    },
+    {
       "id": 50,
       "title": "E · T-026 composite defect, every part correct",
       "class": "E. Composite-only",
