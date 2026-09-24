@@ -490,8 +490,8 @@
         {
           "path": "LoanCards.kt",
           "lines": [
-            32,
-            51
+            27,
+            54
           ],
           "rule": "F-002",
           "class": "floor",
