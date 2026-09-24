@@ -68,6 +68,9 @@ with no rule findings. Judges:
 - Does it match the product's motion language, or assert something the product does not
   say?
 - What does a user actually experience here — on the tenth encounter, not the first?
+  How often they meet it usually decides the answer, and is usually not in the code. If
+  `MOTION.md` does not say, **ask**, or give the verdict conditionally and name the
+  frequency it assumes. Never state a frequency you were not told.
 - Does it survive animations being switched off with its meaning intact?
 - Does the screen hold together as one event, or as several unrelated ones?
 
