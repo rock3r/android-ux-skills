@@ -136,6 +136,40 @@ An earlier Opus run was discarded: Pi was upgraded to 0.87.1 mid-sweep, which st
 passing tools to the `claude-code` extension, and every later case answered "I don't have
 the files". The extension is patched on bepi until Compose-Pi's fix lands.
 
+## Second sweep, same day: 25 cases
+
+At `961a26f`, after the severity decision, the skill's severity paragraph, the static
+twins 12, 26–29, 31 and 32, and the Compose-Pi and pioneer fixes. GLM 5.3 and Luna 6, two
+runs each, every arm completed. 25 case-battery pairs; the totals below count every case
+where both repeats ran.
+
+| Model | Run | floor | obligation | taste | false positives | severity right/wrong |
+|---|---|---|---|---|---|---|
+| GLM 5.3 | 1 | 2/6 → **6/6** | 1/1 → 1/1 | 10/15 → **15/15** | 29 → **1** | 10/3 → 22/0 |
+| GLM 5.3 | 2 | 3/6 → **6/6** | 0/1 → 1/1 | 11/15 → **14/15** | 29 → **7** | 11/3 → 20/1 |
+| Luna 6 | 1 | 4/6 → **6/6** | 0/1 → **1/1** | 4/15 → **14/15** | 7 → **3** | 7/1 → 18/3 |
+| Luna 6 | 2 | 1/6 → **6/6** | 0/1 → **1/1** | 3/15 → **14/15** | 9 → **1** | 4/0 → 17/4 |
+
+**The skill finds every floor and obligation defect in all four runs**, against 1–4 of 6
+without it. **Taste rises by 3–5 for GLM and by 10–11 for Luna 6**, well outside the
+spread between repeats. False positives fall in every run, from 29 to 1–7 for GLM.
+
+Luna 6 improved most since the morning sweep: taste 7/10 → 14/15 on a larger suite. The
+new cases account for part of that, and so does the skill telling reviewers to ask about
+frequency and to check an exception's condition.
+
+**What still misses:**
+
+- **Case 50, the composite.** Both models name `T-026`, but on the children's line range
+  rather than the event's, so span matching scores a miss and a false positive. Luna 6 did
+  it in both runs, GLM in one. It is the case class E exists for, and the hardest to span.
+- **Severity for a convention held only in code.** Luna 6 still reports cases 10, 24 and
+  31 as minor — 7 of its 7 severity errors. GLM makes that call correctly in all but one.
+  The skill says it now; Luna 6 does not act on it consistently.
+- **GLM over-applies `T-001`** on case 32, reporting the unset `exitTransition` and
+  `popEnterTransition` as leaving the library default. They are not part of the case's
+  question, and the finding lands on declared-clean lines once.
+
 ## Known limits
 
 - Two runs is the minimum that shows a spread, not enough to estimate one.
