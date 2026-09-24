@@ -564,6 +564,80 @@
       ]
     },
     {
+      "id": 31,
+      "title": "A · T-012 input gated on an animation, ungated twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: PageTurn.kt",
+      "files": [
+        "evals/files/c31/PageTurn.kt"
+      ],
+      "expect": [
+        {
+          "path": "PageTurn.kt",
+          "lines": [
+            18,
+            40
+          ],
+          "rule": "T-012",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "PageTurn.kt",
+          "lines": [
+            42,
+            60
+          ],
+          "note": "ChapterControls runs the same nudge but never disables the button; a second tap retargets the Animatable from wherever it is."
+        }
+      ],
+      "expectations": [
+        "Flags PageControls' enabled = !turning: the Next button ignores taps until the nudge finishes",
+        "Names removing the guard as the fix, letting animateTo retarget from the current value",
+        "Does NOT flag ChapterControls",
+        "Reports it as major: the chapter controls in the same file do the same thing without gating"
+      ]
+    },
+    {
+      "id": 32,
+      "title": "A · T-024 back fades out a screen that slid in, reversing twin below",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: BookGraph.kt",
+      "files": [
+        "evals/files/c32/BookGraph.kt"
+      ],
+      "expect": [
+        {
+          "path": "BookGraph.kt",
+          "lines": [
+            9,
+            22
+          ],
+          "rule": "T-024",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "BookGraph.kt",
+          "lines": [
+            24,
+            40
+          ],
+          "note": "The author page slides in from the end and, on back, slides out toward it: back plays the inverse of forward."
+        }
+      ],
+      "expectations": [
+        "Flags book details: it slides in from the end but back only fades it out, so back is not the inverse of forward",
+        "Names a popExitTransition that slides toward the end as the fix",
+        "Does NOT flag the author page",
+        "Reports it as major: the author page in the same file reverses its entrance"
+      ]
+    },
+    {
       "id": 40,
       "title": "D · T-009 asks rather than asserts",
       "class": "D. Not in the source at all",
