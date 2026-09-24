@@ -19,7 +19,7 @@
           ],
           "rule": "T-001",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [
@@ -45,7 +45,7 @@
         "Still reviews what it can see, and still flags the NavHost on the rule alone",
         "Does NOT cite, quote, summarise or paraphrase any content from MOTION.md",
         "Does NOT assert what the product's conventions are",
-        "Does NOT escalate severity on the basis of a standard it has not read",
+        "Grounds any escalation in the code it can see — the file's own scheme-resolved specs — never in the MOTION.md it was told about and never given",
         "GRADED: forbidden_strings fails the case if the output names a product-specific token that exists only in a MOTION.md this battery does not stage. Naming the skill's own vocabulary — DECIDED, OBSERVED — is NOT fabrication: saying 'I could not check the DECIDED entries because the file is absent' is the correct answer, and an earlier version of this list wrongly failed a run for exactly that."
       ],
       "forbidden_strings": [

@@ -95,7 +95,7 @@ an arm. Each battery is a separate `evals*.json`.
 
 | Battery | Cases | Stages | Asks |
 |---|---|---|---|
-| `no-motion-language` | 10, 11, 20–25, 30, 40, 50, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
+| `no-motion-language` | 10–12, 20–25, 30, 40, 50, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
 | `established-language` | 10, 11, 40 | code + a MOTION.md with `DECIDED` entries | Does severity rise, is the token named as the fix, and does a fact settled in the file stop being treated as unknowable? |
 | `stale-exception` | 10 | code + a MOTION.md exception that has lapsed | Is a standing approval enforced after the condition it was granted under has been met? |
 | `phantom-language` | 10 | code only, prompt claims a MOTION.md exists | Are conventions invented from a file that was never provided? |
@@ -131,6 +131,7 @@ Class A is the first to be filled in: 21–25 follow case 20's shape.
 | Case | Class | Rule | What it pins down |
 |---|---|---|---|
 | 10 / 11 | B. Context-dependent severity | T-001 | Recall, then precision on the same file with all four transitions bound to tokens. |
+| 12 | B. Context-dependent severity | T-001 | The same default in a file with no convention anywhere: minor, where case 10's scheme-resolved neighbours make it major. |
 | 20 | A. Static twin | F-001 | The defect and its fix fifteen lines apart in one file. |
 | 21 | A. Static twin | F-003 | `animateItem()` with no key, beside the same list keyed by id. |
 | 22 | A. Static twin | T-021 | A present, stable key derived from position, beside one derived from identity. |

@@ -72,8 +72,9 @@ FINDINGS
 This block must repeat every finding your review made, and must not add any it did not.
 
 Severity for a taste finding is relative to what this codebase has decided, not intrinsic
-to the finding: contradicting a convention the project has established is major; the same
-observation with no convention established is minor.
+to the finding: contradicting a convention the project holds — written down, or followed
+everywhere else in the code — is major; the same observation with no convention anywhere
+is minor.
 
 A floor or obligation finding is major regardless, whether or not the project has decided
 anything. Those are about the software being wrong, not about it being inconsistent.

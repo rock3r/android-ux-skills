@@ -20,7 +20,7 @@
           ],
           "rule": "T-001",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [
@@ -43,7 +43,7 @@
       ],
       "expectations": [
         "Flags the NavHost as inheriting the 700ms default",
-        "Reports it as minor — nothing has been decided here for it to contradict",
+        "Reports it as major: nothing is written down, but every other spec in the file resolves to the motion scheme, so the NavHost is the one place that departs from the code's own convention",
         "Does NOT flag BorrowedList or StatusBanner"
       ]
     },
@@ -85,6 +85,42 @@
       "expectations": [
         "Produces no T-001 finding",
         "Does not object to the cross-fade itself — three top-level destinations with no ordering between them cross-fade correctly under T-011"
+      ]
+    },
+    {
+      "id": 12,
+      "title": "B · T-001 with no convention anywhere: severity stays minor",
+      "class": "B. Context-dependent severity",
+      "prompt": "Review the motion in this screen. File: Onboarding.kt",
+      "files": [
+        "evals/files/c12/Onboarding.kt"
+      ],
+      "expect": [
+        {
+          "path": "Onboarding.kt",
+          "lines": [
+            21,
+            25
+          ],
+          "rule": "T-001",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "Onboarding.kt",
+          "lines": [
+            38,
+            44
+          ],
+          "note": "StepPage has no motion of its own; the Button's press feedback is the platform's."
+        }
+      ],
+      "expectations": [
+        "Flags the NavHost as inheriting the 700ms default",
+        "Reports it as minor: no MOTION.md, and nothing else in the file resolves a spec to tokens or the scheme, so there is no convention for it to depart from",
+        "Does NOT invent a motion convention the file does not show"
       ]
     },
     {
@@ -194,7 +230,7 @@
           ],
           "rule": "T-021",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [
@@ -231,7 +267,7 @@
           ],
           "rule": "T-017",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [
@@ -267,7 +303,7 @@
           ],
           "rule": "T-002",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [
@@ -312,7 +348,7 @@
           ],
           "rule": "T-022",
           "class": "taste",
-          "severity": "minor"
+          "severity": "major"
         }
       ],
       "negatives": [

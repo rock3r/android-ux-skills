@@ -49,8 +49,7 @@ another side — with the skill, GLM fails `separates_seen_from_assumed` on 21 o
 against 7 of 36 without it, and `conformance_claim` on 12 of 28 where no MOTION.md was
 staged.
 
-The rules and the labels cannot both be right. **This is a decision, not a bug**, and it
-is left open: see *Needs a decision* below.
+The rules and the labels could not both be right. See *Decided* below: the labels moved.
 
 ## Fixture defects the sweep found
 
@@ -102,21 +101,19 @@ ever asked. With one paragraph added to the skill both give a conditional verdic
 the frequency they assume, and neither baseline does. That is also the clearest case in
 the suite of the skill doing something a capable model does not do unaided.
 
-## Needs a decision
+## Decided: a convention in the code raises severity
 
-**Can a convention observed only in code raise severity?** `T-001` says yes: in a codebase
-that resolves its specs to tokens everywhere else, an untouched default is major. The
-severity table says only a `DECIDED` or `OBSERVED` entry does, and those are MOTION.md tags.
-The eval labels follow the table.
+Seb, 24 September: **major**. A spot that departs from what the rest of the code does is
+how a regression usually arrives — an agent about to introduce a bad change, or someone new
+who does not know the convention — so it is major whether or not MOTION.md records it. The
+recommendation above it was the opposite, and was overruled.
 
-- **If yes**, the labels are wrong: case 10 in `no-motion-language` and `phantom-language`
-  becomes major, and the static twins need a view on whether a sibling in the same file is
-  a convention.
-- **If no**, `T-001`'s severity clause goes, and GLM's six are real errors.
-
-The recommendation is **no**. The whole design of the batteries rests on severity moving
-with MOTION.md and nothing else; a reviewer that infers conventions from code can always
-find one, and the judge shows GLM doing exactly that.
+The severity table now counts a convention the code holds, written or not; the output
+contract says the same. Labels moved to match: case 10 is major in `no-motion-language` and
+`phantom-language`, and the static twins 22–25 are major, since each file does the right
+thing one function away. Case 12 is new and holds the other direction — the same untouched
+default in a file with no convention anywhere stays minor. Under these labels, all six of
+GLM's severity "errors" in this sweep become correct.
 
 ## Known limits
 

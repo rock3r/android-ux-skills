@@ -88,12 +88,18 @@ inconsistency.
 | Situation | Severity |
 |---|---|
 | Contradicts a `DECIDED` entry in MOTION.md | **Major.** The team settled this |
-| Diverges from an `OBSERVED` convention the codebase otherwise holds | **Major.** Reported as inconsistency, not as wrong |
+| Diverges from a convention the codebase otherwise holds — an `OBSERVED` entry in MOTION.md, or the same construct done the other way everywhere else in the code under review | **Major.** Reported as inconsistency, not as wrong |
 | Violates a `floor` or `obligation` rule | **Major**, regardless of any standard |
-| Violates a `taste` rule where no convention exists | **Minor.** Worth raising, not worth blocking |
+| Violates a `taste` rule where no convention exists, written or in the code | **Minor.** Worth raising, not worth blocking |
 
-This is why a review reads MOTION.md before it reads code. Without it every finding
-defaults to minor, which is the honest result when nothing has been decided.
+A convention does not need to be written down to count. The one place that departs from
+what the rest of the code does is how a regression usually arrives — an agent about to
+introduce a bad change, or someone new who does not know the convention — and left alone it
+spreads.
+
+This is why a review reads MOTION.md, and then the code around the change, before it judges
+the change itself. Where neither holds a convention, every taste finding is minor, which is
+the honest result when nothing has been decided.
 
 ---
 

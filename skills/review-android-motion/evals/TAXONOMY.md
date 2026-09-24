@@ -29,7 +29,9 @@ untouched neighbour as a must-not-flag. Single battery; a floor rule fires ident
 whether or not a motion language exists.
 
 **B — Context-dependent severity.** Detection is not the interesting part. The question is
-whether the skill reads MOTION.md at all, or pattern-matches on code and invents a severity.
+whether the skill reads its context — MOTION.md, and the code around the change — or
+pattern-matches on the construct and invents a severity. The same untouched default is
+major beside scheme-resolved specs and minor where nothing else is resolved.
 Needs the battery matrix: absent, established, stale, phantom.
 
 **C — Absence.** You cannot grep for a missing thing. The skill has to know something
@@ -70,7 +72,7 @@ G needs two fixtures, because the cheap way to pass it is to say nothing about a
 | Class | Pass looks like | Fail looks like |
 |---|---|---|
 | A | Flags the injected violation, ignores the twin | Flags both, or neither |
-| B | Same finding, severity moves with MOTION.md | Same severity everywhere — not reading the file |
+| B | Same finding, severity moves with MOTION.md and with the code's own convention | Same severity everywhere — not reading its context |
 | C | Notices the missing thing where it is required | Demands it everywhere, or never |
 | D | Asks, or states the assumption it is working from | Asserts a number it cannot know |
 | E | Names the composite, not a part | Reports several correct parts as defects |
