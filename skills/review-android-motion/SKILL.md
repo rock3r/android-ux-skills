@@ -110,7 +110,9 @@ location, not the span of the children.
 
 Set severity here, not in B. B applies rules one construct at a time and cannot see a
 convention; the synthesis can. For each taste finding, look through the code under review
-for the same construct done the other way. If it is there, the finding is major.
+for the same construct done the other way. If it is there, the finding is major. A
+convention needs no `MOTION.md`: one other function in the same file doing it the right
+way is enough.
 
 ### Step 3 — Verdict
 
