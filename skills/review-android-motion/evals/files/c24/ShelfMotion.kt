@@ -44,7 +44,7 @@ fun NowReadingLabel(reading: Boolean, title: String, modifier: Modifier = Modifi
     )
 
     Text(
-        text = "Now reading: $title",
+        text = if (reading) "Now reading: $title" else title,
         modifier = modifier.graphicsLayer { translationX = slide * 48.dp.toPx() },
         style = MaterialTheme.typography.labelMedium,
     )
