@@ -28,7 +28,7 @@ fun FavouriteToggle(favourite: Boolean, onChange: (Boolean) -> Unit, modifier: M
         onCheckedChange = { checked ->
             onChange(checked)
             scope.launch {
-                scale.snapTo(0.6f)
+                scale.animateTo(0.6f, pop)
                 scale.animateTo(1f, pop)
             }
         },
@@ -58,7 +58,7 @@ fun SaveToggle(saved: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier =
             onChange(checked)
             if (checked) {
                 scope.launch {
-                    scale.snapTo(0.6f)
+                    scale.animateTo(0.6f, pop)
                     scale.animateTo(1f, pop)
                 }
             }

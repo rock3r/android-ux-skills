@@ -34,7 +34,7 @@ fun GenreChips(genres: List<String>, onPick: (String) -> Unit, modifier: Modifie
     }
 }
 
-/** Every author the reader has borrowed from, shown under the genres. */
+/** Every author the reader has borrowed from, on the reader's profile. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AuthorChips(authors: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
