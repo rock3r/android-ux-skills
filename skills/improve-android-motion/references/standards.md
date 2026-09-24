@@ -555,11 +555,10 @@ single most load-bearing judgment in motion work and it is entirely undocumented
 already moved on.
 
 **Rule.** On Android, asymmetry is expressed as **tier and property count, not a duration
-ratio**: enter with spatial *and* effects; exit with effects only.
-
-Closing the space a component held is not a spatial half. A slot that collapses on the fast
-tier while its content fades is an effects-only exit; a slot left to snap shut once the
-fade ends is a jump.
+ratio**: enter with spatial *and* effects; exit with effects only — where closing the slot
+the component held, `shrinkVertically` or `shrinkHorizontally` on the fast tier beside the
+fade, **counts as effects-only**. The slot is not the component moving; it is the layout
+around it closing. A slot left to snap shut once the fade ends is a jump.
 
 **Material binding.** The tier vocabulary and M3's own position that exits are usually
 just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
