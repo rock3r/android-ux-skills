@@ -157,12 +157,15 @@ def main() -> int:
     ap.add_argument("--tier", default="readers", choices=("readers", "sota"))
     ap.add_argument("--allow-single", action="store_true",
                     help="accept one reader; a lone reading is one opinion presented\nas a conclusion")
+    ap.add_argument("--allow-metered", action="store_true",
+                    help="permit a provider billed per token; see model-roster.json")
     ap.add_argument("--full", action="store_true",
                     help="also read every transcript, not only the undecided ones")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    models = roster.resolve(args.models, args.tier, 2, args.allow_single)
+    models = roster.resolve(args.models, args.tier, 2, args.allow_single,
+                            allow_metered=args.allow_metered)
     print("readers: " + ", ".join(m["model"] for m in models), file=sys.stderr)
 
     report = json.loads(Path(args.report).read_text())

@@ -313,6 +313,23 @@ check("work root is outside the repo", ev.ROOT not in root.resolve().parents
 check("work root is not under a path pioneer refuses",
       not str(root.resolve()).startswith(("/srv", "/var", "/usr", "/etc")), root)
 
+print("metered providers")
+
+sys.path.insert(0, str(Path(__file__).parent))
+import roster
+try:
+    roster.resolve("openrouter/anthropic/claude-opus-5.5", "sota", 1, allow_single=True)
+    refused = False
+except SystemExit:
+    refused = True
+check("a metered model is refused without --allow-metered", refused)
+ok = roster.resolve("openrouter/anthropic/claude-opus-5.5", "sota", 1, allow_single=True,
+                    allow_metered=True)
+check("and allowed with it", [e["model"] for e in ok] == ["openrouter/anthropic/claude-opus-5.5"], ok)
+check("no roster default is metered",
+      not [e["model"] for t in ("arms", "readers", "sota") for e in roster.load(t)[0]
+           if e["model"].startswith("openrouter/")])
+
 print("repeats")
 
 # The summary's per-run range is the only error bar the numbers have. It must sum each

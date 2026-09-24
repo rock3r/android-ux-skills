@@ -829,6 +829,8 @@ def main() -> int:
                     help="run every reachable model in this roster tier, one "
                          "report each")
     ap.add_argument("--allow-single", action="store_true")
+    ap.add_argument("--allow-metered", action="store_true",
+                    help="permit a provider billed per token; see model-roster.json")
     ap.add_argument("--battery", default=None,
                     help="run one battery by name; default runs all")
     ap.add_argument("--timeout-ms", type=int, default=300_000)
@@ -868,7 +870,8 @@ def main() -> int:
     print(f"{len(specs)} batteries validated against their fixtures", file=sys.stderr)
 
     models = roster.resolve(args.model, args.tier or "arms", 2,
-                            args.allow_single, check_reachable=not args.dry_run)
+                            args.allow_single, check_reachable=not args.dry_run,
+                            allow_metered=args.allow_metered)
     if len(models) > 1:
         print(f"sweeping {len(models)} models: "
               f"{', '.join(m['model'] for m in models)}", file=sys.stderr)

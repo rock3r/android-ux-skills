@@ -57,7 +57,8 @@ def _one_per_family(entries: list[dict]) -> list[dict]:
 
 
 def resolve(requested: str | None, tier: str, want: int,
-            allow_single: bool = False, check_reachable: bool = True) -> list[dict]:
+            allow_single: bool = False, check_reachable: bool = True,
+            allow_metered: bool = False) -> list[dict]:
     """The models to use: an explicit list, or the first reachable ones from a tier.
 
     Refuses to proceed with one model unless told to. A single model's habits are
@@ -87,6 +88,17 @@ def resolve(requested: str | None, tier: str, want: int,
             print(f"roster: {len(skipped)} entry(ies) not reachable here — "
                   f"{', '.join(skipped[:3])}{'…' if len(skipped) > 3 else ''}",
                   file=sys.stderr)
+
+    # A metered provider bills per token against a monthly budget. Subscription-backed
+    # routes are the default; paying is something a person asks for, per run.
+    metered = tuple(f"{m}/" for m in json.loads(ROSTER.read_text()).get("metered_providers", []))
+    billed = [e["model"] for e in chosen if e["model"].startswith(metered)]
+    if billed and not allow_metered:
+        raise SystemExit(
+            f"error: {', '.join(billed)} is billed per token.\n"
+            f"  Use a subscription-backed route to the same model, or pass --allow-metered "
+            f"if paying for this run is intended."
+        )
 
     # One family twice is one opinion twice.
     seen, unique = set(), []
