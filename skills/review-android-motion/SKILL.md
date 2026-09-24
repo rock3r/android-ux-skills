@@ -143,6 +143,9 @@ Method: dual-agent (A: <id> · B: <id>)      ← or the degraded banner
 Floor: n findings.  Taste: n findings.
 ```
 
+**Fix** names the change itself: the call, value or construct to write instead. A
+direction such as "use a calmer spec" leaves the reader to redo the review.
+
 Report the two counts **separately, never averaged**. A run with zero taste findings and
 six floor findings is a linter run, not a review, and the numbers should say so.
 
