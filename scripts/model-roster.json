@@ -67,7 +67,7 @@
       "model": "claude-code/claude-opus-5-5",
       "family": "claude-opus",
       "thinking": "high",
-      "note": "Subscription-backed through the claude-code extension, not metered. Requires pioneer 0.3.6 or newer so the extension is copied into the eval sandbox (pioneer #82). Verified as an arm on 2026-09-24. Anthropic refuses Opus 5.5 below CLAUDE_CODE_VERSION 2.1.280; Compose-Pi main still sends 2.1.266, so the installed extension must report 2.1.281 or newer."
+      "note": "Subscription-backed through the claude-code extension, not metered. Needs pioneer 0.3.6 or newer, so the extension is copied into the eval sandbox (pioneer #82), and a Compose-Pi extension from main at or after c11e654a (#2888): Pi 0.87.1 stopped passing tools to providers the old way, and Anthropic refuses Opus 5.5 below Claude Code 2.1.280. Verified as an arm on 2026-09-24 with the official extension."
     },
     {
       "model": "claude-code/claude-opus-5",
