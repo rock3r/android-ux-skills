@@ -1,0 +1,14 @@
+{
+  "name": "android-ux-skills",
+  "owner": {
+    "name": "Sebastiano Poggi",
+    "url": "https://github.com/rock3r"
+  },
+  "plugins": [
+    {
+      "name": "android-ux-skills",
+      "source": "./",
+      "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language, and review motion adversarially."
+    }
+  ]
+}

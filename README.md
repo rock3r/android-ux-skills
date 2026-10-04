@@ -6,20 +6,41 @@
 > Google's documentation or the AOSP source it says so and links to it; everything else is
 > our own opinion and should be read that way.
 
-> [!WARNING]
-> **Work in progress. Nothing here is ready to install or rely on.**
->
-> The 32 rules of revision 02 in [`STANDARDS.md`](STANDARDS.md) have been fact-checked
-> against primary sources, reviewed by three separate models, and had one engineering
-> review by a human. The two added since, T-027 and T-028, have not been through those
-> reviews.
-> They have **not** had a designer's review of the taste claims, which is the review that
-> matters most for rules about how things should feel. The skills, the eval harness and the
-> corpus design are scaffolding around a rule set that is still moving. Names, rule ids and
-> file layout will change.
+> [!NOTE]
+> **Version 1.0.0.** The 32 rules of revision 02 in [`STANDARDS.md`](STANDARDS.md) have been
+> fact-checked against primary sources, reviewed by three separate models, and had one
+> engineering review by a human; T-027 and T-028 have not been through those reviews, and
+> no rule set here has had a designer's review of the taste claims — which is the review
+> that matters most for rules about how things should feel. Read the taste rows as one
+> engineering team's opinion, not as Material guidance.
 
 Agent skills for **Android motion and design-engineering craft** — the judgment calls that
 decide whether an interface feels considered or merely functional.
+
+## Install
+
+The repository is a portable [Agent Plugins](https://agent-plugins.org/) package (root
+`plugin.json` plus `skills/`) and a Claude plugin (`.claude-plugin/`), so the same package
+installs everywhere:
+
+- **Claude Code** — add this repository as a marketplace and install from it:
+
+  ```text
+  /plugin marketplace add rock3r/android-ux-skills
+  /plugin install android-ux-skills@android-ux-skills
+  ```
+
+  or test a checkout directly with `claude --plugin-dir .`
+
+- **ChatGPT and Codex** — the same `.claude-plugin/marketplace.json` is read as a
+  marketplace, and the root `plugin.json` is the portable entry point:
+
+  ```text
+  codex plugin marketplace add rock3r/android-ux-skills
+  ```
+
+- **Any Agent Plugins client** — `plugin.json` targets schema 1.0.0; skills are discovered
+  from `skills/` in the [Agent Skills](https://agentskills.io/specification) format.
 
 ## What this is for
 
