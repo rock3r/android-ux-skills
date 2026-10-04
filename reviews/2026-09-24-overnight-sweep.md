@@ -285,17 +285,16 @@ Detection on those cases held: taste 5/6 and 6/6 against 6/6 and 6/6.
 - Case 39's tickers never wrap their text or loop. Baselines flag it, with-skill arms do
   not, and it counts as a baseline false positive in both halves.
 
-## Fourth sweep, 2–3 October: kimi-code k3-256k and OpenCode Zen free big-pickle
+## Fourth sweep, 2–4 October: kimi-code k3-256k, OpenCode Zen free big-pickle, grok-4.7
 
-At `95e53a3`, all 41 case-battery pairs, two runs each, pioneer 0.4.4 and pi 0.87.1. The
-planned third arm, `xai/grok-4.7`, did not run: its OAuth refresh token is revoked
-server-side (`invalid_grant`) on every stored credential, and re-login needs an
-interactive browser flow. The kimi route that answered is the built-in `kimi-coding`
-provider (`kimi-coding/k3-256k`); the OpenCode arm is the Zen free tier
-(`opencode-free/big-pickle`), through the compose-pi zen-free plugin. Both models'
-with-skill and baseline arms completed every run — after two quota interruptions
-re-covered by re-running only the failed cases — so **no case is left out of the
-numbers below**.
+At `95e53a3`, all 41 case-battery pairs, two runs each, pioneer 0.4.4 and pi 0.87.1. Three
+arms: `kimi-coding/k3-256k` (the kimi route that answers on this machine), `opencode-free/
+big-pickle` (the OpenCode Zen free tier, through the compose-pi zen-free plugin), and
+`xai/grok-4.7`. The xai OAuth refresh token was revoked when the sweep started, and the
+operator re-authenticated it mid-sweep; grok-4.7 therefore ran ~12 h after the others.
+Kimi and big-pickle completed every run after quota re-runs; grok-4.7 ran with a 600 s
+actor timeout because the default 300 s killed its arms mid-review — its reviews run
+4–10 minutes at `thinking=high` — and one case still could not complete (below).
 
 | Model | Run | floor | obligation | taste | false positives | severity right/wrong |
 |---|---|---|---|---|---|---|
@@ -303,40 +302,52 @@ numbers below**.
 | K3-256k | 2 | 4/9 → **9/9** | 2/2 → 2/2 | 22/26 → **26/26** | 60 → **7** | 19/9 → 34/3 |
 | big-pickle | 1 | 4/9 → **9/9** | 2/2 → 2/2 | 18/26 → **25/26** | 88 → **12** | 17/7 → 32/4 |
 | big-pickle | 2 | 1/9 → **9/9** | 0/2 → **2/2** | 12/26 → **25/26** | 79 → **11** | 7/6 → 31/5 |
+| grok-4.7 | 1 | 9/9 → 9/9 | 1/2 → **2/2** | 7/25 → **26/26** | 58 → **1** | 14/3 → 35/2 |
+| grok-4.7 | 2 | 9/9 → 9/9 | 1/2 → **2/2** | 7/25 → **26/26** | 65 → **1** | 15/2 → 34/3 |
 
-**What holds across both repeats of both models.** The skill finds every floor defect in
-every run, against a baseline of one to four of nine. False positives fall by a factor of
-seven to eight in every run — big-pickle's baseline flags clean code 79–88 times per run,
-the most of any arm so far, and the skill cuts that to 11–12. K3-256k's with-skill arms
-miss nothing at all, in either repeat: 9/9 floor, 2/2 obligation, 26/26 taste. Severity
-right/wrong roughly doubles with the skill for both. The two repeats of each model agree
-closely with each other — detection is stable to the finding.
+grok-4.7's baseline row counts 40 cases (case 47's baseline timed out in every attempt);
+every other arm counts all 41. **No other case is left out.**
 
-**What does not.** K3-256k's baseline taste is already 21–22 of 26, so its taste delta is
-four to five findings where big-pickle's is seven to thirteen; a single run of K3-256k
-could plausibly show a smaller gap. big-pickle misses one taste case in each run, a
-different one each time (33, an absence case, then 51, the composite). Its run-2
-baseline floor of 1/9 against run-1's 4/9 is the largest baseline spread in the suite.
+**What holds across both repeats of all three models.** The skill's with-skill arms find
+every floor defect in every run. False positives fall by a factor of seven to eight for
+K3-256k and big-pickle, and from 58–65 to **one** for grok-4.7 — big-pickle's baseline
+flags clean code 79–88 times per run, the most of any arm so far. grok-4.7 is the first
+arm that finds all nine floor defects unaided, but it finds only 7 of 25 taste defects
+unaided, the weakest baseline taste in the suite; with the skill it misses nothing, on
+taste or anything else, in either repeat — as does K3-256k. Severity right/wrong
+improves for all three. The two repeats of each model agree closely with each other.
 
-**Severity "errors" are mostly the labels again.** Every one of K3-256k's severity errors
-(4 and 3) and four of big-pickle's nine is the same call: cases 28, 34, 37 and 46 are
-labelled `minor`, and each file contains the compliant form one function below, which
-both models read as a convention the code holds — `major` under the 24 September
-decision. Case 28 is also the only static twin labelled minor when every sibling (22–27,
-29, 31, 32) is major. See *Suspected fixture defects* below; the labels look wrong, not
-the models.
+**What does not.** K3-256k's baseline taste is already 21–22 of 26, so its taste delta
+is four to five findings where big-pickle's is seven to thirteen and grok-4.7's is
+nineteen. big-pickle misses one taste case in each run, a different one each time (33,
+then 51). grok-4.7's case-10 severity flips to `minor` in one run of two batteries.
+big-pickle's run-2 baseline floor of 1/9 against run-1's 4/9 is the largest baseline
+spread in the suite.
+
+**The judge agrees everywhere.** Calibration passed 29/29 for each run. Failed checks,
+baseline → with-skill: K3-256k 36 → 6, big-pickle 59 → 11, grok-4.7 62 → 8. In
+`no-motion-language` — the battery the judge reads most reliably — 29 → 4, 55 → 8 and
+53 → 4.
+
+**Severity "errors" are mostly the labels again.** Cases 28, 34, 37 and 46 are labelled
+`minor`, and each file contains the compliant form one function below, which all three
+models read as a convention the code holds — `major` under the 24 September decision.
+Case 28 is also the only static twin labelled minor when every sibling (22–27, 29, 31,
+32) is major. Every severity error of K3-256k's is one of these four; grok-4.7's are
+these plus case 10 once; big-pickle's add two genuine under-calls (31, 42). See
+*Suspected fixture defects* below; the labels look wrong, not the models.
 
 ### Suspected fixture defects the sweep found
 
 Every one was reported by a model against code the labels declare clean. None were edited.
 
-- **Case 28's SortMenu exits fade-only** (K3-256k in both runs, big-pickle in one). The
+- **Case 28's SortMenu exits fade-only** — all three models, five of six runs. The
   negative note defends the menu's anchored scale-in and says nothing about its exit:
   `Welcome.kt:45` is `exit = fadeOut(...)` alone, the menu sits inline in a Column, and
   the slot snaps shut when the fade ends — T-010's own scope names "a menu … a section
-  shown and hidden as its container expands" and calls a snapping slot a jump. Transcript:
-  "Menu exit is fade-only; the slot it holds in the Column snaps shut after the fade —
-  add shrinkVertically on the fast tier."
+  shown and hidden as its container expands" and calls a snapping slot a jump.
+  Transcript: "Menu exit is fade-only; the slot it holds in the Column snaps shut after
+  the fade — add shrinkVertically on the fast tier."
 - **Case 29's correct twin holds its drag offset in plain `remember`**
   (`remember { Animatable(0f) }`, `LoanCards.kt:62`). F-007's own text: a sheet offset
   the user dragged to is a position the user placed, and losing it on rotation is losing
@@ -347,25 +358,27 @@ Every one was reported by a model against code the labels declare clean. None we
   HoldState.None`, `Holds.kt:67`). T-028 requires a failure to reach the screen when it
   affects what the screen shows, or a notification; the twin silently reverts.
   Transcript: "Failed renew silently reverts to the button with no failure surfaced."
-- **Case 46, 34, 37 and 28's severity labels** (above): four `minor` labels against files
-  that hold the compliant form in-code, which the decided severity scheme makes major.
-- **Case 42's StatsCard hard-cuts its year section** (both models, three of four runs).
-  The negative blesses the card's Expressive spring; it does not cover the section
-  itself: `if (expanded) { … }` composes instantly inside `animateContentSize`, so the
-  container springs while the content appears in one frame — T-020's "one event, one
-  timing", and T-010's scope is literally "a section shown and hidden as its container
-  expands". Transcript: "Expand event split in two: container size springs while year
-  section hard-cuts in/out with no enter/exit transition."
+- **Cases 46, 34, 37 and 28's severity labels** (above): four `minor` labels against
+  files that hold the compliant form in-code, which the decided severity scheme makes
+  major.
+- **Case 42's StatsCard hard-cuts its year section** — K3-256k and big-pickle, three of
+  four runs. The negative blesses the card's Expressive spring; it does not cover the
+  section itself: `if (expanded) { … }` composes instantly inside `animateContentSize`,
+  so the container springs while the content appears in one frame — T-020's "one event,
+  one timing", and T-010's scope is literally "a section shown and hidden as its
+  container expands". Transcript: "Expand event split in two: container size springs
+  while year section hard-cuts in/out with no enter/exit transition."
 - **Case 50's TotalRow lifts the price on a spatial spring** (K3-256k, one run). The
   negative blesses "token spec, lambda offset", not the move: the price animates −8dp on
   `defaultSpatialSpec` and rests displaced — the same construct class as the case's own
   T-004 defect, on a figure read as data. Transcript: "Price figure animates position on
   defaultSpatialSpec and rests 8dp displaced."
 - **Case 40's retraction rides the celebration spring** (big-pickle, both runs; weaker).
-  The negative's "lowering the rating moves nothing" holds only for settled stars; a star
-  caught mid-cascade and retracted returns home on the same bouncy `pulse` as the pop,
-  which T-027's "a correction is not a celebration" reads against. Transcript: "A star
-  caught mid-pop and retracted returns home on the same bouncy spec as the celebration."
+  The negative's "lowering the rating moves nothing" holds only for settled stars; a
+  star caught mid-cascade and retracted returns home on the same bouncy `pulse` as the
+  pop, which T-027's "a correction is not a celebration" reads against. Transcript: "A
+  star caught mid-pop and retracted returns home on the same bouncy spec as the
+  celebration."
 
 ### Model-side false positives the transcripts support calling errors
 
@@ -373,7 +386,8 @@ Every one was reported by a model against code the labels declare clean. None we
   perpetual marquee "frequency assumed, not stated" (cases 20, 23, 39, and case 11
   against the established language's own `animateItem`); big-pickle does the same on
   case 20 twice. The case-40 lesson — ask, don't assert — is applied honestly (the
-  assumption is named) but the finding is still asserted.
+  assumption is named) but the finding is still asserted. grok-4.7 commits none of
+  these.
 - **big-pickle invents mechanical defects.** `rememberPagerState` is already
   `rememberSaveable`-backed, so its case-37 F-007 ("lost on rotation — use
   rememberSaveable(saver = PagerState.Saver)") recommends what the code already does;
@@ -381,28 +395,32 @@ Every one was reported by a model against code the labels declare clean. None we
   legs to origin); its case-24 T-026 calls two elements driven by two different state
   flags one event; its case-22 T-004 spans the defect and the twin with a "may be
   expressive" guess.
-- **Re-reporting one defect under a second rule.** Both models re-report case 32's unset
-  `exitTransition`/`popEnterTransition` — the case's own T-024 defect — as T-020/T-001
-  with a wider span (GLM's known pattern from the second sweep; big-pickle once,
-  K3-256k once).
+- **Re-reporting one defect under a second rule.** K3-256k and big-pickle re-report case
+  32's unset `exitTransition`/`popEnterTransition` — the case's own T-024 defect — as
+  T-020/T-001 with a wider span (GLM's known pattern from the second sweep). grok-4.7
+  does not.
 - **K3-256k turns a permission into an obligation** on case 80: the with-skill arm flags
   a Sync-now button for lacking a running→done confirmation, where T-028 permits one and
   requires nothing.
+- **grok-4.7's single remaining with-skill false positive per run is case 28's T-010 —
+  the fixture defect above, not an error.**
 
 ### Known limits
 
-- The judge pass did not run: `TYPESAFE_API_KEY` lived in the agent environment, which
-  an infrastructure event replaced mid-sweep; every route to the key on this machine is
-  bound to an interactive 1Password session this run does not have. Calibration, and the
-  judge numbers beside the detection ones, are missing for this sweep.
-- kimi hit its 5-hour usage limit 3.2 hours in; cases 32, 36–47, 50, 51, 60, 70, 80 of
-  `no-motion-language` and case 10 of `phantom-language`/`stale-exception` were re-run
-  in full after the window reset (attempt 2), and case 47's baseline once more
-  (attempt 3, one timeout). big-pickle's free tier returned 429s from case 50 on; its
-  nine affected cases were re-run the same way. Re-run arms therefore ran hours after
-  the arms they replace.
-- The retried arms ran against the same commit and skill; nothing else changed between
-  attempts.
+- An infrastructure event replaced the agent environment mid-sweep (it also carried off
+  `TYPESAFE_API_KEY`); the judge key was re-delivered to the runner's tmpfs from the
+  operator's 1Password vault, and all three judgments ran on their first attempt with no
+  529s. Calibration passed each time.
+- kimi hit its 5-hour usage limit 3.2 hours in; twenty cases were re-run in full after
+  the window reset, and case 47's baseline once more (one timeout). big-pickle's free
+  tier returned 429s from case 50 on; its nine affected cases were re-run the same way.
+  grok-4.7 was re-run for eleven timeout cases, then three more, across three attempts;
+  case 47's baseline timed out at 600 s in all of them and is the one case left out.
+  Re-run arms therefore ran hours after the arms they replace, grok-4.7's a day later.
+- grok-4.7 ran at `--timeout-ms 600000` where the other two arms ran at the default
+  300000; its 300 s pilot run had a third of its arms die mid-review.
 - big-pickle's max output is 32K and it does no extended thinking on this tier; it is
   also the first free-tier arm, and its baseline's 79–88 false positives may partly be
   the tier, not the model.
+- grok-4.7's late arm ran against the same commit and skill; nothing else changed
+  between attempts.
