@@ -989,8 +989,8 @@
         {
           "path": "ReadingStats.kt",
           "lines": [
-            37,
-            50
+            38,
+            51
           ],
           "rule": "T-004",
           "class": "taste",
@@ -1001,18 +1001,18 @@
         {
           "path": "ReadingStats.kt",
           "lines": [
-            52,
-            65
+            53,
+            66
           ],
           "note": "YearChart's bars settle on the Standard scheme's spatial spring, which does not overshoot the value it shows."
         },
         {
           "path": "ReadingStats.kt",
           "lines": [
-            67,
-            84
+            68,
+            87
           ],
-          "note": "The card around the charts is a container, where the Expressive spring is correct; the year section fades on the fast effects tier while the container's size spring does the moving."
+          "note": "The card's year section enters with spatial and effects on the default tier and exits with effects only on the fast tier, as T-010 asks; the charts own their own specs."
         }
       ],
       "expectations": [
