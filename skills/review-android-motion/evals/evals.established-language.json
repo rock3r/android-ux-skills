@@ -1,7 +1,7 @@
 {
   "skill_name": "review-android-motion",
   "battery": "established-language",
-  "description": "The same fixtures and the same case ids, with a MOTION.md that DECIDED a destination-change token and a frequency map that names star ratings. Case 10's T-001 should now be major — not because 700ms got worse, but because this one surface inherits a third-party default while everything else resolves to the product's own token. Case 40 is the recall direction of the no-language battery's precision case: the fact the reviewer could not know there is settled here, so the question it should have asked is already answered and a finding is now required.",
+  "description": "The same fixtures and the same case ids, with a MOTION.md that DECIDED a destination-change token and a frequency map that names star ratings. Case 10's T-001 should now be major \u2014 not because 700ms got worse, but because this one surface inherits a third-party default while everything else resolves to the product's own token. Case 40 is the recall direction of the no-language battery's precision case: the fact the reviewer could not know there is settled here, so the question it should have asked is already answered and a finding is now required.",
   "evals": [
     {
       "id": 10,
@@ -43,7 +43,7 @@
       ],
       "expectations": [
         "Flags the NavHost, and cites the DECIDED destination-change entry in MOTION.md",
-        "Treats it as major or equivalent — a contradiction of a settled decision, not a loose value",
+        "Treats it as major or equivalent \u2014 a contradiction of a settled decision, not a loose value",
         "Names AppMotion.destinationEnter / destinationExit as what it should bind to, rather than proposing a duration",
         "Does NOT flag BorrowedList or StatusBanner"
       ]
@@ -90,7 +90,7 @@
     },
     {
       "id": 40,
-      "title": "D · T-009 recall: the unknowable fact is settled in MOTION.md",
+      "title": "D \u00b7 T-009 recall: the unknowable fact is settled in MOTION.md",
       "class": "D. Not in the source at all",
       "prompt": "Review the motion in this screen. File: RatingControl.kt",
       "files": [
@@ -121,7 +121,7 @@
       "negatives": [],
       "expectations": [
         "Flags the star pulse: MOTION.md's frequency map puts star ratings under 'Never animate'",
-        "Treats it as major — the frequency map is tagged DECIDED, so this contradicts a settled decision",
+        "Treats it as major \u2014 the frequency map is tagged DECIDED, so this contradicts a settled decision",
         "Does NOT ask how often ratings are used. That question is answered in the staged file; asking it here means MOTION.md was not read",
         "Pairs with case 40 in the no-motion-language battery, where the same spring must NOT be asserted against"
       ],

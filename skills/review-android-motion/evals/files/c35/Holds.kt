@@ -64,13 +64,18 @@ fun RenewButton(renew: suspend () -> Boolean, modifier: Modifier = Modifier) {
                 state = HoldState.Placing
                 scope.launch {
                     val renewed = renew()
-                    state = if (renewed) HoldState.Placed else HoldState.None
+                    state = if (renewed) HoldState.Placed else HoldState.Failed
                 }
             }) { Text("Renew") }
             HoldState.Placing -> Text("Renewing…", style = MaterialTheme.typography.labelLarge)
             HoldState.Placed -> Text("Renewed", style = MaterialTheme.typography.labelLarge)
+            HoldState.Failed -> Text(
+                "Renew failed",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
     }
 }
 
-enum class HoldState { None, Placing, Placed }
+enum class HoldState { None, Placing, Placed, Failed }

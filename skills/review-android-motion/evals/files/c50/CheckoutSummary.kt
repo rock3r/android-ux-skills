@@ -39,14 +39,8 @@ fun CheckoutSummary(discountApplied: Boolean, modifier: Modifier = Modifier) {
 
 @Composable
 private fun TotalRow(discounted: Boolean) {
-    val lift by animateDpAsState(
-        targetValue = if (discounted) (-8).dp else 0.dp,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-        label = "totalLift",
-    )
     Text(
         text = if (discounted) "£38.40" else "£48.00",
-        modifier = Modifier.offset { IntOffset(0, lift.roundToPx()) },
         style = MaterialTheme.typography.headlineMedium,
     )
 }

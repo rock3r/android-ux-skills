@@ -43,7 +43,7 @@ fun RatingControl(rating: Int, onRate: (Int) -> Unit, modifier: Modifier = Modif
                     scale.animateTo(1.2f, pulse)
                     scale.animateTo(1f, pulse)
                 } else if (scale.value != 1f) {
-                    scale.animateTo(1f, pulse)
+                    scale.snapTo(1f)
                 }
             }
         }

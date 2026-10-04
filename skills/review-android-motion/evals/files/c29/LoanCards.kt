@@ -14,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -59,7 +61,9 @@ fun HoldCard(onCancel: () -> Unit, modifier: Modifier = Modifier) {
     val dismissPx = with(LocalDensity.current) { 96.dp.toPx() }
     val offscreenPx = with(LocalDensity.current) { 480.dp.toPx() }
     val settle = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    val offset = remember { Animatable(0f) }
+    val offset = rememberSaveable(
+        saver = Saver(save = { it.value }, restore = { Animatable(it) }),
+    ) { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
     Card(

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Card
@@ -42,7 +43,8 @@ fun SortMenu(open: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier)
                 initialScale = 0.8f,
                 transformOrigin = TransformOrigin(0f, 0f),
             ) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
-            exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         ) {
             Card {
                 Text("Title", style = MaterialTheme.typography.bodyLarge)

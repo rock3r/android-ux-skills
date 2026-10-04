@@ -1,6 +1,9 @@
 package com.example.catalogue.ui.stats
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +71,11 @@ fun StatsCard(week: List<Float>, year: List<Float>, expanded: Boolean, modifier:
         Column(Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec())) {
             Text("This week", style = MaterialTheme.typography.titleMedium)
             WeekChart(week)
-            if (expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+                exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
                 Text("This year", style = MaterialTheme.typography.titleMedium)
                 YearChart(year)
             }

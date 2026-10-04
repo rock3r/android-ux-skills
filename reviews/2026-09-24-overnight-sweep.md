@@ -329,17 +329,19 @@ baseline → with-skill: K3-256k 36 → 6, big-pickle 59 → 11, grok-4.7 62 →
 `no-motion-language` — the battery the judge reads most reliably — 29 → 4, 55 → 8 and
 53 → 4.
 
-**Severity "errors" are mostly the labels again.** Cases 28, 34, 37 and 46 are labelled
-`minor`, and each file contains the compliant form one function below, which all three
-models read as a convention the code holds — `major` under the 24 September decision.
-Case 28 is also the only static twin labelled minor when every sibling (22–27, 29, 31,
-32) is major. Every severity error of K3-256k's is one of these four; grok-4.7's are
-these plus case 10 once; big-pickle's add two genuine under-calls (31, 42). See
-*Suspected fixture defects* below; the labels look wrong, not the models.
+**Severity "errors" were mostly the labels.** Cases 28, 34, 37 and 46 were labelled
+`minor`, and each file contains the compliant form one function below — `major` under the
+24 September decision. Case 28 was also the only static twin labelled minor when every
+sibling (22–27, 29, 31, 32) is major. The four labels moved to `major` after the sweep
+(see *Fixture fixes* below), and the with-skill severity errors on those cases collapse
+to: K3-256k none to one (one `minor` on 37), big-pickle none to two (34 and 37,
+under-called), grok-4.7 three per run — it called 28 and 46 `major` in one run each but
+34 and 37 `minor` in both, so it reads a written convention more reliably than one held
+only in code. big-pickle's remaining genuine under-calls are 31 and 42.
 
 ### Suspected fixture defects the sweep found
 
-Every one was reported by a model against code the labels declare clean. None were edited.
+Every one was reported by a model against code the labels declare clean.
 
 - **Case 28's SortMenu exits fade-only** — all three models, five of six runs. The
   negative note defends the menu's anchored scale-in and says nothing about its exit:
@@ -379,6 +381,29 @@ Every one was reported by a model against code the labels declare clean. None we
   pop, which T-027's "a correction is not a celebration" reads against. Transcript: "A
   star caught mid-pop and retracted returns home on the same bouncy spec as the
   celebration."
+
+### Fixture fixes after the sweep
+
+All seven were fixed after the sweep, at the owner's instruction (labels and fixtures both):
+
+- **Case 28** — SortMenu's exit gains `shrinkVertically` on the fast tier beside the fade;
+  the T-016 label moved to `major`.
+- **Cases 34, 37, 46** — labels moved to `major`, matching the decided severity scheme
+  and every sibling static twin.
+- **Case 29** — the twin's drag offset moves into `rememberSaveable` with an `Animatable`
+  saver.
+- **Case 35** — a failed renewal now sets a `Failed` state that stays visible in the
+  control instead of silently reverting.
+- **Case 40** — a star caught mid-cascade snaps home instead of riding the celebration
+  spring; the negative notes record it.
+- **Case 42** — the year section fades in and out through `AnimatedVisibility` on the
+  fast effects tier while the container's size spring does the moving.
+- **Case 50** — TotalRow keeps the price in place; the lift is gone and the negative
+  note now describes a text change with no positional emphasis.
+
+Verification re-runs of the six fixture-changed cases (and case 40 in
+`established-language`) against all three arms were launched after the fixes; their
+numbers are not part of the table above, which measures the sweep as it ran.
 
 ### Model-side false positives the transcripts support calling errors
 
