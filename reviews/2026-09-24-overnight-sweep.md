@@ -402,19 +402,21 @@ All seven were fixed after the sweep, at the owner's instruction (labels and fix
   note now describes a text change with no positional emphasis.
 
 The fixes were verified by re-running every fixture-changed case (and case 40 in
-`established-language`) on big-pickle and grok-4.7, two runs each; K3-256k could not take
-part because its account ran out of quota. **Neither model flags any of the fixed defects
-any more**, and severity on the relabeled cases is now called `major` in all but three
-runs (big-pickle under-calls 28 once and 42 once; grok-4.7 under-calls 28 once — the same
+`established-language`) on **all three arms**, two runs each; K3-256k's pass ran two days
+later, after its account's quota window reset. **No model flags any of the fixed defects
+any more.** Severity on the relabeled cases is now called `major` in all but three runs
+(K3-256k and big-pickle under-call 28 once each, big-pickle 42 once — the same
 under-calls they make on cases the sweep never touched). The residual false positives on
 the re-runs are the model-side patterns already listed above: big-pickle's velocity-
 threshold reading of case 29 and its file-level-`MotionScheme.standard()` complaint on
-case 42. Case 42 needed a second fix: the first (fade the section inside the springing
-container) left enter and exit symmetric, and grok-4.7 correctly read that against
-T-010's "enter with spatial and effects; exit with effects only" — the section now enters
-with `expandVertically` + fade on the default tier and exits with `shrinkVertically` +
-fade on the fast tier, and both models pass it. The table above measures the sweep as it
-ran, before any of this.
+case 42; K3-256k's two are a T-004 on case 40's celebration pulse and a T-027 reading of
+case 50's plain alpha change as celebrating a points drop — both judgment stretches in
+the same family as its T-009 assertions. Case 42 needed a second fix: the first (fade the
+section inside the springing container) left enter and exit symmetric, and grok-4.7
+correctly read that against T-010's "enter with spatial and effects; exit with effects
+only" — the section now enters with `expandVertically` + fade on the default tier and
+exits with `shrinkVertically` + fade on the fast tier, and all three models pass it. The
+table above measures the sweep as it ran, before any of this.
 
 ### Model-side false positives the transcripts support calling errors
 
