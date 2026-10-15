@@ -31,9 +31,12 @@ unlabeled findings) are concatenated so single-run failures remain visible.
   protected roots such as `/srv`. Output defaults to `~/.cache/android-ux-skills`; set
   `--work-dir` or `ANDROID_UX_SKILLS_WORK_DIR` to override it.
 
-Running `--dry-run` still executes `validate()`, which checks every expected line range
-against its fixture file, rejects overlapping spans, and verifies that every cited rule ID
-exists in `STANDARDS.md`. That catches line-number drift whenever a fixture is edited.
+Running `--dry-run` still executes `validate()`, which checks that every declared line
+range is in bounds and starts and ends on non-blank lines, rejects overlapping spans, and
+verifies that every cited rule ID exists in `STANDARDS.md`. However, if editing a fixture
+shifts a range onto different non-blank lines inside the file, `validate()` cannot detect
+that the span moved off its target construct—always update the line ranges in `evals*.json`
+when editing a fixture.
 
 ## How detection grading works
 

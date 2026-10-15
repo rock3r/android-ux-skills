@@ -58,11 +58,13 @@ Judge code against **the project's own motion standard**, not personal preferenc
 
 ### Step 1 — Run two isolated assessments
 
-Run Assessment A and Assessment B as two separate subagents whenever subagent tools are
-available.
+Run Assessment A and Assessment B as two separate subagents with self-contained prompts
+and no inherited conversation context whenever subagent tools are available. Running them
+inline is a degraded run and must be labeled as one.
 
-**Assessment A — unanchored motion judgment.** Give this pass only the target code and
-`MOTION.md`, without `references/standards.md`. It evaluates:
+**Assessment A — unanchored motion judgment.** Start with an empty context containing only
+the target code and `MOTION.md`, without `references/standards.md` or any rule findings.
+It evaluates:
 
 - Should this motion exist at all, and what purpose does it serve?
 - Does it match the project's motion language in `MOTION.md`? (If `MOTION.md` was not
