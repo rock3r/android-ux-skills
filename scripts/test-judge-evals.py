@@ -146,6 +146,24 @@ check("not asked where a MOTION.md was staged",
 check("still asked where one was only claimed",
       ("phantom-language", "conformance_claim") in by, sorted(by))
 
+print("endpoint and response helpers")
+
+check("default model is jev-1.14.0",
+      je.resolve_endpoint_and_model("", "", "", "") == (
+          "https://api.typesafe.ai/v1/systemone", "jev-1.14.0"))
+check("clef-flash backend resolves Workers AI URL",
+      je.resolve_endpoint_and_model("", "", "clef-flash", "acc123") == (
+          "https://api.cloudflare.com/client/v4/accounts/acc123/ai/run/@cf/cloudflare/clef-flash",
+          "clef-flash"))
+check("unwrap_response unwraps Cloudflare Workers AI envelope",
+      je.unwrap_response({"result": {"answers": {"q": 1}}, "success": True}) == {
+          "answers": {"q": 1}})
+check("unwrap_response leaves direct SystemOne response intact",
+      je.unwrap_response({"answers": {"q": 1}}) == {"answers": {"q": 1}})
+check("loopback endpoint detected",
+      je.is_loopback_endpoint("http://127.0.0.1:11434/v1/systemone")
+      and not je.is_loopback_endpoint("https://api.typesafe.ai/v1/systemone"))
+
 print()
 if failures:
     print(f"{len(failures)} failed: {', '.join(failures)}")

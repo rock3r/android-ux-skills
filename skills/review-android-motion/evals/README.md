@@ -249,17 +249,27 @@ Then set the runner's key spec to `!cat /run/user/$(id -u)/jev-key` (re-run afte
 reboot). Alternatively, use a 1Password service account (`OP_SERVICE_ACCOUNT_TOKEN`) with
 a shared vault (service accounts cannot read a `Private` vault).
 
-### Note on local classification with Laya
+### Alternative and local System One classifiers (Cloudflare Clef and Laya)
 
-`TYPESAFE_ENDPOINT` can point to a custom endpoint, and
-[Laya](https://github.com/NandhaKishorM/laya) (Apache-2.0) implements the same
-`choice`/`noul`/`score` schema on CPU or CUDA. We currently use the hosted classifier
-because Laya's checkpoints cap state length at ~320–768 tokens and truncate overlong inputs
-from the end, which cuts off the `FINDINGS` block at the bottom of longer review
-transcripts. The released Laya package also has no built-in HTTP server (the
-`/v1/systemone` route is in an unmerged PR) and ships with overconfident base checkpoints.
-`judge-evals.py` logs the maximum state size and warns above 700 tokens in case per-check
-excerpts and custom temperature scaling are used with Laya in the future.
+`judge-evals.py` defaults to `jev-1.14.0` on TypeSafe's API, and `TYPESAFE_ENDPOINT` /
+`--backend` can target any System One-compatible classifier (`choice`/`noul`/`score`):
+
+- **Cloudflare Clef (`clef` 27B, `clef-flash` 9B, `clef-omni` 30B-A3B, Apache-2.0):**
+  Pass `--backend clef-flash` or `--backend clef` (with `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_API_TOKEN` or a key spec) to run against Workers AI, or point
+  `--endpoint` at a local `/v1/systemone` server running
+  [`mlx-community/clef-flash-4bit`](https://huggingface.co/mlx-community/clef-flash-4bit)
+  (Apple Silicon MLX, 6.2 GB),
+  [`ggml-org/Clef-Flash-GGUF`](https://huggingface.co/ggml-org/Clef-Flash-GGUF)
+  (`llama.cpp`), or `ollama pull clef` (`http://127.0.0.1:11434/v1/systemone`). With a
+  16k–64k+ context window, Clef and Clef-flash classify full review transcripts without
+  truncating the `FINDINGS` block.
+- **Laya ([`convaiinnovations/laya`](https://huggingface.co/convaiinnovations/laya),
+  Apache-2.0):** Implements the same schema on CPU or CUDA via `laya-serve`, but its
+  322M–421M checkpoints cap state length at ~320–768 tokens and truncate overlong inputs
+  from the end, cutting off the `FINDINGS` block on longer review transcripts.
+  `judge-evals.py` logs the maximum state size and warns above 700 tokens in case
+  per-check excerpts are used with Laya.
 
 ## Preventing fixture leaks
 

@@ -41,14 +41,58 @@ import shutil
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# Overridable so the plumbing can be exercised against a local stub without spending
-# anything or depending on the network.
+# Overridable so the plumbing can be exercised against a local stub, Cloudflare Workers
+# AI (Clef / Clef-flash), or a local /v1/systemone server (mlx-community/clef-flash-4bit,
+# ggml-org/Clef-Flash-GGUF, Ollama, Laya).
 ENDPOINT = os.environ.get("TYPESAFE_ENDPOINT", "https://api.typesafe.ai/v1/systemone")
-MODEL = os.environ.get("TYPESAFE_MODEL", "jev-latest")
+MODEL = os.environ.get("TYPESAFE_MODEL", "jev-1.14.0")
+
+
+def resolve_endpoint_and_model(
+    endpoint: str | None = None,
+    model: str | None = None,
+    backend: str | None = None,
+    account_id: str | None = None,
+) -> tuple[str, str]:
+    b = (backend or os.environ.get("TYPESAFE_BACKEND", "")).strip().lower()
+    ep = (endpoint or os.environ.get("TYPESAFE_ENDPOINT", "")).strip()
+    m = (model or os.environ.get("TYPESAFE_MODEL", "")).strip()
+    if b in ("clef", "clef-flash", "clef-omni"):
+        acc = (account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")).strip()
+        if not ep:
+            if not acc:
+                raise SystemExit(f"--backend {b} requires CLOUDFLARE_ACCOUNT_ID or --endpoint")
+            ep = (f"https://api.cloudflare.com/client/v4/accounts/{acc}"
+                  f"/ai/run/@cf/cloudflare/{b}")
+        if not m:
+            m = b
+    else:
+        if not ep:
+            ep = "https://api.typesafe.ai/v1/systemone"
+        if not m:
+            m = "jev-1.14.0"
+    return ep, m
+
+
+def is_loopback_endpoint(endpoint: str) -> bool:
+    try:
+        host = urllib.parse.urlparse(endpoint).hostname or ""
+        return host in ("127.0.0.1", "localhost", "::1")
+    except ValueError:
+        return False
+
+
+def unwrap_response(raw: dict) -> dict:
+    """Unwrap Cloudflare Workers AI `{result: {answers, ...}}` envelopes when present."""
+    res = raw.get("result")
+    if isinstance(res, dict) and "answers" in res:
+        return res
+    return raw
 
 # A finding line carries the arm's vocabulary in its rule column: with-skill writes T-009,
 # baseline writes whatever it invented. Left alone, that tells the classifier which arm it
@@ -107,24 +151,31 @@ HOW_TO_SUPPLY_A_KEY = """\
   no --api-key flag: an argument is visible in the process table and in shell history."""
 
 
-def load_key() -> str:
+def load_key(endpoint: str = "") -> str | None:
     """Resolve a key spec, which may name a vault or a command rather than hold a secret.
 
     Nothing here is specific to one person's vault layout: whoever runs the evals says
     where their key comes from, and for a remote vault the secret is never copied to the
-    machine doing the running.
+    machine doing the running. Loopback endpoints do not require a key.
     """
     literal = os.environ.get("TYPESAFE_API_KEY", "").strip()
     if literal:
         return literal
+
+    if "api.cloudflare.com" in endpoint:
+        cf_tok = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+        if cf_tok:
+            return cf_tok
 
     spec = os.environ.get("TYPESAFE_API_KEY_SPEC", "").strip()
     if not spec and KEY_FILE.exists():
         spec = KEY_FILE.read_text().strip()
 
     if not spec:
+        if is_loopback_endpoint(endpoint):
+            return ""
         print(f"error: no API key.\n{HOW_TO_SUPPLY_A_KEY}", file=sys.stderr)
-        return ""
+        return None
 
     if spec.startswith("op://"):
         if not shutil.which("op"):
@@ -155,17 +206,17 @@ def load_key() -> str:
 def ask(state: str, questions: dict, api_key: str, timeout: int = 60) -> dict:
     """One request, all questions. They are evaluated in parallel server-side."""
     body = json.dumps({"state": state, "model": MODEL, "questions": questions}).encode()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(
         ENDPOINT,
         data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read())
+            return unwrap_response(json.loads(resp.read()))
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")[:400]
         raise SystemExit(f"Jev returned {e.code}: {detail}") from e
@@ -452,11 +503,20 @@ def summarize(results: list[dict]) -> None:
 
 
 def main() -> int:
+    global ENDPOINT, MODEL
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", help="JSON written by run-evals.py --out")
     ap.add_argument("--skill", default="review-android-motion")
     ap.add_argument("--calibration", default=None)
     ap.add_argument("--calibrate-only", action="store_true")
+    ap.add_argument("--endpoint", default=None,
+                    help="override TYPESAFE_ENDPOINT (TypeSafe, Workers AI, or local)")
+    ap.add_argument("--model", default=None,
+                    help="override TYPESAFE_MODEL (default: jev-1.14.0)")
+    ap.add_argument("--backend", default=None, choices=("jev", "clef", "clef-flash", "clef-omni"),
+                    help="shortcut for TypeSafe Jev or Cloudflare Workers AI Clef")
+    ap.add_argument("--account-id", default=None,
+                    help="Cloudflare account ID when using --backend clef*")
     ap.add_argument("--samples", type=int, default=3,
                     help="calls per question, averaged. The classifier is not "
                          "deterministic and a single sample near a threshold is a "
@@ -466,8 +526,11 @@ def main() -> int:
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    api_key = load_key()
-    if not api_key:
+    ENDPOINT, MODEL = resolve_endpoint_and_model(
+        args.endpoint, args.model, args.backend, args.account_id
+    )
+    api_key = load_key(ENDPOINT)
+    if api_key is None:
         return 1
 
     calibration = Path(args.calibration) if args.calibration else (
@@ -490,10 +553,11 @@ def main() -> int:
         print(f'\nlargest state classified: ~{biggest} tokens ({Path(where).name})',
               file=sys.stderr)
         if biggest > 700:
-            print('  note: beyond the state budget of every currently released local\n'
-                  '  decision model, which truncate the END of an overlong state — the\n'
-                  '  findings block. A hosted model with a large context is fine; a\n'
-                  '  local one would need the transcript split per check.',
+            print('  note: beyond Laya\'s ~320-768 token state budget (which truncates\n'
+                  '  the END of an overlong state, where the FINDINGS block sits).\n'
+                  '  Jev 1.14 (32k-64k) and Cloudflare Clef / Clef-flash (16k-64k+\n'
+                  '  hosted or local MLX/GGUF) handle full transcripts without\n'
+                  '  truncation; Laya would need per-check excerpts.',
                   file=sys.stderr)
     if args.out:
         Path(args.out).write_text(json.dumps(results, indent=2))
