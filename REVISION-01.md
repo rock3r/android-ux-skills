@@ -1,180 +1,147 @@
-# Revision 01 — acting on the pre-reviews
+# Revision 01 — changes from the initial rule reviews
 
-Three independent reviews of the initial 30 rules: a taste review (Fable 5.1), a
-structural review (GLM 5.3), and a fact-check (Kimi K3, pending). This records what
-changes and why, so the rules and the reasoning stay reviewable together.
+Three independent reviews evaluated the initial 30 rules in `STANDARDS.md`: a taste review
+(Fable 5.1), a structural review (GLM 5.3), and a source fact-check (Kimi K3). This
+document records what changed in Revision 01 and why.
 
-Where two reviews found the same defect independently, it is marked **[2×]** — those are
-the highest-confidence findings and are not re-litigated.
+Items marked **[2×]** were flagged independently by two reviews.
 
 ---
 
-## Cut
+## Rules removed
 
-| Rule | Why |
+| Rule | Reason |
 |---|---|
-| **T-003** — schemes and fades **[2×]** | Restates a token fact, has no fixture, decides nothing. Fails criteria 1 and 3. Fold the effects-spring identity into T-004's pinned block and route the fact to `hamen/material-3-skill`. |
-| **T-015** — haptics at commitment | The claim is false on Android. `HapticFeedbackConstants.GESTURE_START`, `DRAG_START` (34), `SEGMENT_TICK`/`SEGMENT_FREQUENT_TICK` for scrubbing, `ScrollFeedbackProvider` (35, platform scroll haptics) and Compose's `TextHandleMove` all contradict "at commitment, never on scroll". Drag-start haptic confirms pickup — the launcher idiom. Transcribed from iOS practice. |
-| **T-014** — refreshed data is not a state change | Wrong for the case that matters: a background reorder or insert in a visible list *is* telling the user their content moved, and `animateItem()` exists for it. Landing it unanimated "even when the diff is large" is the jump cut where the item under the thumb changes. |
+| **T-003** — schemes and fades **[2×]** | Restated a Material 3 token fact with no decision or fixture. Merged the effects-spring note into `T-004` and routed general Material 3 token facts to `hamen/material-3-skill`. |
+| **T-015** — haptics at commitment | Contradicted Android platform behavior. `HapticFeedbackConstants.GESTURE_START`, `DRAG_START` (API 34), `SEGMENT_TICK` / `SEGMENT_FREQUENT_TICK`, `ScrollFeedbackProvider` (API 35), and Compose's `TextHandleMove` all fire haptics during drag or scroll rather than only on release. |
+| **T-014** — refreshed data is not a state change | Incorrectly banned animations on background list updates. When items reorder or insert in a visible list, `Modifier.animateItem()` keeps the user's reading position stable. |
 
-If T-015 returns it becomes *each haptic maps to the `HapticFeedbackType` whose semantics
-match the event*. If T-014 returns it splits into attention motion (no entrance, flash or
-pulse on background change) versus continuity motion (keep), with large visible diffs
-deferred behind a "new items" affordance.
-
----
-
-## Reclassify
-
-**T-005 and T-006 are obligations, not taste.** Both are accessibility duties that can
-never yield to a product's standard, so counting them in the taste delta inflates the
-number that is supposed to prove the collection is more than a linter. Introduce a third
-class — `obligation` — rather than pushing them into `floor`, which means mechanical
-correctness.
-
-**T-006 is currently `Overridable: yes` by omission.** A `DECIDED` entry could waive it,
-which is deciding to strand users who switched animations off — exactly what the harm
-carve-out forbids. Mark `Overridable: no`.
-
-**T-002's claim is maintainability, not perception [2×].** Either recast the claim
-perceptually — call-site numbers read as accident rather than intent — or accept it as
-structural governance and move it out of `taste`.
-
-**F-006 hides a judgment.** The clip is a documented fact, but whether it is a defect
-depends on intent; a deliberate clipped reveal is legitimate. Scope to unintended
-clipping.
+If `T-015` is reintroduced later, it should require mapping each interaction to the
+matching `HapticFeedbackType`. If `T-014` is reintroduced, it should separate attention
+animations (no pulse or flash on background data refresh) from spatial continuity
+(`animateItem()` on list reorders).
 
 ---
 
-## Rewrite the reduced-motion cluster as a unit
+## Reclassifications
 
-T-005, T-006 and F-005 are one defect with three ids and **two mutual contradictions**:
-
-1. **T-005 × F-005.** T-005 prescribes substituting a cross-fade. Remove animations zeroes
-   `ANIMATOR_DURATION_SCALE`, so `MotionDurationScale` snaps that substitute too. Playing
-   it anyway means bypassing the scale, which F-005 forbids.
-2. **F-005 × T-006.** F-005 says hand-driven motion reads the scale and branches.
-   Branching off for a Lottie yields a blank canvas, which is what T-006 exists to
-   prevent.
-
-The web model — `prefers-reduced-motion`, swap for a lighter animation — does not
-transfer. Android has zero, not less.
-
-**The Android rule:** meaning must have a **static carrier**. The destination at rest has
-to show the relationship, because the motion will not be there to show it. A Lottie's
-reduced-motion still-frame is the model for the whole class, not a special case.
-
-Also correct: `ValueAnimator.areAnimatorsEnabled()` has existed since API 26, so "no
-semantic API" overstates it. There is a boolean; there is no *preference*.
+- **`T-005` and `T-006` moved to `obligation` (`O-001` and `O-002`).** Both are
+  accessibility requirements that cannot be overridden by `MOTION.md`. Keeping them in
+  `taste` inflated the evaluation score that measures design judgment.
+- **`O-002` (formerly `T-006`) marked `Overridable: no`.** Previously it omitted the
+  override flag, which would have allowed a `MOTION.md` file to waive disabled-animation
+  legibility.
+- **`T-002` claim rewritten around consistency [2×].** Framed around keeping a project's
+  motion specs in shared tokens rather than scattering raw numbers across call sites.
+- **`F-006` scoped to unintended clipping.** `Modifier.animateContentSize()` always clips
+  to bounds, which is a bug when it cuts off a drop shadow (`Modifier.shadow` or Card
+  elevation) but often intentional for text or section reveals.
 
 ---
 
-## Resolve the timing cluster
+## Rewriting the reduced-motion rules (`O-001`, `O-002`, `F-005`)
 
-T-002, T-009, T-010, T-012 and T-020 are mutually inconsistent.
+In the initial draft, `T-005`, `T-006`, and `F-005` contradicted each other in two ways:
 
-- **T-010 is only expressible as what T-002 bans.** "Half the entrance duration" is
-  duration language; M3E tokens are springs with no duration. The only way to write it is
-  a bare `tween`.
-- **Three-way with T-009:** a high-frequency enter/exit needs ≤150ms in, ~75ms out. No
-  such tokens exist, so the only default-path answer is no motion — which vacates T-010
-  exactly where T-009 applies.
-- **T-012 × T-020 contradict on the same code:** a `tween` pane transition is compliant as
-  uniform timing and a finding as a fixed duration on something interactive.
+1. **`T-005` vs. `F-005`:** `T-005` told developers to replace spatial motion with a
+   cross-fade when reduced motion was enabled. On Android, "Remove animations" sets
+   `ANIMATOR_DURATION_SCALE` to `0.0f`, which snaps any Compose cross-fade to its end state
+   immediately. Playing a fade anyway would require bypassing `MotionDurationScale`, which
+   `F-005` forbids.
+2. **`F-005` vs. `T-006`:** `F-005` said to branch to a static state when animations are
+   off, while `T-006` covered Lottie files whose final frame is blank.
 
-**Fixes:**
+Web `prefers-reduced-motion` asks for gentler motion, whereas Android sets the animation
+duration scale to zero. The revised rules reflect Android's behavior:
 
-1. Declare the house default explicitly: springs.
-2. Re-express T-010 in spring terms. Asymmetry on Android is **tier, not ratio** —
-   entrance spatial + effects, exit effects-only, which is M3's own "exits are usually
-   just a fade". The claim that the spring system drops the asymmetry silently is
-   **false**: it lives in the tier choice. Drop the half-duration ratio.
-3. Give the scheme a real high-frequency token so T-009's ceiling is reachable without a
-   literal.
-4. State precedence between T-012 and T-020.
-5. State precedence between T-001 and T-002 — the NavHost default fires both.
+- **`O-001`:** Because transitions snap at scale zero, the destination layout at rest must
+  communicate whatever relationship the animation would have shown.
+- **`O-002`:** Every Lottie composition must land on a legible resting frame when
+  animations are disabled (either through a complete final frame or a `reduced motion`
+  marker).
+- **Platform API note:** `ValueAnimator.areAnimatorsEnabled()` has been available since
+  API 26 as a boolean check.
 
 ---
 
-## Re-ground the rules that fire on correct code
+## Resolving timing rule conflicts (`T-001`, `T-002`, `T-009`, `T-010`, `T-012`, `T-020`)
 
-| Rule | Fires on | Fix |
+The initial timing rules conflicted in three places:
+
+- **`T-010` vs. `T-002`:** `T-010` asked for exit durations to be "half the entrance
+  duration", which cannot be expressed with Material 3 spring tokens and forced developers
+  to write raw `tween` literals banned by `T-002`.
+- **`T-009` vs. `T-010`:** High-frequency surfaces had no token under 150ms in the default
+  scheme.
+- **`T-012` vs. `T-020`:** `T-012` criticized fixed-duration tweens while `T-020` required
+  matching timing across an event.
+
+**Changes made:**
+
+1. Standardized on Material 3 spring tokens as the default mechanism.
+2. Rewrote `T-010` in terms of spring tiers and property count: enter with spatial +
+   effects (`defaultSpatialSpec` + `defaultEffectsSpec`), exit with effects only
+   (`fastEffectsSpec`).
+3. Allowed the built-in component state layer (ripple, press overlay, shape morph) at any
+   usage frequency in `T-009`.
+4. Scoped `T-012` to input-blocking patterns (`enabled = !isAnimating`, `snapTo` resets,
+   and unkeyed `delay()` chains) rather than tween specs.
+5. Scoped `T-001` to the untouched 700ms `NavHost` default and `T-002` to specs written in
+   product code so the two rules do not both fire on the same line.
+
+---
+
+## Narrowing rules that flagged valid Compose code
+
+| Rule | False positive in initial draft | Fix applied |
 |---|---|---|
-| **T-008** | `NavHost` already seeks predictive back — installs its own handler and calls `SeekableTransitionState.seekTo(progress, previousEntry)`, `NavHost.kt` ~L823–940, zero app code | Scope to custom back: sheets, overlays, hand-rolled containers, `BackHandler {}` popping state |
-| **T-016** | `DropdownMenuContent` scales 0.8→1.0 with FastSpatial, `Menu.kt` ~L1827–1855 | Anchored scale reads as emerging *from* source. Restrict to unanchored full-surface scale from centre, or cut |
-| **T-012** | Compose already retargets from the current value | "tween jumps to a stale start" is a CSS/`ValueAnimator` failure. Real violators: `snapTo()` before `animateTo()`, `enabled = !isAnimating` guards, `delay()`-sequenced effects. Recast as *never gate input on animation completion* |
-| **T-011** | Every Next/Back wizard and onboarding stepper | "cannot swipe between" is the wrong test. Direction promises **order**; gesture is optional. Change "swipeable" to "ordered" |
-| **T-018** | A pager carousel with `overscrollEffect = null` | Allow per-component with a stated reason |
-| **T-019** | Heterogeneous feeds shipping approximate card skeletons | The bar is *structural* match, not exact. Add the adjacent rule that is actually missing: indicator delay and minimum, so skeletons do not flash on an 80ms load |
-| **T-020** | M3's own patterns, and the app/platform boundary every app has | Android form is one **scheme and tier** per event, not one spec |
-| **T-009** | M3E's own button press — a spring shape morph on a 100+/day control | Say explicitly that it survives the gate. The default fallback cannot fail the default rule |
+| **T-008** | Flagged standard `NavHost` declarations, even though `NavHost.kt` (~L823–940) already wires predictive back with `SeekableTransitionState.seekTo`. | Scoped to custom back handlers (`BackHandler {}`, hand-rolled sheets, and overlays). |
+| **T-016** | Flagged anchored menus such as `DropdownMenuContent` (`Menu.kt` ~L1827–1855), which scale `0.8f → 1.0f` from their trigger anchor. | Scoped to unanchored surfaces scaling from their own center. |
+| **T-012** | Claimed Compose `tween` jumps to a stale start value on interruption (a CSS / `ValueAnimator` issue, not Compose `Animatable`). | Reframed around gating user input on animation completion. |
+| **T-011** | Flagged Next/Back wizards and onboarding steppers because they were not swipeable. | Tied directional transitions to **ordered** destinations rather than swipe gestures. |
+| **T-018** | Flagged looping carousels that set `overscrollEffect = null`. | Allowed disabling overscroll on endless carousels and documented per-component exceptions. |
+| **T-019** | Required exact pixel matching on skeletons and missed fast-load flicker. | Required coarse structural matching and added the 150ms delay + minimum visible hold sequence. |
+| **T-020** | Required a single `AnimationSpec` across an event, which conflicted with pairing spatial and effects springs. | Required a single motion **scheme and speed tier** per perceived event. |
+| **T-009** | Flagged Material 3 Expressive's built-in button press morph on high-frequency buttons. | Exempted the built-in component state layer from the frequency cap. |
 
 ---
 
-## Deduplicate
+## Removing duplicate coverage
 
-- **F-001 × F-008** — F-001's remedy (use the lambda form) does not exist for `padding`,
-  which is why F-008 was written. Scope F-001 to lambda-capable properties.
-- **T-007 → T-011 [2×]** — T-007 is T-011's top-level row promoted to a rule, and the two
-  define "peer" differently, so the same tab switch can get opposite answers. Make T-007 a
-  row in T-011 and define peer once. Note that a swipeable `TabRow` + `Pager` is lateral,
-  correct, and out of scope.
-- **T-001** — the finding is the 700ms, not the pattern **[2×]**. A top-level-only app
-  satisfies T-007 with a cross-fade. Say so.
-- **Lottie reduced motion** — currently in T-005, T-006 and F-005. Put it in exactly one.
-
----
-
-## Mark enforceability
-
-Criterion 3 assumes every rule has a fixture. These cannot be checked from source and must
-be marked **review-only**, so mutation fixtures are not mistaken for checker coverage:
-
-T-009 (frequency is not in the code), T-010, T-011, T-013 (item count is runtime), T-014,
-T-019, T-020, F-009, F-010.
-
-**F-009 has no fixture at all** and fails criterion 3 outright — "do not assess feel in a
-debug build" cannot have a violating snippet. Demote to a procedural note, or give the
-criterion an explicit review-only exemption.
-
-False-positive-prone, needing narrower triggers: F-001, F-002, F-006, F-007, F-008, T-004,
-T-012, T-017.
+- **`F-001` vs. `F-008`:** `F-001` requires lambda modifiers (`offset { }`,
+  `graphicsLayer { }`), which do not exist for `padding` or `size`. Scoped `F-001` to
+  properties that have lambda overloads and `F-008` to layout dimensions that do not.
+- **`T-007` merged into `T-011` [2×]:** `T-007` duplicated the top-level destination row of
+  `T-011` with a conflicting definition of "peer". Merged into `T-011`.
+- **`T-001` clarified [2×]:** Specified that the defect is the 700ms duration rather than
+  the cross-fade pattern itself.
+- **Lottie disabled frame consolidated into `O-002`:** Removed duplicate Lottie notes from
+  `O-001` and `F-005`.
 
 ---
 
-## Add
+## Marking review-only rules
 
-Nine gaps, in rough order of how often they bite:
-
-1. **Keys identify content, not position.** `key = { it }` is stable yet re-animates the
-   whole list on one insertion. F-003 does not catch it.
-2. **IME transitions** — content tracks animated `WindowInsets.ime` rather than jumping on
-   a visibility callback.
-3. **Perceived performance** — motion starts on the input frame, not the response frame;
-   transition before the data arrives; indicator delay and minimum. Named by the taste
-   review as the highest-yield missing area.
-4. **Ripple / state-layer presence** — a bare `clickable` with no indication drops press
-   feedback entirely. T-009 governs its cost but never its existence.
-5. **Nested scroll handoff** — a collapsing bar consumes child fling velocity, rather than
-   animating on its own after the fling.
-6. **Pull-to-refresh** — the indicator tracks the drag 1:1 and does not animate itself on
-   release.
-7. **Reversal symmetry** — back plays the inverse of forward. Predictive back now shows
-   this live, so enter-from-right paired with exit-by-fade is visibly wrong.
-8. **Gesture-first posture** — prefer velocity-continuous gesture motion over fired
-   transitions wherever a gesture exists. More native-vs-ported than any timing value.
-9. **One hero motion per event** — the thing that moves is the thing that changed. Six
-   correctly-specced springs firing at once currently pass every rule.
-
-Also uncovered: splash-to-first-frame handoff, size-class and fold transitions,
-scroll-linked effects carrying no easing of their own, and list-detail pane changes.
+Rules whose deciding condition is not visible in static source code are now marked
+`Detect: review-only` (`T-009`, `T-011`, `T-013`, `T-019`, `T-020`, `T-025`, `T-027`,
+`T-028`, `F-009`, `F-010`), `Detect: heuristic` (`F-002`), or `Detect: partial` (`F-006`).
 
 ---
 
-## Standing lesson
+## Rules added in Revision 01 (`T-021` – `T-026`)
 
-Six rules kept their source mechanism and swapped nouns: T-005, T-010, T-012, T-013,
-T-015, T-020. Inheriting taste is the policy and remains right — but *inherited* has to
-mean the claim was re-derived from how Android behaves, not that the rule was translated.
-The admission criteria need a check for it, because nothing in the current five catches a
-web rule wearing Compose symbols.
+Six rules were added to cover gaps identified during the reviews:
+
+1. **`T-021` — Keys identify content, not position:** Catches `key = { index }` on lazy
+   lists, which satisfies `F-003` syntactically but re-animates every subsequent row on
+   insertion.
+2. **`T-022` — Content tracks the keyboard, it does not jump:** Requires `WindowInsets.ime`
+   instead of boolean keyboard-visibility layout toggles.
+3. **`T-023` — Motion starts on the input frame:** Requires immediate visual feedback on
+   tap rather than waiting for async responses.
+4. **`T-024` — Back plays the inverse of forward:** Requires exit direction on pop to
+   reverse the forward entrance direction.
+5. **`T-025` — A hand-rolled surface drags like the one it replaces:** Requires custom
+   sheets, drawers, and swipeable cards to support finger dragging.
+6. **`T-026` — One hero motion per event:** Prevents multiple sibling components from
+   running independent competing entrance or emphasis animations on the same event.
