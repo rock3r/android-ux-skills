@@ -427,10 +427,11 @@ drawable.progress = markerForAnimationsDisabled.startFrame`), added in commit `6
 maximum screen transition duration and leaves both screens partially transparent on top of
 each other for most of a second on every navigation.
 
-**Rule.** Always specify `enterTransition`, `exitTransition`, `popEnterTransition`, and
-`popExitTransition` on `NavHost` (or `NavDisplay` in Navigation 3) instead of leaving the
-700ms library default. The issue is the **700ms duration, not the cross-fade pattern**: a
-shorter cross-fade resolved from a motion token is valid for top-level destinations.
+**Rule.** Always replace the 700ms library default on `NavHost` (by setting
+`enterTransition` and `exitTransition`, plus `popEnterTransition` and `popExitTransition`
+when reverse transitions differ) or `NavDisplay` in Navigation 3. The issue is the **700ms
+duration, not the cross-fade pattern**: a shorter cross-fade resolved from a motion token
+is valid for top-level destinations.
 
 **Contextual severity:** In a codebase with no established motion tokens, leaving the
 default `NavHost` transition is **minor**. In a codebase that already resolves transitions

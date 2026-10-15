@@ -148,9 +148,11 @@ debug-vs.-release benchmarking practice rather than source code). Every evaluati
 ./scripts/read-evals.py --report report.json --judge judge.json --full
 ```
 
-Every pass runs across at least two models from `scripts/model-roster.json` by default
-(pass `--allow-single` to run with one model). Testing against a single model conflates the
-skill's effect with that model's baseline tendencies.
+`run-evals.py` and `read-evals.py` run across at least two models from
+`scripts/model-roster.json` by default (pass `--allow-single` to run with one model), while
+`judge-evals.py` averages repeated samples (`--samples`) against the Jev classifier
+endpoint. Testing reviewer or reader passes against a single model conflates the skill's
+effect with that model's baseline tendencies.
 
 `read-evals.py` runs in an empty temporary directory so reader models cannot inspect
 `evals/*.json` answer keys, and strips arm labels and rule IDs before presenting
