@@ -133,6 +133,12 @@ debug-vs.-release benchmarking practice rather than source code). Every evaluati
 | 70 | G. Framework-correct (hybrid) | T-008 | Standard `NavHost` (must not flag) alongside a custom `BackHandler` missing predictive back (must flag). |
 | 80 | G. Framework-correct (pure) | — | Clean file using framework-handled motion; any reported finding is a false positive. |
 
+In Case 40, `no-motion-language` treats the spring as a `negative` (asserting a violation
+without knowing usage frequency is a false positive), while `established-language` supplies
+the frequency map in `MOTION.md` and requires flagging it. Note that `run-evals.py` only
+checks that the review did not assert a finding in `no-motion-language`; whether the
+review asked the question is checked by `judge-evals.py` and in the transcript.
+
 ## Three evaluation passes
 
 | Script | Question answered | Method |
@@ -220,6 +226,11 @@ op read "op://Private/TypeSafe/test api key" \
 Start the runner with `--amp-env` (or `amp.runner.env.enabled`) so `TYPESAFE_API_KEY` is
 injected into runner command environments.
 
+Note that `--amp-env` injects the secret into the environment of every command executed by
+threads on that runner, and `--user` scope exposes it to all projects the runner serves.
+Prefer project-scoped secrets when this repository is configured as an Amp project, or use
+an on-demand key file (`TYPESAFE_API_KEY_FILE`) when the runner serves unrelated work.
+
 #### Option 2: Pushing the key to a remote runner over SSH
 
 Because 1Password desktop integration is tied to the local GUI login session, running
@@ -231,8 +242,9 @@ tmpfs (`/run/user/<uid>/jev-key`, mode `0600`):
 ./scripts/push-jev-key.sh <runner-host> "op://Private/TypeSafe/test api key"
 ```
 
-Then set the runner's key spec to `!cat /run/user/$(id -u)/jev-key`. Alternatively, use a
-1Password service account (`OP_SERVICE_ACCOUNT_TOKEN`) with a shared vault.
+Then set the runner's key spec to `!cat /run/user/$(id -u)/jev-key` (re-run after a
+reboot). Alternatively, use a 1Password service account (`OP_SERVICE_ACCOUNT_TOKEN`) with
+a shared vault (service accounts cannot read a `Private` vault).
 
 ### Note on local classification with Laya
 
@@ -241,8 +253,10 @@ Then set the runner's key spec to `!cat /run/user/$(id -u)/jev-key`. Alternative
 `choice`/`noul`/`score` schema on CPU or CUDA. We currently use the hosted classifier
 because Laya's checkpoints cap state length at ~320–768 tokens and truncate overlong inputs
 from the end, which cuts off the `FINDINGS` block at the bottom of longer review
-transcripts. `judge-evals.py` logs the maximum state size and warns above 700 tokens in
-case per-check excerpts are used with Laya in the future.
+transcripts. The released Laya package also has no built-in HTTP server (the
+`/v1/systemone` route is in an unmerged PR) and ships with overconfident base checkpoints.
+`judge-evals.py` logs the maximum state size and warns above 700 tokens in case per-check
+excerpts and custom temperature scaling are used with Laya in the future.
 
 ## Preventing fixture leaks
 
