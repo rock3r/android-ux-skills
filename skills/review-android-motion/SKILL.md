@@ -81,11 +81,14 @@ evidence.
 Always read line numbers from a numbered view (`cat -n`, `nl -ba`, `rg -n`, or editor line
 numbers) rather than counting lines by eye.
 
-Keep the two passes isolated from each other. Assessment B can run in parallel with
-Assessment A, but **Assessment B's output must not enter the synthesis context until
-Assessment A has finished and been recorded.** This two-pass separation is adapted from
-`/impeccable critique` in [Impeccable](https://github.com/pbakaus/impeccable) (Paul Bakaus,
-Apache-2.0) so mechanical rule hits do not anchor the design critique.
+Keep the two passes isolated from each other. Give each subagent a self-contained prompt
+with no inherited conversation context, so Assessment A never inherits
+`references/standards.md` or rule findings from the parent session. Assessment B can run
+in parallel with Assessment A, but **Assessment B's output must not enter the synthesis
+context until Assessment A has finished and been recorded.** This two-pass separation is
+adapted from `/impeccable critique` in
+[Impeccable](https://github.com/pbakaus/impeccable) (Paul Bakaus, Apache-2.0) so mechanical
+rule hits do not anchor the design critique.
 
 If subagent isolation is unavailable, complete and record Assessment A before reading
 `references/standards.md` for Assessment B, and start the report with:

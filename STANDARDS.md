@@ -536,7 +536,7 @@ work, even when started by the user, are outside this rule.
 
 | Frequency | Maximum motion |
 |---|---|
-| 100+ times per day | Platform state layer only (or ≤150ms) |
+| 100+ times per day | Platform state layer only |
 | Tens of times per day | Fast tier from the motion scheme |
 | Occasional | Default tier from the motion scheme |
 | Rare or first-run | Expressive or celebratory motion allowed |
