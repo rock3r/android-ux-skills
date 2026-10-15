@@ -1,80 +1,58 @@
-# Eval classes
+# Evaluation classes
 
-Rules group by *what shape of eval can test them*, which cuts differently from
-`floor`/`obligation`/`taste`. A floor rule and a taste rule can need the same harness; two
-taste rules can need entirely different ones.
+The evaluation suite groups rules by **how a test fixture has to be structured to test
+them**, which is orthogonal to whether a rule is `floor`, `obligation`, or `taste`:
 
-Seven classes. One rule from each is built out, so the harness is proven against every shape
-before the remaining rules are filled in behind it.
-
-| Class | What makes it distinct | Exemplar | Rules in the class |
+| Class | How the fixture is built | Exemplar | Rules in this class |
 |---|---|---|---|
-| **A. Static twin** | Violation and fix are both visible in source, one line apart | F-001 | F-002, F-003, F-004, F-008, T-002, T-017, T-021, T-022 |
-| **B. Context-dependent severity** | Detection is easy; what it *means* depends on MOTION.md | T-001 | T-002, T-004, T-018 |
-| **C. Absence** | The defect is something missing, and absence has no syntax | O-002 | O-001, T-019, T-024, ripple presence |
-| **D. Not in the source at all** | The deciding fact is runtime or human; the skill must ask, not assert | T-009 | T-011, T-013, T-014, T-020, F-009 |
-| **E. Composite-only** | Every part is individually correct; the defect exists only in the whole | T-026 | T-020, T-023 |
-| **F. Legitimate twin** | The same construct is a defect or correct depending on intent | F-006 | T-016, T-018, T-012 |
-| **G. Framework-correct** | The framework already does the right thing; flagging it is the failure | T-008 | F-003, T-001, T-018 |
+| **A. Static twin** | The violation and its compliant fix sit side by side in the same file | F-001 | F-002, F-003, F-004, F-005, F-007, F-008, F-010, T-002, T-004, T-010, T-012, T-013, T-016, T-017, T-021, T-022, T-023, T-024, T-025, T-027, T-028 |
+| **B. Context-dependent severity** | The code construct is identical; expected severity changes with `MOTION.md` or neighboring code | T-001 | T-002, T-004, T-018 |
+| **C. Absence** | The defect is a missing element (a static label, a Lottie marker, or a loading delay) rather than a wrong call | O-002 | O-001, T-019 |
+| **D. Not in the source** | The deciding fact (usage frequency) is not in source code; without `MOTION.md` the reviewer must ask rather than flag | T-009 | T-011, T-013, T-020, F-009 |
+| **E. Composite-only** | Each child animation is valid on its own; the defect only appears in how the parent coordinates them | T-026 | T-020 |
+| **F. Legitimate twin** | The exact same API call is a bug in one context and valid in another | F-006 | T-011, T-018 |
+| **G. Framework-correct** | The framework (`NavHost`) already handles the requirement; flagging the framework call is a false positive | T-008 | F-003, T-001, T-018 |
 
-Rules appear in more than one class. That is expected — the class describes the *hardest*
-thing about testing the rule, and the exemplar is chosen so that each harness shape gets
-exercised once.
+## Details by class
 
-## Why the classes differ
+- **A — Static twin:** Places a violating composable and a compliant composable in the same
+  file so only the target construct differs. Tested in the `no-motion-language` battery.
+- **B — Context-dependent severity:** Tests whether the reviewer reads `MOTION.md` and
+  surrounding code conventions when assigning `minor` vs. `major` severity, using the four
+  batteries (`no-motion-language`, `established-language`, `stale-exception`, and
+  `phantom-language`).
+- **C — Absence:** Tests whether the reviewer notices something missing (such as a static
+  text label alongside a pulsing dot, a `reduced motion` marker in a Lottie file whose
+  final frame clears the canvas, or a 150ms delay before showing a loading spinner) without
+  flagging twin composables that do not need it.
+- **D — Not in the source:** Tests rules that depend on product context not visible in
+  Kotlin code, such as how often a screen or control is used (`T-009`). When `MOTION.md` is
+  absent, asserting a violation is graded as a false positive; the reviewer must ask or
+  state a conditional assumption instead. When `MOTION.md` supplies the frequency map,
+  flagging the violation is required.
+- **E — Composite-only:** Tests screen-level coordination defects (`T-026` and `T-020`).
+  Every individual child animation in the fixture follows `STANDARDS.md` so the test only
+  passes when the reviewer flags the parent composable that combines them.
+- **F — Legitimate twin:** Uses the same API call twice in one file—once where surrounding
+  context makes it a defect (such as `animateContentSize` clipping a `Card` shadow, or a
+  lateral slide on unordered bottom-bar tabs) and once where it is appropriate (a flat text
+  reveal, or ordered sign-up steps).
+- **G — Framework-correct:** Checks that the reviewer does not flag motion that Jetpack
+  Compose or Navigation Compose already handles automatically. Class G uses two fixtures:
+  - **Hybrid (`case 70`):** Pairs a standard `NavHost` (which handles predictive back
+    automatically) with a custom `BackHandler` that closes an animated overlay without
+    predictive back, so simply staying silent on everything fails recall.
+  - **Pure (`case 80`):** Contains only valid framework-handled motion, where any finding
+    is a false positive.
 
-**A — Static twin.** The easy case, and the only one where a checker could plausibly
-replace the skill. Mutation fixtures: inject the violation into clean code, keep the
-untouched neighbour as a must-not-flag. Single battery; a floor rule fires identically
-whether or not a motion language exists.
+## Pass and fail criteria by class
 
-**B — Context-dependent severity.** Detection is not the interesting part. The question is
-whether the skill reads its context — MOTION.md, and the code around the change — or
-pattern-matches on the construct and invents a severity. The same untouched default is
-major beside scheme-resolved specs and minor where nothing else is resolved.
-Needs the battery matrix: absent, established, stale, phantom.
-
-**C — Absence.** You cannot grep for a missing thing. The skill has to know something
-*should* be present from the surrounding context — a Lottie is being played, therefore there
-should be a readable frame when animations are off. The precision risk is high: demanding
-the missing thing everywhere is as useless as never noticing it.
-
-**D — Not in the source at all.** Frequency of use, the relationship between two screens,
-how many items a list holds at runtime. The correct behaviour is to **ask or scope the
-claim**, not to guess. These grade the opposite way round from every other class: a
-confident finding is the failure, and a question is the pass.
-
-**E — Composite-only.** Every element individually satisfies every rule; the screen is still
-wrong. This is the hardest shape to fixture, because the fixture must be *entirely free of
-individual defects* or the grader cannot tell whether the skill found the composite problem
-or merely tripped over a part.
-
-**F — Legitimate twin.** The same construct appears twice, correct once and wrong once, and
-only surrounding signal distinguishes them. Tests whether the skill reads the signal or the
-syntax.
-
-**G — Framework-correct.** The framework already handles it, so any finding against the
-framework path is a false positive. These matter disproportionately: a skill that flags
-correct framework usage gets switched off after one review, and nothing it says afterwards
-is heard.
-
-G needs two fixtures, because the cheap way to pass it is to say nothing about anything.
-
-- **Pure** (case 80). The whole file is framework-owned motion and the correct output is
-  empty. This is the only case in the suite where a finding of any kind is a failure.
-- **Hybrid** (case 70). The framework path sits beside a hand-rolled one that is genuinely
-  wrong, so silence is no longer a passing strategy: the skill has to stay quiet about the
-  `NavHost` *and* flag the `BackHandler`. Without this, a skill that reviews nothing scores
-  full marks on class G.
-
-## What each exemplar must show
-
-| Class | Pass looks like | Fail looks like |
+| Class | Passing behavior | Failing behavior |
 |---|---|---|
-| A | Flags the injected violation, ignores the twin | Flags both, or neither |
-| B | Same finding, severity moves with MOTION.md and with the code's own convention | Same severity everywhere — not reading its context |
-| C | Notices the missing thing where it is required | Demands it everywhere, or never |
-| D | Asks, or states the assumption it is working from | Asserts a number it cannot know |
-| E | Names the composite, not a part | Reports several correct parts as defects |
-| F | Distinguishes the two by their surrounding signal | Treats the construct as always-wrong |
-| G | Says nothing about the framework path | Any finding against framework-owned motion |
+| A | Flags the violating composable and leaves the compliant twin unflagged | Flags both, or misses the violation |
+| B | Escalates severity to `major` when `MOTION.md` or neighboring code sets a convention, and keeps it `minor` otherwise | Reports the same severity regardless of context |
+| C | Flags the composable missing the required fallback/delay and leaves the compliant twin unflagged | Flags both, or misses the missing element |
+| D | Asks or states a conditional assumption when `MOTION.md` is absent; flags when `MOTION.md` settles the fact | Asserts an ungrounded violation without `MOTION.md` |
+| E | Reports one finding at the parent composable that coordinates the event | Flags individual child composables separately, or misses the conflict |
+| F | Distinguishes the violating call from the valid one using surrounding context | Flags both calls based on syntax alone |
+| G | Leaves framework-handled motion unflagged | Flags valid framework usage |

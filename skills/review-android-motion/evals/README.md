@@ -1,445 +1,273 @@
-# Evals for review-android-motion
+# Evals for `review-android-motion`
 
-Run with [Pioneer](https://github.com/rock3r/pioneer), graded by `scripts/run-evals.py`.
+This suite runs with [Pioneer](https://github.com/rock3r/pioneer) and is graded by
+`scripts/run-evals.py`.
 
 ```bash
 ./scripts/run-evals.py --skill review-android-motion --dry-run     # validate and plan
 ./scripts/run-evals.py --skill review-android-motion --model claude-code/claude-sonnet-4-6
 ./scripts/run-evals.py --skill review-android-motion --battery stale-exception
-./scripts/run-evals.py --skill review-android-motion --runs 5    # average 5 samples per arm
+./scripts/run-evals.py --skill review-android-motion --runs 5      # average 5 samples per arm
 ```
 
-`--runs` exists because these models are not deterministic and a single sample cannot
-separate a capability gap from sampling noise. Scalars are averaged; the diagnostic lists
-are concatenated, since a false positive that shows up in one run of five is still worth
-reading.
+Use `--runs` to average across multiple runs when model outputs vary between calls. Scalar
+metrics are averaged across runs, while diagnostic lists (such as false positives and
+unlabeled findings) are concatenated so single-run failures remain visible.
 
-Two environment notes, both of which cost an evening to find once:
+## Environment requirements
 
-- **`pi` and `pioneer` must be on PATH.** If they are installed under nvm, a non-interactive
-  shell has not loaded it and they will appear to be missing entirely. `run-evals.py`
-  resolves the actor's *real* path and grants its package directory to the sandbox, because
-  `pi` on PATH is a symlink into a node package and the sandbox otherwise leaves Node
-  hunting for the bundle's `chunks/` beside the symlink.
-- **Extension providers need pioneer 0.3.6 or newer.** Up to 0.3.5 pioneer copies only
-  pi's root config files into the sandbox, not `extensions/`, so providers implemented by
-  an extension — `claude-code`, `kimi-code` — fail inside it with *"model not found"*.
-  0.3.6 (pioneer #82) copies enabled extensions into the sandbox. Install that release;
-  do not build pioneer from `main` and put it first on PATH. That is the only unmetered
-  route to Claude as an arm. Routes billed per token are refused unless `--allow-metered`
-  is passed.
-- **Prepared batteries never live in the repo.** Pioneer refuses a run directory under a
-  protected root, `/srv` among them, and this checkout is reached through a symlink into
-  `/srv`. Output goes to `~/.cache/android-ux-skills` by default; `--work-dir` or
-  `ANDROID_UX_SKILLS_WORK_DIR` moves it.
+- **`pi` and `pioneer` must be on `PATH`.** Non-interactive shells often skip `nvm`
+  initialization, which hides binaries installed under Node version managers.
+  `run-evals.py` resolves the real path of `pi` and passes its package directory to the
+  Pioneer sandbox via `--runtime-read`, because `pi` on `PATH` is a symlink into a Node
+  package that imports sibling `chunks/` files.
+- **Extension-backed model providers require Pioneer `0.3.6` or newer.** Earlier versions
+  copied only `pi`'s root config files into the sandbox and omitted `extensions/`, causing
+  providers such as `claude-code` and `kimi-code` to fail with `"model not found"`.
+  Pioneer `0.3.6` ([pioneer#82](https://github.com/rock3r/pioneer/pull/82)) copies enabled
+  extensions into the sandbox. Providers billed per token are refused unless you pass
+  `--allow-metered`.
+- **Run directories live outside the repository.** Pioneer refuses run directories under
+  protected roots such as `/srv`. Output defaults to `~/.cache/android-ux-skills`; set
+  `--work-dir` or `ANDROID_UX_SKILLS_WORK_DIR` to override it.
 
-`--dry-run` still runs `validate()`, which checks every declared line range against the
-fixture it names, rejects overlapping spans, and rejects rule ids that no longer exist in
-`STANDARDS.md`. Ranges are written by hand against files that then get edited; a range that
-has drifted off its construct does not fail loudly, it just quietly stops measuring what it
-claims to while continuing to report a number.
+Running `--dry-run` still executes `validate()`, which checks that every declared line
+range is in bounds and starts and ends on non-blank lines, rejects overlapping spans, and
+verifies that every cited rule ID exists in `STANDARDS.md`. However, if editing a fixture
+shifts a range onto different non-blank lines inside the file, `validate()` cannot detect
+that the span moved off its target construct—always update the line ranges in `evals*.json`
+when editing a fixture.
 
-## What is being measured
+## How detection grading works
 
-Pioneer runs every case twice: **`baseline`** without the skill and **`with-skill`** with
-it. That turns "is this skill worth anything" into an experiment rather than an opinion.
-If with-skill does not beat baseline, the skill is decoration.
+Pioneer runs every case in two arms: **`baseline`** (without the skill) and
+**`with-skill`** (with the skill loaded). Comparing the two arms shows whether the skill
+improves detection and precision over the base model.
 
-The grader is deterministic set-matching on line-range overlap. Nothing is scored by a
-model, because an LLM judging prose rewards length, confidence, rule vocabulary and finding
-count — and with-skill wins on all four before correctness enters.
+`run-evals.py` grades findings deterministically by checking line-range overlap rather than
+asking an LLM judge to score prose. Using a generative model to score free-form reviews
+tends to reward longer outputs, confident tone, and rule terminology even when the findings
+are wrong.
 
-The output contract lives in the **case prompt**, not in the skill, so baseline answers the
-same question in the same shape. Otherwise the measurement is "did it know our format".
+To keep the comparison fair across both arms:
 
-The contract asks for the review in whatever form the arm would normally produce, followed
-by a machine-readable block repeating the same findings. It has to be additive: the skill's
-own required output is a markdown table, and a contract demanding "nothing but these lines"
-put the two in direct conflict — the with-skill arm would emit its table, parse to zero
-findings, and score zero recall with perfect precision. `unparsed` now counts table-shaped
-rows, so that failure is loud rather than flattering.
+- **The output format is appended to the case prompt**, not hidden inside the skill. Both
+  `baseline` and `with-skill` are asked to write their normal review followed by a
+  `FINDINGS` summary block at the end.
+- **Baseline is not required to know our rule IDs.** The `with-skill` arm must match file,
+  line range, class, and rule ID (`T-001`, `F-003`, and so on). The `baseline` arm is
+  graded on file, line range, and class using whatever short identifier it chooses.
+- **`floor`, `obligation`, and `taste` are reported separately** and never averaged. Models
+  already catch many mechanical `floor` bugs without help; keeping `taste` separate shows
+  whether the skill improves design judgment.
 
-**Baseline is not held to our rule ids.** The contract tells an arm with no standards to
-invent its own identifier, so requiring `T-001` from it measured vocabulary rather than
-capability: a baseline naming the exact defect at the exact lines scored as a miss *and* a
-false positive, and the headline delta could only ever flatter the skill. Baseline matches
-on location and class; with-skill must also name the rule. The two arms are therefore
-graded by deliberately different criteria, and the delta should be read as "did the skill
-find more", not "did it phrase things our way".
+### Additional fields reported by `run-evals.py`
 
-### What the grader reports beyond hits and misses
-
-| Field | Why it exists |
+| Field | What it tracks |
 |---|---|
-| `severity_right` / `severity_wrong` | Severity is the payload of three batteries. It used to be printed but never scored, so a skill answering "minor" everywhere was numerically identical to one whose severity moved with the staged MOTION.md. |
-| `fabricated` | Strings that appear nowhere in the staged input **or in the skill's own reference docs**, which the with-skill arm can read every word of. `validate()` refuses a case whose forbidden strings are readable from either, so a hit can only be invention. The list is product-specific identifiers such as `AppMotion.destinationEnter`, not the skill's vocabulary: an earlier version listed `DECIDED` and duly failed a run for saying *"MOTION.md was not present, so I could not verify the DECIDED conventions"* — which is the correct answer, not a fabrication. |
-| `blanketing` | One span covering the defect *and* the clean code around it. It counts once, so it cannot also be a false positive — without this, "something on this screen is wrong" would be the highest-scoring answer available. |
-| `unlabeled` | A finding outside every labelled span. **Not** a false positive: our labels are not a census of every defect in a fixture, and punishing a real finding we failed to anticipate trains the skill to stay quiet. These need a human, and they are how the label set improves. |
-| `unparsed` | Lines that looked like findings and did not parse. Silently dropping them made a badly formatted review indistinguishable from a clean one: zero findings, zero false positives, perfect precision. |
-| `duplicates` | Collapsed, so repeating a finding is neither rewarded nor punished twice. |
+| `severity_right` / `severity_wrong` | Whether the reported severity (`minor` vs. `major`) matches the expected severity for that battery's context. |
+| `fabricated` | Product-specific identifiers (such as `AppMotion.destinationEnter`) that appear in the review output despite not existing in any staged file or skill reference doc. `validate()` verifies that `forbidden_strings` do not appear in the staged inputs or skill docs. |
+| `blanketing` | Findings whose line range covers both the planted defect and clean `negatives` spans around it. Counted once and flagged so a single whole-file span cannot score as a clean hit. |
+| `unlabeled` | Findings that fall outside both `expect` and `negatives` spans. These are held out for human review (via `scripts/eval-queue.py`) rather than automatically counted as false positives. |
+| `unparsed` | Lines inside the `FINDINGS` block that look like findings (for example, Markdown table rows) but do not match the required line format. |
+| `duplicates` | Repeated findings on the same span, collapsed so duplicates are neither rewarded nor penalized twice. |
 
-An `expect` may carry `also_at`, a list of alternate anchors. Some defects have more than
-one honest place to report them: O-002's subject is the composable that plays the Lottie,
-but the missing marker is a fact about the `.json`, and naming either is correct. Without
-alternates the right answer in the reasonable-but-unexpected file scored as a miss.
+An `expect` entry can also include `also_at` for defects that can be honestly anchored at
+more than one location (such as `O-002`, which can be reported on either the composable
+playing the Lottie animation or the `.json` asset file missing the marker).
 
-Floor, obligation and taste are counted separately and never averaged. Floor findings are
-mechanical and a capable model finds many unaided; taste is the part meant to justify the
-skill. Averaging lets a flat taste delta hide behind a strong floor delta, which is exactly
-how this collection would quietly become a linter.
+## Evaluation batteries
 
-## The batteries
+Because Pioneer fixes the two arms to `baseline` and `with-skill`, project context (`MOTION.md`
+presence and state) is varied across four separate battery files (`evals*.json`):
 
-Pioneer's two arms are fixed, so a second factor — what the project has decided — cannot be
-an arm. Each battery is a separate `evals*.json`.
-
-| Battery | Cases | Stages | Asks |
+| Battery | Cases | Staged files | Question tested |
 |---|---|---|---|
-| `no-motion-language` | 10–12, 20–29, 30–39, 40–47, 50, 51, 60, 70, 80 | code only | Is the violation found at all, and is the correct code left alone? |
-| `established-language` | 10, 11, 40 | code + a MOTION.md with `DECIDED` entries | Does severity rise, is the token named as the fix, and does a fact settled in the file stop being treated as unknowable? |
-| `stale-exception` | 10 | code + a MOTION.md exception that has lapsed | Is a standing approval enforced after the condition it was granted under has been met? |
-| `phantom-language` | 10 | code only, prompt claims a MOTION.md exists | Are conventions invented from a file that was never provided? |
+| `no-motion-language` | 10–12, 20–29, 30–39, 40–47, 50, 51, 60, 70, 80 | Kotlin source (and Lottie JSON for case 30) | Does the skill find the planted defect and leave the compliant twin alone? |
+| `established-language` | 10, 11, 40 | Kotlin source + `MOTION.md` with `DECIDED` entries | Does severity escalate to `major`, does the fix name the project's token, and does the skill use the frequency map in `MOTION.md`? |
+| `stale-exception` | 10 | Kotlin source + `MOTION.md` with a lapsed exception | Does the reviewer check whether an exception's condition ("until typed routes land") still holds in the code? |
+| `phantom-language` | 10 | Kotlin source only, while the prompt claims a `MOTION.md` exists | Does the reviewer state that `MOTION.md` is missing instead of inventing conventions? |
 
-Where a case id appears in more than one battery it stages the same fixture under the same
-filename with the same prompt, so nothing about the variant is visible to the agent from the
-shape of the task. Two deliberate exceptions, both unavoidable:
+When the same case ID appears in multiple batteries, it stages the same filename so the
+file path never hints at the battery variant. Only cases whose expected result changes with
+`MOTION.md` are included in the secondary batteries.
 
-- `phantom-language`'s prompt must assert that a MOTION.md exists — that assertion *is* the
-  experiment.
-- Not every case appears in every battery. A battery only contains the cases whose answer
-  the staged document actually changes; padding the rest would multiply runtime without
-  measuring anything.
+## Rule coverage
 
-`phantom-language` is the one no other battery can replace. A skill that hallucinates a
-motion language scores well everywhere else, because its fabrications tend to match what a
-real MOTION.md would have said. Only asking about a file that does not exist separates
-reading from confabulating — and only `forbidden_strings` makes that machine-checkable,
-since every other signal of fabrication is prose.
+The suite covers 33 of the 34 rules in `STANDARDS.md` (all except `F-009`, which governs
+debug-vs.-release benchmarking practice rather than source code). Every evaluation class in
+[`TAXONOMY.md`](TAXONOMY.md) is represented:
 
-`stale-exception` is deliberately harder than it looks. Its exception names the very file
-under review and would waive the finding, except it was granted "until typed routes land"
-and the file already uses typed routes. An exception naming an absent symbol would have
-been passed by any skill that ignores exceptions entirely; this one has to be read against
-the code.
-
-## Coverage
-
-Every rule that a fixture can exercise has a case: 33 of 34. F-009 governs where evidence
-comes from, a debug build or a release one, which no source file shows. Each class in
-`TAXONOMY.md` has at least one case. Most rules are class A, following case 20's shape:
-the defect and its correct twin in one file, so the one difference the reviewer can key on
-is the one the rule names.
-
-| Case | Class | Rule | What it pins down |
+| Case | Class | Rule | What the fixture tests |
 |---|---|---|---|
-| 10 / 11 | B. Context-dependent severity | T-001 | Recall, then precision on the same file with all four transitions bound to tokens. |
-| 12 | B. Context-dependent severity | T-001 | The same default in a file with no convention anywhere: minor, where case 10's scheme-resolved neighbours make it major. |
-| 20 | A. Static twin | F-001 | The defect and its fix fifteen lines apart in one file. |
-| 21 | A. Static twin | F-003 | `animateItem()` with no key, beside the same list keyed by id. |
-| 22 | A. Static twin | T-021 | A present, stable key derived from position, beside one derived from identity. |
-| 23 | A. Static twin | T-017 | An entrance in `LaunchedEffect(Unit)`, beside one remembered across returns. |
-| 24 | A. Static twin | T-002 | A literal spec at a call site, beside the same literal inside its token. |
-| 25 | A. Static twin | T-022 | Layout switched on a keyboard boolean, beside one following the inset. |
-| 26 | A. Static twin | F-008 | Animated padding, beside the same nudge through `offset { }`. |
-| 27 | A. Static twin | F-004 | A shared element into a `ModalBottomSheet`, beside one into a Compose screen. |
-| 28 | A. Static twin | T-016 | An unanchored centre scale, beside a menu scaling from its trigger. |
-| 29 | A. Static twin | F-002 | A swipe driven through `animateFloatAsState`, beside an `Animatable` that keeps release velocity. |
-| 31 | A. Static twin | T-012 | A button disabled until its nudge animation ends, beside the same nudge left interruptible. |
-| 32 | A. Static twin | T-024 | A pushed screen that fades out on back, beside one that slides back out the way it came. |
-| 33 | C. Absence | T-019 | A loading indicator with no delay or minimum hold, beside one that has both. |
-| 34 | F. Legitimate twin | T-011 | The same lateral slide, wrong on unordered bottom-bar sections and right on ordered sign-up steps. |
-| 35 | A. Static twin | T-023 | A button that waits for the response before changing, beside one that changes on the tap. |
-| 36 | C. Absence | O-001 | A state shown only by a pulse, beside the same pulse with a text label. |
-| 37 | F. Legitimate twin | T-018 | Overscroll turned off for the whole app, beside the same switch on one looping carousel. |
-| 38 | A. Static twin | F-010 | `sharedElement` on text whose style changes between screens, beside an identical image. |
-| 39 | A. Static twin | F-005 | A `withFrameNanos` ticker that ignores the animator scale, beside one that reads it every frame. |
-| 30 | C. Absence | O-002 | A missing marker, with a twin whose composition legitimately needs none. |
-| 40 | D. Not in the source | T-009 | Both directions: unknowable without MOTION.md, required with it. |
-| 41 | A. Static twin | F-007 | A dragged chip whose docked side is lost on rotation, beside one that saves it. |
-| 42 | A. Static twin | T-004 | Chart bars on the Expressive spatial spring, beside bars on Standard. |
-| 43 | A. Static twin | T-010 | A badge that leaves with the scale it arrived with, beside one that only fades. |
-| 44 | A. Static twin | T-013 | A stagger that grows with the list, beside one capped at a total budget. |
-| 45 | A. Static twin | T-027 | A favourite that pops when cleared as well as set, beside one that pops only on save. |
-| 46 | A. Static twin | T-028 | A banner for a background sync, beside a snackbar for one the reader started. |
-| 47 | A. Static twin | T-025 | A hand-rolled sheet that only opens and closes, beside one that follows the finger. |
-| 50 | E. Composite-only | T-026 | Five individually correct children, one wrong screen. |
-| 51 | E. Composite-only | T-020 | A panel on the slow tier opening onto options on the fast one. |
-| 60 | F. Legitimate twin | F-006 | The same clip, once a defect and once deliberate. |
-| 70 | G. Framework-correct (hybrid) | T-008 | The framework path must stay silent while the hand-rolled twin is flagged. |
-| 80 | G. Framework-correct (pure) | — | Nothing to find. Any finding is a failure. |
+| 10 / 11 | B. Context-dependent severity | T-001 | Recall on default `NavHost`, then precision when all four transitions are set. |
+| 12 | B. Context-dependent severity | T-001 | Default `NavHost` in a file with no other motion tokens (`minor` severity). |
+| 20 | A. Static twin | F-001 | Value `offset(x = ...)` beside lambda `offset { ... }` in the same file. |
+| 21 | A. Static twin | F-003 | `animateItem()` without a list key, beside a keyed list. |
+| 22 | A. Static twin | T-021 | List keyed by index position, beside one keyed by item ID. |
+| 23 | A. Static twin | T-017 | Entrance animation in `LaunchedEffect(Unit)`, beside one guarded across back navigation. |
+| 24 | A. Static twin | T-002 | Inline `tween()` / `spring()` at a call site, beside a token definition. |
+| 25 | A. Static twin | T-022 | Layout switched on a keyboard boolean, beside one tracking `WindowInsets.ime`. |
+| 26 | A. Static twin | F-008 | Animated `padding`, beside the same shift using `offset { }`. |
+| 27 | A. Static twin | F-004 | `sharedElement` into a `ModalBottomSheet`, beside one between regular Compose screens. |
+| 28 | A. Static twin | T-016 | Unanchored center scale on a modal surface, beside a menu scaling from its trigger anchor. |
+| 29 | A. Static twin | F-002 | Drag offset driven by `animateFloatAsState`, beside an `Animatable` carrying release velocity. |
+| 30 | C. Absence | O-002 | Lottie file whose final frame clears the canvas with no `reduced motion` marker, beside one whose final frame stays visible. |
+| 31 | A. Static twin | T-012 | Button disabled while its animation runs, beside an interruptible twin. |
+| 32 | A. Static twin | T-024 | Screen that slides in from the right but fades out on pop, beside one that slides back out. |
+| 33 | C. Absence | T-019 | Loading indicator with no show delay or minimum hold time, beside one that has both. |
+| 34 | F. Legitimate twin | T-011 | Lateral slide on unordered bottom-bar tabs (violation) vs. ordered sign-up steps (compliant). |
+| 35 | A. Static twin | T-023 | Button that waits for a network response before animating, beside one that responds on tap. |
+| 36 | C. Absence | O-001 | Status communicated only by a pulsing dot, beside the same pulse paired with a text label. |
+| 37 | F. Legitimate twin | T-018 | Overscroll disabled app-wide (violation) vs. disabled on a looping carousel (compliant). |
+| 38 | A. Static twin | F-010 | `sharedElement` on text whose style changes between screens, beside an unchanged image. |
+| 39 | A. Static twin | F-005 | `withFrameNanos` ticker ignoring `MotionDurationScale`, beside one that checks it each frame. |
+| 40 | D. Not in the source | T-009 | Usage frequency unknown in `no-motion-language` (must ask/scope, not flag) vs. defined in `established-language` (must flag). |
+| 41 | A. Static twin | F-007 | Dragged chip docking side stored in `remember`, beside one stored in `rememberSaveable`. |
+| 42 | A. Static twin | T-004 | Chart bars animated with an Expressive spatial spring, beside bars using Standard. |
+| 43 | A. Static twin | T-010 | In-place badge exiting with spatial scale + fade, beside one exiting with fade only. |
+| 44 | A. Static twin | T-013 | Stagger delay growing unbounded with list index, beside one capped at a total budget. |
+| 45 | A. Static twin | T-027 | Favorite button playing a celebratory pop on both save and clear, beside one that pops only on save. |
+| 46 | A. Static twin | T-028 | Layout-shifting banner shown after background sync, beside a snackbar for a manual sync. |
+| 47 | A. Static twin | T-025 | Custom bottom sheet that only opens/closes on tap, beside one supporting finger drag. |
+| 50 | E. Composite-only | T-026 | Five individually valid child springs firing at once on a single screen event. |
+| 51 | E. Composite-only | T-020 | Expanding panel on the slow tier paired with inner options on the fast tier. |
+| 60 | F. Legitimate twin | F-006 | `animateContentSize` clipping an elevated Card's shadow (violation) vs. a flat text reveal (compliant). |
+| 70 | G. Framework-correct (hybrid) | T-008 | Standard `NavHost` (must not flag) alongside a custom `BackHandler` missing predictive back (must flag). |
+| 80 | G. Framework-correct (pure) | — | Clean file using framework-handled motion; any reported finding is a false positive. |
 
-Case 40 is the only pair that spans batteries by design. In `no-motion-language` the
-frequency of use is genuinely not in the source, so the spring is a `negative` and asserting
-a verdict against it is a false positive. In `established-language` the same spring is
-covered by MOTION.md's frequency map, so it becomes a required finding. Asking the question
-is the pass in the first and a failure in the second — but note that **whether the reviewer
-actually asks is not machine-checked**. Only the assertion is. Read the transcript for the
-question; the number only tells you it did not assert.
+In Case 40, `no-motion-language` treats the spring as a `negative` (asserting a violation
+without knowing usage frequency is a false positive), while `established-language` supplies
+the frequency map in `MOTION.md` and requires flagging it. Note that `run-evals.py` only
+checks that the review did not assert a finding in `no-motion-language`; whether the
+review asked the question is checked by `judge-evals.py` and in the transcript.
 
-## Three passes, each doing only what it is suited to
+## Three evaluation passes
 
-| Pass | Question | Method |
+| Script | Question answered | Method |
 |---|---|---|
-| `run-evals.py` | did it name the right lines | deterministic set-matching |
-| `judge-evals.py` | was the review sensible work | a classifier, typed answers |
-| `read-evals.py` | what does the unclear case mean | a language model, prose only |
-
-The third exists because the first two share a limit: neither can explain itself.
-Span-matching says a finding missed and cannot say whether the review nearly had it; the
-classifier says 0.62 and cannot say what it was looking at. Both land on a human, and
-reading transcripts by hand is how an eval suite stops being run.
+| `run-evals.py` | Did the review flag the expected lines and avoid clean lines? | Deterministic line-range overlap |
+| `judge-evals.py` | Did the review follow behavioral expectations (concrete fix, no ungrounded claims)? | Calibrated typed classifier (Jev) |
+| `read-evals.py` | Why did a case miss or produce an uncertain classifier score? | Blinded multi-model transcript summary (prose only, never scored) |
 
 ```bash
-./scripts/read-evals.py --report report.json --judge judge.json --out reading.md
-./scripts/read-evals.py --report report.json --judge judge.json --full   # read everything
-```
-
-**Every pass uses at least two models, and refuses to run with one** unless told
-`--allow-single`. Not for redundancy — for bias. Every model has a house style, one terse
-and prone to missing things, another expansive and prone to inventing them. A skill
-measured against a single model is measured against that model's habits as much as its own
-merit, and a reading produced by one model is a single opinion wearing the clothes of a
-conclusion.
-
-That is not theoretical. Sweeping two codex models over the phantom battery, the older
-fabricated a motion language where the newer did not. On an earlier sweep
-`gemini-3.5-flash-lite` scored the skill at
-0 → 1 taste hits and `gemini-3.5-flash` at 1 → 1: against the weaker model the skill looks
-essential, against the stronger one it looks like it adds nothing, because the stronger
-baseline found the defect unaided. Either number alone is a confident, misleading answer.
-
-Readers get a `DECISION:` line before their prose. It is not a score — it exists so two
-readings can be compared without reading both in full, and **where they disagree that is
-reported rather than resolved**. On the first two-reader run one said a review had asserted
-contents of a file it was never given; the other checked, found the file had in fact been
-staged, and concluded the opposite. The second was right, and a single reader would have
-had us "fix" a question that was not broken.
-
-Readers run from an empty temporary directory rather than the repo. One of them was
-observed opening fixture files to verify a claim — a good instinct in the wrong room, since
-the same working directory also contains `evals/*.json`, which is the answer key.
-`scripts/model-roster.json` holds the tiers: `arms` for the reviewer under test, `readers`
-for this pass, and `sota` for a periodic manual re-read. Availability is discovered at run
-time, because an entry there is an intention rather than a promise.
-
-It scores nothing, and nothing it produces feeds a number — which is the same reason
-`run-evals.py` keeps models away from its grading. It is told nothing about which arm
-produced a transcript and sees rule ids normalised out, because an explanation that begins
-"this is the one with the skill" explains our expectations rather than the text.
-
-It also turns out to be the best critic of the classifier's questions. On its first real
-run it argued that three of them were compound — that `fabricates_input` fired on any
-mention of specific code because the clause that mattered, *that the review was never
-given it*, sat buried behind the clause that did not — and that `conformance_claim` was
-missing a case reviews legitimately fall into, judging against framework guidance without
-claiming to know this project's conventions. All three were right, and fixing them moved
-the classifier off the fence. Its prompt asks explicitly whether the *review* is
-borderline, the question is badly posed, or the acceptable answers are incomplete, so that
-blaming the question is a finding rather than a default.
-
-## The classifier pass
-
-Set-matching catches whether the right line was named. Most of what a case actually claims
-to test lives in its `expectations` array — "names `offset { }` as the fix", "reports it
-against the screen rather than a child", "does not cite MOTION.md content" — and for a long
-time the grader read none of it. Of 57 expectation lines across the four batteries, 51 are
-already phrased as a yes/no about a single response.
-
-Those become `checks`, graded by `scripts/judge-evals.py` against the saved transcripts:
-
-```bash
-./scripts/judge-evals.py --calibrate-only                    # trust check, costs pennies
+./scripts/judge-evals.py --calibrate-only                    # verify classifier calibration
 ./scripts/judge-evals.py --report report.json --out judge.json
+./scripts/read-evals.py --report report.json --judge judge.json --out reading.md
+./scripts/read-evals.py --report report.json --judge judge.json --full
 ```
 
-Every state is prefixed with the materials the reviewer was given, because questions about
-invention are otherwise unanswerable: quoting a staged file and inventing one look identical
-when you can only see the review.
+`run-evals.py` and `read-evals.py` run across at least two models from
+`scripts/model-roster.json` by default (pass `--allow-single` to run with one model), while
+`judge-evals.py` averages repeated samples (`--samples`) against the Jev classifier
+endpoint. Testing reviewer or reader passes against a single model conflates the skill's
+effect with that model's baseline tendencies.
 
-Checks come in two kinds. **Universal** checks in `judge-checks.json` run against every
-transcript in every battery and ask whether the review is a sensible piece of work at all:
-does it name a concrete change or only wave at one,
-does it separate what it saw from what it assumed, do its prose and its findings list agree,
-does it stay on the subject it was asked about. None of them mentions a rule id, this
-repository, or the existence of a skill — so the classifier cannot tell which arm it is
-reading, and answering well does not depend on sharing our vocabulary. **Case** checks are
-the per-case ones, and they do know what was planted.
+`read-evals.py` runs in an empty temporary directory so reader models cannot inspect
+`evals/*.json` answer keys, and strips arm labels and rule IDs before presenting
+transcripts. It outputs a `DECISION:` header line per reader so disagreements between
+readers are easy to spot, and it never feeds back into numeric scores.
 
-The split matters beyond tidiness: a question phrased in our private vocabulary can only be
-answered well by an arm that shares it, which measures vocabulary all over again. The
-universal checks are also where the failures that get a reviewer switched off actually live,
-and span-matching cannot see any of them.
+## How the classifier pass (`judge-evals.py`) works
 
-**It is a classifier, not a judge model.** `run-evals.py` refuses to score anything with an
-LLM because a model comparing two prose reviews rewards length, confidence, vocabulary and
-finding count, and the with-skill arm wins on all four before correctness enters. Jev
-cannot generate text at all: it takes state plus typed questions and returns a value from
-a set declared here in advance. It has no way to prefer the longer review because it has
-no way to say anything outside the schema. Every answer carries a calibrated probability,
-so a question it is unsure about becomes an **abstention routed to a human** rather than a
-confident guess folded into a number.
+Line-range matching checks *where* a finding landed, while `judge-evals.py` checks the
+behavioral expectations in each case (`expectations` in `evals*.json`) and universal review
+quality checks in `judge-checks.json`:
 
-**The classifier is not deterministic.** Measured on one unchanged calibration state,
-the same question returned 0.67 on one call and above 0.70 on the next — enough to flip a
-verdict across a threshold and to make the calibration gate itself flap between runs.
-`--samples` (default 3) asks each question several times and averages the *distributions*,
-which is the right operation because the probability is the quantity being thresholded. All
-questions for one state travel in a single request, so this is cheap.
+- **Universal checks (`judge-checks.json`):** Run on every transcript in every battery
+  without referencing rule IDs or skill terminology. They check whether the review names a
+  concrete code fix, separates observed code from assumptions, keeps its prose consistent
+  with its `FINDINGS` block, and stays within scope.
+- **Per-case checks (`evals*.json`):** Check case-specific expectations, such as naming
+  `offset { }` as the fix or reporting a composite defect at the parent screen composable.
 
-**Calibration counts three outcomes, not two.** Answering the opposite of a settled reading
-means the classifier cannot be trusted; declining to answer only means it is cautious near
-that boundary. Folding them together made the gate flap on a single borderline item while
-saying nothing about whether it had ever actually been wrong. Only *wrong* answers count
-against the floor; undecided ones are reported separately. On the current 25-item set the
-classifier has not yet been wrong once — it declines on one item and answers the rest.
+Key design details of `judge-evals.py`:
 
-**Thresholds are about the acceptable set, not the winning option.** For a `choice`, the
-question is "is the answer one we accept", so the test is the probability mass those
-answers hold — not the returned `confidence`, which measures spread across *all* options
-and so falls as options are added. This was a real bug: on a review that plainly asked a
-question, Jev returned `asks` 0.6, `scopes` 0.4 and exactly zero on both wrong answers, at
-`confidence` 0.47. Every bit of mass sat on the two answers we accept, and the old logic
-recorded it as an abstention. It failed worst precisely where several answers are
-deliberately acceptable.
+- **Constrained classification rather than free-form judging:** Jev returns probability
+  distributions over pre-declared options (`noul`, `choice`, `score`) rather than generating
+  text. Low-confidence answers become **abstentions** for human inspection rather than
+  noisy pass/fail flips.
+- **Multi-sample probability averaging (`--samples`, default `3`):** Because classifier
+  probabilities can vary slightly across calls near a threshold, `judge-evals.py` averages
+  the returned probability distributions across samples before applying thresholds.
+- **Acceptable-set probability mass:** For multi-option `choice` checks where more than one
+  option is acceptable (for example, either asking the user for usage frequency or stating
+  a conditional assumption), `judge-evals.py` sums the probability mass across all
+  acceptable options rather than thresholding on single-option `confidence`.
+- **Mandatory two-sided calibration (`judge-calibration.json`):** Before grading any real
+  transcript, `judge-evals.py` runs against hand-labeled pass and fail examples in
+  `judge-calibration.json`. `validate()` requires every active check to have both passing
+  and failing calibration items, and any wrong answer on the calibration set halts grading.
+  Checks that fail calibration reproducibly (such as the withdrawn `fabricates_input`
+  check, documented in `judge-checks.json`) are removed rather than left in the score;
+  fabrication on the `phantom-language` battery is enforced deterministically via
+  `forbidden_strings`.
 
-**A check that fails its own calibration is withdrawn, not shipped.** `fabricates_input`
-asked whether a review stated the contents of a document it was never given — the phantom
-battery's whole subject. It is gone. Three wordings were tried and the materials list was
-added to the state so the question was answerable in principle; it still answers
-"fabrication" whenever a review describes a document's contents, provided or not. The
-decisive calibration pair is the *same review* judged against different materials, and it
-returns the same answer to both. At seven samples the same three items fail every run, so
-this is a stable limitation rather than noise. An earlier clean run was the lucky tail
-of a three-sample estimate.
+### Configuring the classifier API key
 
-Adding the materials list did measurably help real transcripts: with-skill failures fell
-from three to one and baseline confident-correct answers rose from seven to eleven. Helping
-is not the same as being right, and a graded check that cannot pass its own calibration
-should not be producing numbers. Deterministic fabrication detection survives where it
-matters most, as `forbidden_strings` on the phantom battery, and `conformance_claim` covers
-adjacent ground and calibrates cleanly.
+`judge-evals.py` reads the API key from `TYPESAFE_API_KEY`, `TYPESAFE_API_KEY_SPEC`, or
+`~/.config/typesafe/key` (overridable via `TYPESAFE_API_KEY_FILE`). A key spec supports
+three formats:
 
-**Schema-safety is not accuracy.** A constrained model can still be confidently wrong about
-a valid option. So `judge-calibration.json` holds hand-written responses whose reading is
-unambiguous, the classifier answers those first on every invocation, and if it gets any of
-them wrong its output is withheld entirely. `validate()` refuses to run a battery whose
-checks are not calibrated **in both directions** — a check calibrated only on states that
-should pass would be satisfied by a classifier that answers "pass" to everything.
-
-**Residual leak.** The rule-id column is normalised before classification, since with-skill
-writes `T-009` and baseline writes whatever it invented. That removes the token that
-identifies the arm outright; prose style still differs, and no amount of scrubbing fixes
-that.
-
-Judge results are printed beside the detection numbers and never added into them.
-
-What this still cannot do is tell you whether a question was a *good* one, or read a
-transcript for reasoning that was right for the wrong reason. Jev generates no text, so
-that remains a human job — which is what the transcripts are for.
-
-### Supplying the key
-
-No vault path is baked into the repo. A key *spec* goes in `TYPESAFE_API_KEY_SPEC` or in a
-file (`~/.config/typesafe/key`, override with `TYPESAFE_API_KEY_FILE`) and takes one of
-three forms:
-
-| Form | Meaning |
+| Format | Behavior |
 |---|---|
-| `op://Vault/Item/field` | read with the 1Password CLI at the moment it is needed |
-| `!<shell command>` | run it; its first line of output is the key |
-| anything else | a literal key |
+| `op://Vault/Item/field` | Reads the secret on demand via the 1Password CLI (`op`). |
+| `!<shell command>` | Runs the command and uses its first line of stdout as the key. |
+| Any other string | Treated as a literal API key. |
 
-There is deliberately no `--api-key` flag, because an argument is visible in the process
-table and in shell history.
+There is no `--api-key` CLI flag so keys do not appear in process tables or shell history.
 
-#### Preferred: an Amp secret injected into the runner
+#### Option 1: Amp secret on an Amp runner
 
-If the evals run on an Amp runner, store the key as an Amp secret and let the runner
-inject it. `load_key()` reads `TYPESAFE_API_KEY` before anything else, so nothing here
-needs changing. Set it from the machine that has the vault, piping through stdin so the
-value never reaches argv, shell history or a disk:
+Store the key as an Amp secret from the machine with 1Password access:
 
 ```bash
 op read "op://Private/TypeSafe/test api key" \
   | amp secrets set TYPESAFE_API_KEY --user --secret --data-file -
 ```
 
-Then start the runner with `--amp-env` (or set `amp.runner.env.enabled`), which injects
-workspace, project and personal secrets into the shell commands of the threads it serves.
-Without that flag the secret exists but is never delivered — worth checking, because a
-configured secret and an injected one look identical from the settings page.
+Start the runner with `--amp-env` (or `amp.runner.env.enabled`) so `TYPESAFE_API_KEY` is
+injected into runner command environments.
 
-Two things to weigh. The injected value is in the environment of *every* command the
-runner's threads execute, not only this one, so it leaks more readily into incidental
-output than a file read on demand; Amp redacts known secret values, which reduces that
-without eliminating it. And user scope means every thread that runner serves receives it,
-not only work on this project — project scope is tighter where the repository is an Amp
-project.
+Note that `--amp-env` injects the secret into the environment of every command executed by
+threads on that runner, and `--user` scope exposes it to all projects the runner serves.
+Prefer project-scoped secrets when this repository is configured as an Amp project, or use
+an on-demand key file (`TYPESAFE_API_KEY_FILE`) when the runner serves unrelated work.
 
-#### Otherwise: when the vault is on a different machine from the runner
+#### Option 2: Pushing the key to a remote runner over SSH
 
-The obvious spec — `!ssh vaultmachine 'op read "op://..."'` — **does not work**, and it is
-worth knowing why before trying it. 1Password's desktop-app integration is bound to your
-GUI login session. Over SSH, `op` reports `No accounts configured` however many prompts you
-approve, and `op signin` only exports a session token into the shell that ran it. The vault
-side has to initiate. Two ways:
-
-**Push it, from the machine with the vault.** Works today, needs nothing new:
+Because 1Password desktop integration is tied to the local GUI login session, running
+`ssh <runner> 'op read ...'` from a remote machine fails with `No accounts configured`.
+Instead, push the key from the machine with the unlocked vault into the runner's in-memory
+tmpfs (`/run/user/<uid>/jev-key`, mode `0600`):
 
 ```bash
 ./scripts/push-jev-key.sh <runner-host> "op://Private/TypeSafe/test api key"
 ```
 
-The key is piped from `op` straight into the runner's per-user tmpfs — RAM only, `0600`
-inside a `0700` directory, gone on reboot. It touches no disk on either machine and never
-appears in an argument list. The runner's spec is then `!cat /run/user/$(id -u)/jev-key`.
-Re-run it after a reboot, or whenever the runner says the file is missing.
+Then set the runner's key spec to `!cat /run/user/$(id -u)/jev-key` (re-run after a
+reboot). Alternatively, use a 1Password service account (`OP_SERVICE_ACCOUNT_TOKEN`) with
+a shared vault (service accounts cannot read a `Private` vault).
 
-**Or use a service account**, which is 1Password's supported path for unattended
-automation: install `op` on the runner, set `OP_SERVICE_ACCOUNT_TOKEN`, and the spec
-becomes the `op://` reference directly with no second machine involved. One catch to check
-before committing to it — a service account cannot read a *Private* vault, so the item has
-to live in a shared one.
+### Note on local classification with Laya
 
-### Could this run locally instead? (parked)
+`TYPESAFE_ENDPOINT` can point to a custom endpoint, and
+[Laya](https://github.com/NandhaKishorM/laya) (Apache-2.0) implements the same
+`choice`/`noul`/`score` schema on CPU or CUDA. We currently use the hosted classifier
+because Laya's checkpoints cap state length at ~320–768 tokens and truncate overlong inputs
+from the end, which cuts off the `FINDINGS` block at the bottom of longer review
+transcripts. The released Laya package also has no built-in HTTP server (the
+`/v1/systemone` route is in an unmerged PR) and ships with overconfident base checkpoints.
+`judge-evals.py` logs the maximum state size and warns above 700 tokens in case per-check
+excerpts and custom temperature scaling are used with Laya in the future.
 
-Not being pursued — the hosted classifier is fine. Recorded because the question will come
-back, and because the blocker is specific rather than a matter of taste.
+## Preventing fixture leaks
 
-[Laya](https://github.com/NandhaKishorM/laya) is the obvious candidate — Apache-2.0 open
-weights, the same `choice`/`noul`/`score` vocabulary, and a PyTorch package that runs on
-CPU or CUDA. (`laya-mlx` is a separate third-party Apple-silicon port, not the Linux one.)
-`TYPESAFE_ENDPOINT` already exists so the classifier can be pointed anywhere.
+Fixture directories use opaque IDs (`c10`, `m1`) and realistic filenames
+(`AppNavigation.kt`, `MOTION.md`), because Pioneer exposes staged filenames to the agent
+under test.
 
-It does not fit yet, for one specific reason. Laya's checkpoints cap the *state* at roughly
-320 tokens (English, 512 total) or 768 (multilingual and typed-decisions, 1024 total), after
-the question and its options take their share — and an overlong state is **truncated from
-the end**. Our transcripts run 400 tokens for the simplest single-defect review and grow
-from there, and the findings block is the last thing in them. Laya would silently discard
-precisely the part being graded and answer confidently about the remainder.
-
-Two other things to know before revisiting it: the released package has no HTTP server at
-all — the Jev-compatible `/v1/systemone` route exists only in an unmerged pull request — and
-its own benchmarks note both base checkpoints ship overconfident, with the multilingual one
-having no fitted temperatures.
-
-None of that is fatal. The route in is per-check excerpts rather than whole transcripts,
-which most checks would accept anyway, plus a temperature fitted on our own calibration set.
-`judge-evals.py` reports the largest state it classified, and warns past 700 tokens, so the
-size of that gap stays visible rather than being rediscovered later.
-
-## Fixture naming and leaks
-
-Directories are opaque (`c10`, `m1`) and staged filenames are realistic
-(`AppNavigation.kt`, `MOTION.md`). Pioneer lists every staged file in `case.json` and prints
-them to stderr, so a path that describes what it contains hands the agent the answer — the
-run still completes and still produces a score, and the score means nothing.
-
-`scripts/check-fixture-leaks.sh` enforces this, and CI runs it. It checks two things: paths
-that name the defect, and **prose inside the fixtures**. The second matters more and was
-missed for longer. A KDoc reading "everything on screen responds to the same single event"
-*is* the composite finding, written out for the agent; several cases were measuring comment
-comprehension. Fixture comments now say what the code is for, never why it is wrong.
-
-Upstream proposal to move the path guard into Pioneer itself:
-[rock3r/pioneer#64](https://github.com/rock3r/pioneer/issues/64).
+`scripts/check-fixture-leaks.sh` runs in CI and checks both **filenames** and **comments
+inside fixtures** so KDoc comments describe only what the UI component does, never which
+rule it violates. See [rock3r/pioneer#64](https://github.com/rock3r/pioneer/issues/64) for
+the upstream path-guard proposal.

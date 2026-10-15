@@ -1,101 +1,91 @@
 # Android motion standards
 
-The rule set every skill in this repository packages. If a rule is not here, no skill may
-enforce it.
+This document defines the 34 rules used by the skills in this repository. If a rule is not
+listed here, the skills do not enforce it.
 
 > [!NOTE]
-> **Status: revision 02, plus T-027 and T-028.** 34 rules — 10 `floor`, 2 `obligation`,
-> 22 `taste`.
+> **Status: revision 02, plus T-027 and T-028.** 34 rules (`10` `floor`, `2` `obligation`,
+> `22` `taste`).
 >
-> Revision 01 applied three independent machine reviews (taste, structural, fact-check),
-> which cut three rules, found two internal contradictions, and caught three rules that
-> fired on correct code. [`REVISION-01.md`](REVISION-01.md) records what changed and why.
+> Revision 01 applied three model reviews (taste, structure, and fact-check). Those reviews
+> removed three rules, resolved two contradictions between rules, and narrowed three rules
+> that previously flagged valid Compose code. See [`REVISION-01.md`](REVISION-01.md) for the
+> details.
 >
-> Revision 02 applied the first human review: 26 keep, 1 revise, 5 discuss, 0 remove.
-> Nothing was cut; the outcome was clarification rather than reversal.
+> Revision 02 applied the first human engineering review (`26` keep, `1` revise, `5`
+> discuss, `0` remove), which clarified rule scopes and edge cases.
 >
-> A designer's review of the taste claims is still outstanding, and is a different question
-> from the engineering review these rules have had.
+> None of the `taste` rules have been reviewed by a designer yet.
 
 ## Admission criteria
 
-A rule is admitted only if all six hold:
+A rule belongs in this file only if it meets all six criteria:
 
-1. **Decides something the source leaves open.** Rules may derive from Material guidance
-   or established craft — most should. They may not restate a *fact* that already has a
-   home: token values, component specs and theming conformance belong to
-   [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). A rule earns its
-   place by naming the surface, the threshold, the default, or where the principle
-   inverts.
-2. **Exact.** Values, symbols, APIs. No adjectives.
-3. **Checkable, or marked review-only.** Either a violating snippet and compliant
-   neighbour fit in ≤40 lines, or the rule is explicitly marked `Detect: review-only`
-   because the evidence is not in the source. A rule that is neither is an opinion.
-4. **Pinned to a source that actually says it.** Every factual claim names the symbol,
-   file or document it rests on — and that source must contain the claim. A plausible
-   attribution to a named person from a secondary source is a fabrication.
-5. **Classed.** `floor`, `obligation`, or `taste`.
-6. **Re-grounded, not translated.** An inherited rule must have had its claim re-derived
-   from how Android behaves. Keeping the source's mechanism and swapping the nouns
-   produces a web rule wearing Compose symbols — the most common way a rule in this file
-   goes wrong, and invisible to the other five criteria.
+1. **Decides something the official docs leave open.** Rules can build on Material Design
+   guidance or established motion practice, but they must not repeat basic API facts or
+   token tables. Material 3 token values, component specs, and theming rules belong in
+   [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). A rule here must
+   specify which surface it applies to, what threshold to use, what the default is, or when
+   an exception applies.
+2. **Uses concrete values and APIs.** State exact numbers, symbols, and APIs instead of
+   vague adjectives.
+3. **Is checkable in source, or marked `Detect: review-only`.** Either a violating snippet
+   and its compliant fix fit in 40 lines or fewer, or the rule is marked
+   `Detect: review-only` because the deciding fact (such as usage frequency or screen
+   hierarchy) is not visible in source code.
+4. **Cites a primary source for every platform fact.** Every claim about Android, Compose,
+   Material, or Lottie behavior must name the exact file, symbol, or documentation page
+   where that behavior is defined.
+5. **Has a rule class.** Every rule is classified as `floor`, `obligation`, or `taste`.
+6. **Is grounded in Android behavior.** When adapting a principle from web or iOS motion,
+   re-derive the rule from how Android and Jetpack Compose work rather than simply swapping
+   API names.
 
-Taste rules additionally open with a one-line **Claim**: the perceptual assertion, stated
-before the mechanism. *How it should feel* and *how you get it* fail independently.
+Every `taste` rule also starts with a one-sentence **Claim** stating the user-visible
+effect before the implementation rule.
 
 ### Material bindings
 
-Six rules reach for a Material mechanism. Each marks it, and states the universal form:
+Six rules refer to Material 3 tokens or patterns. Each of those rules separates its
+Material-specific form from the general principle:
 
-**Material binding** — the part that assumes Material: a token name, a pattern vocabulary,
-a justification from M3's own model.
+- **Material binding** — the Material 3 token name, transition pattern, or elevation model
+  used when the app uses Material 3.
+- **Outside Material** — how the same principle applies in an app with a custom design
+  system.
 
-**Outside Material** — the same claim for a product that does not use Material, with its
-own mechanism substituted.
-
-The split exists because the claims survive a change of design language even when the
-mechanisms do not. A team with a custom design system still wants "direction promises
-order"; they need their own transitions mapped to it, not the rule removed. Filtering
-whole rules would discard the judgment to shed the vocabulary.
-
-A checker may drop bindings (`--no-material`) without dropping claims. Only T-004's claim
-is Material-only, and it says so.
+Separating the two lets teams with custom design systems keep the underlying motion rules
+while mapping them to their own tokens. Only `T-004` is specific to Material 3's
+Expressive and Standard schemes.
 
 ## Rule classes
 
-`floor` — mechanical correctness. Wrong regardless of conventions. Never overridable.
+- `floor` — Mechanical and performance bugs in Compose motion. Always major, and never
+  overridden by `MOTION.md`.
+- `obligation` — Accessibility requirements when animations are disabled. Always major,
+  never overridden by `MOTION.md`, and counted separately from `taste` in evaluation scores.
+- `taste` — Design and interaction judgment. Overridable by an explicit `DECIDED` entry in
+  the project's `MOTION.md` unless the rule states `Overridable: no`.
 
-`obligation` — accessibility duty. Never overridable, and
-**excluded from the taste delta**, because a rule that can never yield should not inflate
-the number meant to prove this collection is more than a linter.
+Evaluation runs grade and report `floor`, `obligation`, and `taste` findings separately
+rather than averaging them together.
 
-`taste` — judgment. Overridable by an explicit `DECIDED` entry in the product's MOTION.md
-unless marked otherwise.
+### Severity depends on project conventions
 
-Floor and taste are graded and reported **separately, never averaged**.
-
-### Severity is contextual
-
-A finding's severity comes from the codebase, not from the rule. The same violation is a
-minor note in a product with no established motion language and a real defect in one that
-has tokenized everything else — because there the problem is no longer the value, it is the
-inconsistency.
+For `taste` rules, severity depends on what the project has already established in
+`MOTION.md` or in the surrounding code:
 
 | Situation | Severity |
 |---|---|
-| Contradicts a `DECIDED` entry in MOTION.md | **Major.** The team settled this |
-| Diverges from a convention the codebase otherwise holds — an `OBSERVED` entry in MOTION.md, or the same construct done the other way everywhere else in the code under review | **Major.** Reported as inconsistency, not as wrong |
-| Violates a `floor` or `obligation` rule | **Major**, regardless of any standard |
-| Violates a `taste` rule where no convention exists, written or in the code | **Minor.** Worth raising, not worth blocking |
+| Contradicts a `DECIDED` entry in `MOTION.md` | **Major.** The team already made this decision. |
+| Diverges from an established codebase convention — either an `OBSERVED` entry in `MOTION.md` or the same pattern done the compliant way elsewhere in the reviewed code | **Major.** Flagged as an inconsistency with the rest of the codebase. |
+| Violates a `floor` or `obligation` rule | **Major**, regardless of `MOTION.md`. |
+| Violates a `taste` rule where no convention exists in `MOTION.md` or the surrounding code | **Minor.** Worth noting in review, but does not block approval. |
 
-A convention does not need to be written down to count. The one place that departs from
-what the rest of the code does is how a regression usually arrives — an agent about to
-introduce a bad change, or someone new who does not know the convention — and left alone it
-spreads.
-
-This is why a review reads MOTION.md, and then the code around the change, before it judges
-the change itself. Where neither holds a convention, every taste finding is minor, which is
-the honest result when nothing has been decided.
+A convention does not need a `MOTION.md` file to count. If the surrounding code already
+follows a pattern—such as resolving transition specs through a token object—and one new call
+site uses a raw default or literal, that inconsistency is **major**. When neither
+`MOTION.md` nor the surrounding code sets a convention, `taste` findings stay **minor**.
 
 ---
 
@@ -103,12 +93,13 @@ the honest result when nothing has been decided.
 
 ### F-001 — Frame-rate values are read in layout or draw, never composition
 
-**Rule.** A value changing every frame is read inside a lambda-form modifier.
-`Modifier.offset(x = animatedDp)`, `Modifier.alpha(v)` and `graphicsLayer(scaleX = v)`
-read during composition and recompose the subtree every frame.
+**Rule.** Read values that change every animation frame inside a lambda modifier rather
+than passing them directly to a value modifier. Calling `Modifier.offset(x = animatedDp)`,
+`Modifier.alpha(v)`, or `graphicsLayer(scaleX = v)` reads the state during composition and
+recomposes the composable every frame.
 
-Scope: properties that *have* a lambda form — offset, alpha, the `graphicsLayer`
-transforms.
+Scope: properties that provide a lambda modifier overload (`offset`, `alpha`, and
+`graphicsLayer` transforms).
 
 **Violating**
 
@@ -125,29 +116,31 @@ Row(Modifier.offset { IntOffset(offsetX.roundToPx(), 0) }) { Content() }
 ```
 
 **Pinned.** developer.android.com "Jetpack Compose phases": the lambda "is invoked during
-the layout phase (specifically, during the layout phase's placement step)". Depth:
-`chrisbanes/skills` → `compose-performance`.
+the layout phase (specifically, during the layout phase's placement step)". For broader
+phase guidance, see `chrisbanes/skills` (`compose-performance`).
 
 ---
 
 ### F-002 — A value the finger controls is an `Animatable`
 
-**Rule.** Gesture-driven values use `Animatable`, with release velocity carried into
-`animateDecay` or a velocity-seeded spring. `animate*AsState` discards velocity, so motion
-visibly restarts when the finger lifts.
+**Rule.** Drive gesture-controlled positions with `Animatable`, and pass the gesture's
+release velocity into `animateDecay` or `animateTo(targetValue, initialVelocity = velocity)`.
+Using `animate*AsState` for a dragged value drops the finger's velocity, causing the motion
+to stop or restart abruptly on release.
 
 **Pinned.** `androidx.compose.animation.core.Animatable`, `animateDecay`.
-**Detect:** heuristic — needs gesture-flow analysis; expect false positives.
+**Detect:** heuristic — requires tracing how gesture state flows into the animation.
 
 ---
 
 ### F-003 — `animateItem()` requires a key
 
-**Rule.** Lazy item animation silently misbehaves without a `Bundle`-compatible `key`. It
-fails by producing wrong animations, not by erroring.
+**Rule.** Every lazy list item that uses `Modifier.animateItem()` must provide a
+`Bundle`-compatible `key` on `items(...)`. Without a key, Compose cannot track items across
+reorders or insertions and plays broken animations without throwing an error.
 
-Scope: the key is absent, or not `Bundle`-compatible. What a present key is derived from is
-outside it.
+Scope: missing keys, or keys whose type cannot be stored in a `Bundle`. What a present key
+is derived from is outside this rule.
 
 **Pinned.** developer.android.com: "It is important to provide a key to each item to
 ensure `animateItem()` works as expected."
@@ -156,8 +149,10 @@ ensure `animateItem()` works as expected."
 
 ### F-004 — No shared elements across a View-backed container
 
-**Rule.** `sharedElement` / `sharedBounds` do not work across `AndroidView`, including
-anything wrapping it — `Dialog`, `ModalBottomSheet`. Restructure, or drop the continuity.
+**Rule.** `sharedElement` and `sharedBounds` cannot animate across an `AndroidView`
+boundary or any composable backed by a separate platform window or view hierarchy,
+including `Dialog` and `ModalBottomSheet`. Either keep both endpoints in the same Compose
+hierarchy or use an enter/exit transition instead of a shared element.
 
 **Pinned.** developer.android.com: "No interoperability between Views and Compose is
 supported. This includes any composable that wraps `AndroidView`, such as a `Dialog` or
@@ -167,27 +162,28 @@ supported. This includes any composable that wraps `AndroidView`, such as a `Dia
 
 ### F-005 — Self-timed motion reads the duration scale itself
 
-**Rule.** "Self-timed" means motion whose progress *your own code* advances — a frame
-callback, a timer, a media clock. It is not about whether a finger is involved.
+**Rule.** "Self-timed" motion means an animation whose progress your own code steps forward
+using a frame callback, timer, or media clock.
 
-**Compose's animation APIs already handle this and need no change.** `animate*AsState`,
-`AnimatedVisibility`, `AnimatedContent`, `Transition` and `Animatable` all run on the
-Compose animation clock, read `MotionDurationScale`, and finish immediately when the user
-has switched animations off. A gesture-driven `Animatable` is Compose-driven and therefore
-already covered — a finger does not make motion self-timed.
+**Standard Compose animation APIs already respect the system duration scale.**
+`animate*AsState`, `AnimatedVisibility`, `AnimatedContent`, `Transition`, and `Animatable`
+run on the Compose animation clock, read `MotionDurationScale`, and snap to their end state
+when animations are turned off. A gesture-driven `Animatable` is also handled automatically
+by Compose.
 
-What is not covered, and must read the scale itself:
+Code that bypasses the Compose animation clock must read the scale itself:
 
 | Bypasses the scale | Why |
 |---|---|
-| `withFrameNanos` loops | Your code owns the clock |
-| `LottieAnimatable.animate()` called directly | `ignoreSystemAnimationsDisabled` is declared but never read |
-| Video, `WebView`, `SurfaceView` content | Not Compose animations at all |
-| `Animatable` driven from a scope lacking `MotionDurationScale` | `WindowRecomposer` injects it into the recomposer and effect contexts only |
+| `withFrameNanos` loops | Your code advances the clock directly. |
+| `LottieAnimatable.animate()` called directly | Declares `ignoreSystemAnimationsDisabled`, but never reads it. |
+| Video, `WebView`, `SurfaceView` content | Runs outside Compose's animation clock. |
+| `Animatable` launched from a coroutine scope without `MotionDurationScale` | `WindowRecomposer` only installs `MotionDurationScale` on the recomposer and effect contexts. |
 
-Read it and branch to a **static end state**. Inside an effect, read the scale the effect
-already carries, on every frame: it follows the setting while the screen is up, so a user
-who turns animations off mid-scroll stops the motion without leaving the screen.
+When the scale is zero, jump directly to a **static end state** and do not request new
+frames. Inside a `LaunchedEffect`, read `coroutineContext[MotionDurationScale]` on every
+iteration so the loop stops immediately if the user disables animations while the screen is
+open:
 
 ```kotlin
 LaunchedEffect(Unit) {
@@ -197,7 +193,7 @@ LaunchedEffect(Unit) {
         val factor = scale?.scaleFactor ?: 1f
         if (factor == 0f) {
             last = -1L
-            delay(500) // at rest: no frames requested, the setting checked twice a second
+            delay(500) // at rest: no frames requested, check the setting twice a second
             continue
         }
         withFrameNanos { now ->
@@ -208,44 +204,40 @@ LaunchedEffect(Unit) {
 }
 ```
 
-At a factor of zero the loop advances nothing and requests no frames, and the screen rests
-at its static end state.
-
-Outside an effect — a video player, a `WebView` — read
+Outside a Compose effect (such as in a video player or `WebView`), read
 `Settings.Global.ANIMATOR_DURATION_SCALE` with a `SettingNotFoundException` fallback, and
-register a `ContentObserver` on it if the screen can outlive a change.
+register a `ContentObserver` if the view stays alive across settings changes.
 
-**Pinned.** `androidx.compose.ui.MotionDurationScale`, honoured since Compose Animation
-`1.2.0-alpha05`. On Android, `WindowRecomposer` puts a `MotionDurationScaleImpl` into
-the recomposer's context, which `LaunchedEffect` inherits, and updates its `scaleFactor`
-from a `ContentObserver` on `ANIMATOR_DURATION_SCALE`. `withFrameNanos` applies no scale.
+**Pinned.** `androidx.compose.ui.MotionDurationScale`, supported since Compose Animation
+`1.2.0-alpha05`. On Android, `WindowRecomposer` installs `MotionDurationScaleImpl` in the
+recomposer context (inherited by `LaunchedEffect`) and updates `scaleFactor` from a
+`ContentObserver` on `ANIMATOR_DURATION_SCALE`. `withFrameNanos` does not apply the scale.
 `Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause animations to end
-immediately." Read with a `SettingNotFoundException` fallback; the key can be undefined.
-`LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled`
-but never reads it in the implementation, so direct calls bypass the scale regardless.
+immediately." `LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled` but
+never reads it in the implementation.
 
 ---
 
 ### F-006 — `animateContentSize` clips its child
 
-**Detect: partial.** One narrow form is checkable; the general case is review-only. See
-below.
+**Detect: partial.** Clipping a shadow or elevated surface is checkable in source; other
+uses are review-only.
 
-**Rule.** `Modifier.animateContentSize()` applies `clipToBounds`, so elevation, drop
-shadows, ripples extending past the edge and nested `AnimatedVisibility` are cut.
-`SizeTransform(clip = false)` on an inner animation cannot override an outer
+**Rule.** `Modifier.animateContentSize()` applies `clipToBounds` unconditionally. Any drop
+shadow, elevation shadow, ripple extending outside the bounds, or nested
+`AnimatedVisibility` exit overflowing the container gets clipped. Setting
+`SizeTransform(clip = false)` on an inner animation cannot undo an outer
 `animateContentSize`.
 
-**Intent cannot be read from source, so the rule does not try.** It splits instead:
+Because source code alone does not always show whether clipping is intentional, this rule
+splits into two cases:
 
-**Checkable.** `animateContentSize` on a node that also carries `Modifier.shadow`, a
-non-zero `elevation`, or a `Card`/`Surface` with tonal elevation. That combination is a
-reliable signal of *unintended* clipping — nobody adds a shadow in order to clip it off.
-This is the form a checker may flag.
-
-**Review-only.** Everything else. A clipped reveal can be exactly what was wanted, and only
-a human looking at the result can say. An agent that cannot see the rendered output says
-what it sees — "this clips; confirm that is intended" — rather than asserting a defect.
+- **Checkable defect:** `animateContentSize` applied on the same modifier chain after
+  `Modifier.shadow`, a non-zero `elevation`, or directly on an elevated `Card` or `Surface`
+  whose shadow it cuts off.
+- **Review-only:** `animateContentSize` on a container without shadows or elevation. A
+  clipped reveal is often intentional; when reviewing without a rendered preview, note that
+  it clips and ask whether that is intended rather than flagging it as a bug.
 
 **Violating**
 
@@ -261,54 +253,57 @@ Box(Modifier.shadow(8.dp)) {
 }
 ```
 
-**Pinned.** `clipToBounds` applied in both overloads, `AnimationModifier.kt:69-78`; the
-KDoc does not mention it.
-[issuetracker 225932760](https://issuetracker.google.com/issues/225932760), open and
-assigned, where the clip is described as by design.
+**Pinned.** `clipToBounds` is applied in both overloads at `AnimationModifier.kt:69-78`
+(not mentioned in KDoc). Reported in
+[issuetracker 225932760](https://issuetracker.google.com/issues/225932760), where the clip
+is marked as intended behavior.
 
 ---
 
 ### F-007 — Motion state that survives rotation must be saveable
 
-**Rule.** `remember` survives recomposition, not Activity recreation. An `Animatable`
-holding a user-visible position is reconstructed at its initial value on rotation, and the
-UI snaps.
+**Rule.** `remember` keeps state across recompositions, but resets when the Activity is
+recreated on rotation or configuration change. If an `Animatable` or state holder stores a
+user-placed position in plain `remember`, rotating the device snaps the UI back to its
+initial position.
 
-Scope: **touch-driven position, not time-driven progress.** A sheet offset the user dragged
-to, a carousel page they swiped to, a reorder in progress — those are positions the user
-placed, and losing them on rotation is losing their work. A time-driven animation that was
-merely mid-flight does not qualify: restarting or completing it is fine, because the user
-did not put it where it was.
+Scope: **touch-driven positions placed by the user**, such as a bottom sheet offset, a
+swiped carousel page, or an in-progress drag reorder. Time-driven animations that happen to
+be mid-flight during rotation are outside this rule; restarting or finishing them on
+recreation does not lose user state.
 
 **Pinned.** developer.android.com: on configuration change "the system recreates the
-activity… Compose recreates the UI". `rememberSaveable` survives it; `remember` does not.
+activity… Compose recreates the UI". `rememberSaveable` survives Activity recreation;
+`remember` does not.
 
 ---
 
 ### F-008 — Layout properties have no cheap animated form
 
-**Rule.** `Modifier.padding` has no lambda overload, so animated padding reads during
-composition and remeasures every frame. Same for animated `size`, `width`, `height`. Where
-the intent is positional, use `offset { }` or `graphicsLayer`. Where a real size change is
-required, accept the cost knowingly.
+**Rule.** `Modifier.padding`, `size`, `width`, and `height` have no lambda overloads.
+Animating their inputs reads state during composition and forces Compose to recompose and
+remeasure the layout on every frame. When the visual change is only a position shift, use
+`Modifier.offset { }` or `Modifier.graphicsLayer { }`. Only animate layout dimensions when
+neighboring elements genuinely need to reflow around the changing size.
 
-**Pinned.** `Padding.kt:54-144` — four value overloads, no lambda form.
+**Pinned.** `Padding.kt:54-144` defines four value overloads and no lambda overload.
 
 ---
 
 ### F-009 — Feel is not assessed in a debug build
 
-**Detect: review-only.** No fixture exists and none can: this governs the provenance of
-evidence, not the content of source. Admitted under criterion 3's explicit exemption.
+**Detect: review-only.** This rule governs how performance claims are verified rather than
+what source code contains.
 
-**Rule.** No claim about smoothness, jank or perceived speed comes from a debug build.
-Compose in debug runs the UI stack unoptimized and without a baseline profile, and Android
-Studio deployments do not apply one. Assessment is a release build with R8, on hardware.
+**Rule.** Never judge animation smoothness, frame drops, or perceived speed from a debug
+build. Compose debug builds run without R8 optimizations or baseline profiles, so frame
+times in debug do not represent production behavior. Always verify motion feel on a physical
+device running a release build with R8 enabled.
 
-**The rule is one-directional.** Debug is strictly slower, so motion that is *smooth in
-debug* will be smooth in release — that observation is safe and needs no rerun. What does
-not transfer is the failing direction: jank seen in debug says nothing about the shipped
-build, and a fix made in response to it may be correcting something that was never there.
+**This rule works in one direction:** debug builds are strictly slower than release builds.
+If an animation is smooth in a debug build, it will be smooth in release. However, jank
+observed in a debug build does not prove a release problem, and optimizing code based only
+on debug jank can add unnecessary complexity.
 
 **Pinned.** developer.android.com: "You can only reliably measure the performance of a
 Lazy layout when running in release mode and with R8 optimization enabled."
@@ -317,11 +312,14 @@ Lazy layout when running in release mode and with R8 optimization enabled."
 
 ### F-010 — `sharedElement` demands identical content; otherwise `sharedBounds`
 
-**Detect: review-only.** Deciding whether content is "the same" is semantic.
+**Detect: review-only.** Determining whether two composables render identical content
+requires reading both layouts in context.
 
-**Rule.** `sharedElement` expects the same content on both sides. Where it differs
-visually — different composable, changed text style, italic to bold, a colour change — use
-`sharedBounds`. The wrong choice produces a cross-fade artefact that reads as a fault.
+**Rule.** Use `sharedElement` only when the source and destination render the exact same
+visual content. When the content changes between states—such as a different composable, a
+changed font weight or text style, or a different background color—use `sharedBounds`
+instead. Using `sharedElement` on visually different content produces an abrupt visual
+mismatch during the transition.
 
 **Pinned.** developer.android.com: "`sharedBounds()` is for content that is visually
 different but should share the same area between states, whereas `sharedElement()` expects
@@ -332,37 +330,36 @@ changes".
 
 ## Obligation
 
-Accessibility duties. Never overridable. **Excluded from the taste delta.**
+Accessibility requirements when animations are disabled. Never overridable, and counted
+separately from `taste` findings.
 
 ### O-001 — Meaning must have a static carrier
 
 **Overridable: no.**
 
-**Claim.** Motion that carries meaning must still carry it when motion is switched off.
+**Claim.** Information communicated by motion must remain clear when animations are turned
+off.
 
-**Scope: meaning carried by the motion of your own layout** — an item moving, a section
-expanding, a shared element travelling. What an animation file shows once it stops is
-outside it.
+**Scope: meaning carried by the motion of your own layout** — such as an item moving to a
+new group, a section expanding, or an indicator pulsing to show status. What an animation
+file displays once it stops is outside this rule.
 
-**Rule.** Android's "Remove animations" writes `0.0f` to all three animation scales. This
-is annihilation, not reduction — a shared-element transition becomes a teleport, a
-positional reveal a jump cut. **There is no substitute animation**, because a substitute
-is snapped too.
+**Rule.** Turning on Android's "Remove animations" accessibility setting writes `0.0f` to
+all three system animation scales. Unlike CSS `prefers-reduced-motion`, Android does not
+slow animations down or play a gentler substitute; it snaps every Compose transition and
+any substitute animation straight to its end state.
 
-So the requirement is not a lighter animation. It is that
-**the destination at rest shows the relationship the motion would have shown**: the moved
-item visible in place, the expanded state legible without having seen it expand, the
-origin still indicated. If switching animation off loses information, the information was
-only ever in the motion.
-
-**Why the web model does not transfer.** `prefers-reduced-motion` is a *preference*, and
-the documented response is gentler motion. Android exposes a scale, and its accessible
-value is zero. `ValueAnimator.areAnimatorsEnabled()` (API 26+) gives a boolean, not a
-preference, and is also set by battery saving on some devices.
+Because no animation plays at scale zero, **the resting UI state must communicate the same
+information on its own**. A moved item must be identifiable in its new place, an expanded
+section must look expanded at rest, and a status indicator that pulses must also have a
+static label, icon, or color change. If turning off animations hides the state change, the
+UI was relying on motion alone to carry meaning.
 
 **Pinned.** AOSP `RemoveAnimationsPreference.kt:118-131` writes `0.0f` to
-`WINDOW_ANIMATION_SCALE`, `TRANSITION_ANIMATION_SCALE` and `ANIMATOR_DURATION_SCALE`.
-Settings → Accessibility → Colour and motion; deep link `g.co/android/animations`.
+`WINDOW_ANIMATION_SCALE`, `TRANSITION_ANIMATION_SCALE`, and `ANIMATOR_DURATION_SCALE`
+(Settings → Accessibility → Color and motion; deep link `g.co/android/animations`).
+`ValueAnimator.areAnimatorsEnabled()` (API 26+) returns a boolean and can also be disabled
+by battery saver modes on some devices.
 
 ---
 
@@ -370,59 +367,55 @@ Settings → Accessibility → Colour and motion; deep link `g.co/android/animat
 
 **Overridable: no.**
 
-**Claim.** An animation that has been switched off should still leave something worth
-looking at. Whatever frame it lands on is what that user sees permanently.
+**Claim.** When animations are disabled, a Lottie animation stops on a single frame. That
+resting frame must show a complete, legible illustration rather than a blank or half-drawn
+canvas.
 
-**Two different things share the phrase "reduced motion". They are unrelated.**
+**Two separate mechanisms use the phrase "reduced motion":**
 
-- **Remove animations** is the Android accessibility setting — Settings → Accessibility →
-  Colour and motion. It writes `0.0f` to the three animation scales. This is the platform
-  behaviour, and Android has no setting called "reduced motion".
-- **`reduced motion`** is a *marker inside a Lottie composition*: a named frame the
-  animation's author places in the `.json`. It is a Lottie library convention, related to
-  Android only in that Lottie looks for it when animations are off.
+- **Remove animations** is the Android system setting (Settings → Accessibility → Color and
+  motion) that sets the three animation duration scales to `0.0f`.
+- **`reduced motion`** is a named marker inside a Lottie `.json` file (`reduced motion`,
+  `reduced_motion`, `reduced-motion`, or `reducedmotion`). Lottie looks for this marker when
+  system animations are disabled.
 
-**Rule.** When Remove animations is on, a Lottie lands on its **last** frame — its first if
-speed is negative — unless the composition carries that marker, in which case it shows the
-marker's start frame instead. A file whose outro clears the canvas therefore renders
-nothing.
+**Rule.** When system animations are off, Lottie jumps to the **last** frame of the
+composition (or the first frame if `speed < 0`), unless the `.json` defines a
+`reduced motion` marker, in which case Lottie renders that marker's `startFrame`. If an
+animation's final frame fades out or clears the canvas and the file has no marker, users
+with animations disabled see an empty space.
 
-The requirement is the *outcome*: the frame the user is left with reads as a complete
-still. The marker is how you get one when the last frame does not already qualify, and a
-file whose final frame is its resting state needs no marker. Asking a designer to add a
-marker is usually easier than re-cutting the animation.
+A composition whose final frame already shows the complete illustration needs no marker.
+When the final frame is blank or mid-transition, add a `reduced motion` marker in the
+`.json` or bound playback with a `LottieClipSpec` whose end frame is legible.
 
-**The marker is honoured at draw time, by the view or the composable — not by the
-animation state.** In Compose these are two separate mechanisms that happen to compose:
-`animateLottieCompositionAsState` divides speed by the system animator scale, so at scale
-zero the speed becomes infinite and `LottieAnimatable` snaps straight to the clip's
-terminal progress; then, independently, every `LottieAnimation` draw replaces that progress
-with the marker's start frame if the composition has one.
+**How Compose applies the marker:** `animateLottieCompositionAsState` divides playback
+speed by the system animator scale, which produces `Float.POSITIVE_INFINITY` at scale zero
+and causes `LottieAnimatable` to jump to `endProgress`. Separately, `LottieAnimation` checks
+at draw time whether animations are disabled and overrides the drawn frame with the
+`reduced motion` marker's `startFrame`.
 
-The practical consequence: **the marker only helps if you render through `LottieAnimation`.**
-Code that reads `LottieAnimationState.progress` and drives its own drawing — a custom
-painter, a `graphicsLayer`, an interop `AndroidView` holding something other than
-`LottieAnimationView` — sees the snapped endpoint and never the marker. For that code the
-readable frame has to come from the composition itself or from a `LottieClipSpec` that ends
-somewhere readable.
+Because that override happens inside `LottieAnimation` at draw time, **code that reads
+`LottieAnimationState.progress` directly** (such as a custom painter or `graphicsLayer`)
+only sees `endProgress` and ignores the marker. In those cases, the composition's final
+frame or `LottieClipSpec` end frame must itself be readable.
 
-Scope: the frame a Lottie is left on. Code that keeps a Lottie playing with animations off
-is outside it.
+Scope: the resting frame a Lottie displays when animations are disabled. Code that keeps a
+Lottie playing while animations are off is outside this rule.
 
-**Pinned — the marker.** `LottieDrawable.java:99-112` — the four accepted spellings
-(`reduced motion`, `reduced_motion`, `reduced-motion`, `reducedmotion`, matched
-case-insensitively); `:899-911` — `getMarkerForAnimationsDisabled()`, the lookup both paths
-share; `:1293-1299` — `animationsEnabled()`, and
-`SystemReducedMotionOption.java:21-27`, which is where animator scale zero becomes
-`REDUCED_MOTION`.
+**Pinned — the marker.** `LottieDrawable.java:99-112` defines the four accepted marker
+names (`reduced motion`, `reduced_motion`, `reduced-motion`, `reducedmotion`, matched
+case-insensitively); `:899-911` defines `getMarkerForAnimationsDisabled()`; `:1293-1299`
+defines `animationsEnabled()`; `SystemReducedMotionOption.java:21-27` maps animator scale
+zero to `REDUCED_MOTION`.
 
-**Pinned — the Compose path.** `LottieAnimation.kt:138-143` — the draw-time override
+**Pinned — the Compose path.** `LottieAnimation.kt:138-143` applies the draw-time override
 (`if (!drawable.animationsEnabled(context) && markerForAnimationsDisabled != null)
-drawable.progress = markerForAnimationsDisabled.startFrame`), added in `66bc2fb`;
-`animateLottieCompositionAsState.kt:59-64` — `speed / Utils.getAnimationScale(...)`, with
-the library's own comment that dividing by zero yields `POSITIVE_INFINITY`;
-`LottieAnimatable.kt:242-260` — `else if (speed.isInfinite()) updateProgress(endProgress)`;
-`:199-205` — `endProgress`, which is `clipSpec`'s max, or min when speed is negative.
+drawable.progress = markerForAnimationsDisabled.startFrame`), added in commit `66bc2fb`;
+`animateLottieCompositionAsState.kt:59-64` computes `speed / Utils.getAnimationScale(...)`
+(dividing by zero yields `POSITIVE_INFINITY`); `LottieAnimatable.kt:242-260` snaps to
+`endProgress` when `speed.isInfinite()`; `:199-205` defines `endProgress` as `clipSpec` max
+(or min when speed is negative).
 
 ---
 
@@ -430,417 +423,397 @@ the library's own comment that dividing by zero yields `POSITIVE_INFINITY`;
 
 ### T-001 — The `NavHost` default transition is a finding
 
-**Claim.** 700ms is longer than Material's own maximum for a screen transition, and a
-cross-fade holds both screens at partial opacity while it runs — so on content-dense
-screens it is most of a second of two scrollables ghosting through each other, on every
-navigation the product has.
+**Claim.** Navigation Compose defaults to a 700ms cross-fade, which exceeds Material 3's
+maximum screen transition duration and leaves both screens partially transparent on top of
+each other for most of a second on every navigation.
 
-**Rule.** The finding is the **spec, not the pattern**. A cross-fade between top-level
-destinations can be exactly right; a 700ms one is not. Destination motion is chosen
-deliberately, or the default is replaced.
+**Rule.** Always replace the 700ms library default on `NavHost` (by setting
+`enterTransition` and `exitTransition`, plus `popEnterTransition` and `popExitTransition`
+when reverse transitions differ) or `NavDisplay` in Navigation 3. The issue is the **700ms
+duration, not the cross-fade pattern**: a shorter cross-fade resolved from a motion token
+is valid for top-level destinations.
 
-**Severity is contextual, and usually minor.** In a codebase with no motion language this
-is a note: the value is too long, nothing more. In a codebase that resolves its specs to
-tokens everywhere else, it is **major** — not because 700ms is worse there, but because
-this one surface silently inherits a third-party default instead of the product's own
-language, and that is the kind of gap that spreads.
+**Contextual severity:** In a codebase with no established motion tokens, leaving the
+default `NavHost` transition is **minor**. In a codebase that already resolves transitions
+through `MaterialTheme.motionScheme` or its own motion tokens—even within the same
+file—leaving `NavHost` on its 700ms default is **major** because it breaks the project's
+convention.
 
-**What this is not.** There is no evidence the value is a deliberate prompt to change it.
-It reads as an old default nobody revisited, and the rule should not imply intent.
-
-**Pinned — why 700ms is long.** M3's duration tokens stop at 600ms (`extraLong4`), and its
-specified screen transition is 500ms emphasized, with 400ms enter and 200ms exit for the
-decelerate/accelerate pair. Navigation's default exceeds Material's own maximum for the job
-by 40%. The ghosting half of the claim is ours, not Material's.
+**Pinned — why 700ms is too long.** Material 3 duration tokens top out at 600ms
+(`extraLong4`), and Material 3's standard screen transition is 500ms emphasized (or 400ms
+enter / 200ms exit). Navigation Compose's 700ms default is 40% longer than Material's
+longest transition token.
 
 **Pinned.** `DefaultNavTransitions.android.kt:35-47`; Navigation 3
-`NavDisplay.android.kt:32-48`, `DEFAULT_TRANSITION_DURATION_MILLISECOND = 700`.
+`NavDisplay.android.kt:32-48` (`DEFAULT_TRANSITION_DURATION_MILLISECOND = 700`).
 
 ---
 
 ### T-002 — No bare `tween()` or `spring()` at a call site
 
-**Claim.** Numbers written where they are used read as accident. A product's motion has
-one voice or none, and a value nobody can find again is a decision nobody made.
+**Claim.** Hardcoded durations and springs scattered across call sites drift apart and make
+a product's motion inconsistent.
 
-**Rule.** Every spec resolves to `MaterialTheme.motionScheme` or to the product's own
-token. Literal `tween(…)` and literal `spring(…)` are admissible only inside a token
-definition.
+**Rule.** Resolve every animation spec from `MaterialTheme.motionScheme` or from the
+project's own motion token object. Call-site `tween(…)` and `spring(…)` literals belong
+only inside token definitions.
 
-Scope: specs written in the product's own code. A default nobody wrote — one a component or
-library applies when no spec is passed — is outside it.
+Scope: specs written in the product's own code. Library defaults applied when a caller
+passes no spec parameter are outside this rule.
 
-**Material binding.** `MaterialTheme.motionScheme` as the default token source. It exposes
-no durations, so keyframes and timed reveals resolve to a codebase token rather than the
-scheme — not an exemption from the rule.
+**Material binding.** Use `MaterialTheme.motionScheme` as the default token source. Because
+`MotionScheme` defines springs rather than durations, keyframe or fixed-duration animations
+must resolve to a named token in the codebase rather than an inline number.
 
-**Outside Material.** The product's own token object. The discipline is identical and the
-claim unchanged: the rule is about where numbers live, not whose numbers they are.
+**Outside Material.** Resolve specs through the project's own motion token object.
 
-**Pinned.** `MotionScheme` carries only `@Immutable`; the opt-in was removed in androidx
-`8ada756` ("Graduate MotionScheme from experimental"), shipped `1.5.0-alpha15`. It exists
-only on the 1.5 line: stable is `1.4.0`, and there is no beta as of `1.5.0-alpha28`. API
-stability and artifact maturity are independent.
+**Pinned.** `MotionScheme` is annotated with `@Immutable`; its experimental opt-in was
+removed in androidx commit `8ada756` ("Graduate MotionScheme from experimental"), shipped
+in `1.5.0-alpha15`.
 
 ---
 
 ### T-004 — Expressive spatial springs stay off elements read as data
 
-**Claim.** Bounce on a number reads as instability, not personality. A value should look
-settled because it is correct, not because it stopped wobbling.
+**Claim.** Bouncy motion on a chart bar, table row, or number makes the data harder to read
+while it settles.
 
-**Rule.** Expressive fast spatial is `dampingRatio 0.6 / stiffness 800` — visibly bouncy.
-Keep it off elements whose *position is read as information*: rows, bars, plotted points,
-figures. It remains correct on the containers around them — the sheet, the FAB, the card
-over the table. The distinction is per element, not per screen.
+**Rule.** Material 3's Expressive fast spatial spring (`dampingRatio 0.6 / stiffness 800`)
+visibly overshoots. Do not use Expressive spatial springs on elements whose **position or
+length represents data**, such as chart bars, plotted points, table rows, or numeric
+readouts. Use the Standard spatial spring or an effects spec on those elements instead.
+Expressive spatial springs remain appropriate on the containers around them, such as a
+sheet, floating action button (FAB), or card.
 
-Effects springs are identical across both schemes (`1.0/3800`, `1.0/1600`, `1.0/800`), so
-changing scheme to alter a fade or colour transition does nothing; only spatial differs.
+Effects springs are identical in both the Expressive and Standard schemes (`1.0/3800`,
+`1.0/1600`, `1.0/800`), so switching schemes does not change fades or color transitions.
 
-**Material binding.** The whole rule. Expressive-versus-Standard is meaningless without M3
-schemes — this is the one rule whose *claim*, not just its mechanism, assumes Material.
+**Material binding.** This rule applies specifically to Material 3's Expressive and
+Standard motion schemes.
 
-**Outside Material.** The generalisation is: whatever your bounciest spatial spec is, keep
-it off elements whose position is read as information. Worth stating in MOTION.md as your
-own rule rather than inheriting this one.
+**Outside Material.** In a custom design system, keep underdamped (bouncy) spatial springs
+off elements whose position or size represents data, and record that rule in `MOTION.md`.
 
-**Pinned.** `ExpressiveMotionTokens.kt:21-33`, `StandardMotionTokens.kt:19-31` — the three
-effects pairs are textually identical in both files. M3 guidance: Expressive "should be
-used for most situations, particularly hero moments and key interactions", Standard
-"should be used for utilitarian products".
+**Pinned.** `ExpressiveMotionTokens.kt:21-33` and `StandardMotionTokens.kt:19-31` define
+identical effects spring values in both files. Material 3 guidance states that Expressive
+"should be used for most situations, particularly hero moments and key interactions" and
+Standard "should be used for utilitarian products".
 
 ---
 
 ### T-008 — Custom back is seekable or it is broken
 
-**Claim.** Back follows the finger. A transition that only plays on release contradicts
-the preview the system already showed, and the user saw that first.
+**Claim.** Predictive back lets the user scrub a transition with their finger. A custom
+back handler that waits for finger release before starting its animation breaks that
+gesture preview.
 
-**Rule.** Scope: **back you implement yourself** — sheets, overlays, hand-rolled
-containers, any `BackHandler {}` popping state. `NavHost` already seeks correctly with no
-app code, and flagging it is a false positive.
+**Rule.** Scope: **custom back handlers implemented in app code**, such as hand-rolled
+sheets, overlays, or `BackHandler {}` blocks that close animated UI. Standard `NavHost`
+destinations already support predictive back out of the box and must not be flagged.
 
-Custom back is driven by progress: `PredictiveBackHandler` with `SeekableTransitionState`.
+Drive custom back transitions with gesture progress using `PredictiveBackHandler` and
+`SeekableTransitionState`.
 
-**Pinned.** `NavHost.kt` ~L823-940 installs its own handler and calls
-`SeekableTransitionState.seekTo(progress, previousEntry)`. developer.android.com: for apps
-targeting Android 16+ on an Android 16+ device, "`onBackPressed` is not called and
-`KeyEvent.KEYCODE_BACK` is not dispatched anymore".
+**Pinned.** `NavHost.kt` (~L823-940) installs its own predictive back handler and calls
+`SeekableTransitionState.seekTo(progress, previousEntry)`. On Android 16+ devices, apps
+targeting Android 16+ no longer receive `onBackPressed` or `KeyEvent.KEYCODE_BACK`
+(developer.android.com).
 
 ---
 
 ### T-009 — Frequency sets the ceiling
 
-**Detect: review-only.** Usage frequency is not in the source.
+**Detect: review-only.** How often a user triggers an interaction is not visible in source
+code unless `MOTION.md` records it.
 
-**Claim.** The motion that delights once a week is an obstruction forty times a session.
-Nothing about the animation changes; the user's relationship to it does.
+**Claim.** An expressive animation that feels pleasant once a week becomes an obstacle when
+triggered forty times in a session.
 
-**Scope: motion the user meets through their own input or navigation.** The outcome of
-background work, including work they asked for, is outside it.
+**Scope: motion triggered directly by user input or navigation.** Outcomes of background
+work, even when started by the user, are outside this rule.
 
-**Rule.**
+**Rule.** Cap animation intensity based on how often a user encounters the surface:
 
-| Frequency | Ceiling |
+| Frequency | Maximum motion |
 |---|---|
-| 100+ per day | The platform state layer only |
-| Tens per day | Fast tier from the scheme |
-| Occasional | Default tier; continuity matters most |
-| Rare or first-run | Delight permitted |
+| 100+ times per day | Platform state layer only |
+| Tens of times per day | Fast tier from the motion scheme |
+| Occasional | Default tier from the motion scheme |
+| Rare or first-run | Expressive or celebratory motion allowed |
 
-**"Platform state layer" means the feedback the component already gives you** for hover,
-focus, press and drag — on Material that is the tonal overlay plus ripple that `Button`,
-`ListItem`, `Card` and every other interactive component draw without being asked, together
-with M3 Expressive's press shape morph. On a custom design system it is whatever your
-equivalent is: the thing a component does on touch that you did not write at the call site.
+**Platform state layer** refers to the built-in press, hover, focus, and drag feedback
+provided by standard interactive components—on Material 3, the ripple, tonal state overlay,
+and press shape morph on `Button`, `ListItem`, and `Card`. On a custom design system, it is
+the equivalent built-in touch feedback.
 
-**It always survives the gate.** It is rung 1 of the resolution ladder, and the default
-fallback cannot fail the default rule. The ceiling governs what is added *on top of* the
-state layer. Removing or replacing it is a product-wide decision belonging in MOTION.md —
-and a bare `clickable` with `indication = null` has removed it by accident, which is the
-common form of getting this wrong.
-
-**Why it is ours.** No Android or Material source states a frequency gate. It is the
-single most load-bearing judgment in motion work and it is entirely undocumented.
+Built-in state-layer feedback is always allowed at any frequency. This rule caps additional
+motion layered on top of it. Removing the state layer altogether (for example, calling
+`Modifier.clickable(indication = null, ...)` by mistake) is a defect unless documented as
+a product-wide rule in `MOTION.md`.
 
 ---
 
 ### T-010 — Exits use fewer properties, not shorter durations
 
-**Claim.** Something leaving should not hold attention on its way out. The user has
-already moved on.
+**Claim.** When an in-place UI element closes, the user has already shifted attention to
+what remains on screen.
 
-**Rule.** On Android, asymmetry is expressed as **tier and property count, not a duration
-ratio**: enter with spatial *and* effects; exit with effects only — where closing the slot
-the component held, `shrinkVertically` or `shrinkHorizontally` on the fast tier beside the
-fade, **counts as effects-only**. The slot is not the component moving; it is the layout
-around it closing. A slot left to snap shut once the fade ends is a jump.
+**Rule.** For components that appear and disappear in place, make the exit simpler than the
+entrance by animating **fewer properties on a faster tier**, rather than halving a duration:
 
-**Material binding.** The tier vocabulary and M3's own position that exits are usually
-just a fade. In scheme terms: `defaultSpatialSpec` + `defaultEffectsSpec` in,
-`fastEffectsSpec` out.
+- **Entrance:** spatial + effects (for example, expand/scale plus fade).
+- **Exit:** effects only (fade out, optionally paired with a fast-tier `shrinkVertically`
+  or `shrinkHorizontally` so the surrounding layout closes smoothly instead of snapping
+  shut after the fade).
 
-**Outside Material.** Enter moves *and* fades; exit only fades. The property count is the
-mechanism; the tier names are Material's way of saying it.
+**Material binding.** Use `defaultSpatialSpec` + `defaultEffectsSpec` on enter, and
+`fastEffectsSpec` on exit.
 
-**Scope — a component that appears and disappears in place**: a menu, a tooltip, a popup,
-a badge, a section shown and hidden as its container expands. It appears where it will sit
-rather than travelling there, so its exit has no path to retrace. Outside it:
+**Outside Material.** Animate both position/scale and opacity on entrance, and only opacity
+(plus layout slot collapse) on exit.
 
-- **Anything that returns where it came from.** A sheet, drawer or panel that arrived from
-  an edge leaves toward that edge, however it is dismissed; a shared element or container
-  transform reverses into its source. That exit is the entrance played backwards, and
-  dropping its movement breaks the reversal the user reads the layout from.
-- **Anything the finger drives** — a swipe dismissal completing on velocity, a
-  predictive-back exit seeking with progress. The timing is the gesture's, not the spec's.
-- **A change of emphasis in place.** A persistent element animating its own alpha, colour
-  or elevation is not entering or leaving. There is no spatial half to drop.
-- **Content clamped rather than removed** — a blurb cut to three lines, a list capped at a
-  height. It stays on screen; less of it shows.
-- **A transition between destinations.** A screen is not a component appearing in place,
-  and a cross-fade between two of them is a pattern, not an exit missing its movement.
+**Scope — components that appear and disappear in place** (menus, tooltips, popups, badges,
+and inline expandable sections). The following cases are outside this rule:
 
-**Why the ratio was wrong.** "Half the entrance" is one legacy pairing (emphasized
-400/200) promoted to law; M2 standard was 225/195, M3 standard 250/200. Under springs
-there is no duration to halve — which is why the earlier claim that the spring system
-silently drops the asymmetry was false. It lives in the tier choice.
+- **Surfaces that travel from an edge or source** (sheets, drawers, side panels, shared
+  elements, and container transforms). Those exit back toward their origin.
+- **Gesture-driven dismissals** (swipe-to-dismiss or predictive back), whose timing follows
+  the user's finger.
+- **In-place emphasis changes** where a persistent element changes alpha, color, or
+  elevation without entering or leaving.
+- **Clamped content** (such as text truncated to three lines) that stays on screen.
+- **Full-screen destination transitions** between screens.
+
+**Why duration ratios do not apply:** Spring tokens have no duration parameter to halve. In
+Material 3's spring system, entrance/exit asymmetry is expressed through tier selection and
+property count.
 
 ---
 
 ### T-011 — The pattern states the relationship
 
-**Detect: review-only.** Relationship intent is not in the source.
+**Detect: review-only.** The hierarchical or peer relationship between screens depends on
+app information architecture.
 
-**Claim.** Motion between screens tells the user how they are related. The wrong pattern
-asserts a relationship that does not exist, and users trust it over the layout.
+**Claim.** Screen transitions tell the user how two destinations relate in the app's
+structure. Using a directional slide between unrelated sections implies a spatial order
+that does not exist.
 
-**Rule.** Direction promises **order**. A gesture is optional — a Next/Back wizard is
-ordered and correctly directional without being swipeable.
+**Rule.** Use directional transitions only when destinations have a defined **order** (such
+as steps in a sign-up flow or a swipeable `TabRow` + `Pager`). A swipe gesture is not
+required for ordered steps—a Next/Back wizard is ordered and should slide laterally.
 
-| Relationship | Pattern |
+| Screen relationship | Transition pattern |
 |---|---|
-| One element becomes the next screen | Container transform |
+| One element expands into the next screen | Container transform |
 | Parent to child in a hierarchy | Forward and backward |
-| Ordered peers | Lateral |
-| **Unordered top-level destinations** — nav bar, rail, drawer | **Top level: cross-fade** |
-| A component appearing in place | Enter and exit |
+| Ordered peers (wizard steps, horizontal pager tabs) | Lateral slide |
+| **Unordered top-level destinations** (bottom bar, navigation rail, drawer) | **Top-level cross-fade** |
+| Component appearing in place | Enter and exit |
 
-"Peer" means *unordered*. Top-level destinations have no order to promise: system back
-returns to the start destination regardless of history, and a deep link has no origin at
-all, so there is no source of truth for a direction. A swipeable `TabRow` + `Pager` is an
-ordered set and is lateral — correct, and out of scope here.
+Top-level destinations in a navigation bar, rail, or drawer are unordered peers: system
+back returns to the start destination rather than stepping laterally, and deep links can
+open any tab directly. Use a cross-fade (or fade-through) between them, never a directional
+slide.
 
-**Material binding.** The five pattern names in the table, and the MDC vocabulary below.
+**Material binding.** The five Material 3 transition patterns above (and `MaterialContainerTransform`,
+`MaterialSharedAxis`, and `MaterialFadeThrough` in MDC-Android).
 
-**Outside Material.** The five *relationships* are the rule; the names are Material's. Map
-your own transitions onto them and record the mapping in MOTION.md. A design system with a
-sixth relationship Material does not name adds a row — the claim accommodates it.
-
-**Pinned.** M3 transition patterns. Older vocabulary still live in code:
-`MaterialContainerTransform`, `MaterialSharedAxis`, `MaterialFadeThrough` in MDC-Android.
+**Outside Material.** Map the project's custom transitions to these five structural
+relationships in `MOTION.md`.
 
 ---
 
 ### T-012 — Never gate input on an animation finishing
 
-**Claim.** Motion that ignores input until it completes makes the interface feel like it
-is not listening. The user never waits for an animation to grant permission.
+**Claim.** Disabling buttons or ignoring touches while an animation finishes makes the app
+feel unresponsive.
 
-**Rule.** Input remains live throughout. The violating forms are structural, not spec:
-`enabled = !isAnimating` guards, `snapTo()` before `animateTo()` discarding current
-position, and `delay()`-sequenced `LaunchedEffect` chains that cannot be interrupted
-partway. A chain keyed to the state it animates is cancelled by the next input, pending
-`delay()` included, and is not one of them.
+**Rule.** Keep controls interactive while animations run. Do not gate input on animation
+state (`enabled = !isAnimating`), call `snapTo()` immediately before `animateTo()` in a way
+that resets in-flight progress, or run sequential `delay()` chains inside an unkeyed
+`LaunchedEffect` that ignores new taps until the sequence finishes.
 
-**Not a violation:** a `tween` retargeted mid-flight. Compose continues from the current
-value; its defect is spending a full duration on a small remaining distance, which is a
-spec question, not an interruption one.
+A `LaunchedEffect(state)` block that runs `delay()` before `animateTo()` **is allowed**,
+because a new state change cancels the coroutine (including any pending `delay()`) and
+starts the new transition immediately. Retargeting a `tween` mid-flight is also allowed by
+this rule, because Compose continues smoothly from the current animated value.
 
-**Pinned.** `Animatable.animateTo` cancels the in-flight animation and continues from its
-current value.
+**Pinned.** `Animatable.animateTo` cancels any in-flight animation on the same `Animatable`
+and starts from the current value and velocity.
 
 ---
 
 ### T-013 — Stagger has a total budget, not a per-item delay
 
-**Detect: review-only.** Item count is runtime data.
+**Detect: review-only.** The number of items in a list is usually determined at runtime.
 
-**Claim.** A cascade reads as one gesture up to a point. Past it the user is watching a
-queue, and the last arrival feels late rather than choreographed.
+**Claim.** A short stagger groups items into a single cascade, but a fixed delay multiplied
+across a long list forces the user to wait for a slow queue of arrivals.
 
-**Rule.** Budget the sequence, not the gap. Default where the product has not set one:
-**~300ms from the first item starting to the last item starting.** Each item's own motion
-runs on its own spec after that and is not counted. Beyond the budget, cap the *count* —
-items past the cap share the final staggered delay rather than extending the sequence.
+**Rule.** Cap the **total stagger window** from the first item starting to the last item
+starting at roughly **300ms** (unless `MOTION.md` sets a different cap). Do not use an
+unbounded `index * delayMs` formula that grows linearly with list length. When a list has
+more items than fit in the budget, cap the maximum delay so trailing items start together
+at the end of the 300ms window. Never place later items on screen before earlier items have
+started animating.
 
-Never place later items before earlier ones: "animate the first few, place the rest" read
-literally inverts the order, which is worse than the queue it avoids.
+This budget applies to two cases:
 
-**Two cases, one budget.**
+- **Items entering the viewport together** on initial load (never stagger items as they
+  scroll into view).
+- **Discrete parts of a single control updating in place** (such as stars in a rating bar
+  filling in sequence). Only animate the parts whose state actually changed.
 
-- **A group entering.** Viewport only, never on scroll.
-- **The parts of one control changing in place** — a rating bar filling, a segmented
-  control moving its selection. The cascade is the control's own articulation, so it runs
-  on every change, not once.
-
-Only the parts that actually changed animate. Re-running the cascade over parts already at
-their target is the same defect as animating something that did not change.
-
-**Pinned.** A spring carries no start delay: `SpringSpec` exposes `dampingRatio`,
-`stiffness` and `visibilityThreshold` only, and `repeatable`'s `initialStartOffset` takes
-a `DurationBasedAnimationSpec`, which a spring is not. Staggering token-resolved springs
-therefore means one coroutine per part — `delay(index * gap)` then `animateTo` — keyed to
-the state, so a second input cancels the pending `delay()` and its animation with it.
+**Pinned.** `SpringSpec` has no start-delay parameter (`dampingRatio`, `stiffness`, and
+`visibilityThreshold` only), and `repeatable(initialStartOffset = ...)` only accepts a
+`DurationBasedAnimationSpec`. To stagger spring animations, launch one coroutine per item
+keyed to the target state, call `delay(staggerMs)`, and then call `animateTo(...)` so a new
+input cancels any pending delays.
 
 ---
 
 ### T-016 — Unanchored surfaces expand; they do not scale from centre
 
-**Claim.** A surface scaling up from its own centre reads as flying toward the viewer.
-That asserts a depth change M3 deliberately reduced.
+**Claim.** Scaling a dialog or panel up from its center makes it look like it is flying
+toward the user along the z-axis, which clashes with Material 3's flat elevation model.
 
-**Rule.** Scope: **unanchored** full-surface scale from centre. A surface anchored to its
-origin — a menu growing from its trigger, a container transform — scales correctly,
-because it reads as emerging *from* the source rather than approaching the viewer.
+**Rule.** Scope: **unanchored** surfaces that appear in the middle of the screen without a
+trigger element. Expand those surfaces along an axis (or fade them in) rather than scaling
+from `0f` or `0.8f` around their center.
 
-**Material binding.** The justification — M3 reduced how much depth the system uses, so
-asserting a depth change is off-language *there*.
+Surfaces **anchored to a trigger**—such as a `DropdownMenu` scaling out from the button
+that opened it, or a container transform expanding from a card—may use scale with an explicit
+`transformOrigin`, because the motion reads as growing out of the trigger.
 
-**Outside Material.** The claim holds anywhere depth is not a primary axis of the design
-language. A system that uses depth heavily and deliberately may find centre-scale correct;
-that is a legitimate `DECIDED` entry, not a violation.
+**Material binding.** Material 3's enter-and-exit guidance and reduced elevation model.
 
-**Pinned.** M3 enter-and-exit: Android expands or collapses on an axis rather than
-scaling, because scale implies an elevation change inconsistent with M3's reduced
-elevation model. Counter-case that defines the scope: `DropdownMenuContent` scales 0.8→1.0
-with FastSpatial from its anchor, `Menu.kt` ~L1827-1855.
+**Outside Material.** Applies to any design system that avoids z-axis depth effects. Design
+systems that intentionally use central scale for modals can record that choice as `DECIDED`
+in `MOTION.md`.
+
+**Pinned.** Material 3 enter-and-exit guidance specifies axis expansion rather than central
+scaling. Contrast with anchored menus: `DropdownMenuContent` in `Menu.kt` (~L1827-1855)
+scales `0.8f → 1.0f` using `FastSpatial` from its anchor `transformOrigin`.
 
 ---
 
 ### T-017 — A screen introduces itself once
 
-**Claim.** Entrance motion says "this is new". Replaying it on return from a detail screen
-says something arrived when nothing did, and makes going back feel slower than it is.
+**Claim.** Playing an entrance animation again when the user navigates back to a screen
+makes back navigation feel slow and suggests the content was reloaded.
 
-**Rule.** Entrance animations play on first entry to a destination, not on every re-entry
-to composition.
+**Rule.** Run one-off entrance choreography only when a destination first enters the back
+stack, not when the user pops back to it from a child screen.
 
-**Mechanism.** `LaunchedEffect(Unit)` re-runs whenever the composable re-enters
-composition, including popping back to it. The "already entered" flag belongs in
-`rememberSaveable` or the destination's state holder.
+**Mechanism.** A plain `LaunchedEffect(Unit)` runs every time a composable re-enters
+composition, including when popping back from a detail screen. Store the "has played
+entrance" boolean in `rememberSaveable` or in the screen's `ViewModel` / state holder.
 
 ---
 
 ### T-018 — Platform overscroll stays unless deliberately replaced
 
-**Claim.** The stretch at the end of a list is what an Android user expects, and one of
-the strongest signals that an app is native rather than ported.
+**Claim.** Android's stretch overscroll at the edge of a scrolling list tells the user they
+have reached the boundary and matches the rest of the operating system.
 
-**Rule.** Do not disable the platform overscroll effect, or replace it with a custom
-bounce.
+**Rule.** Keep the default platform overscroll effect on scrollable containers instead of
+disabling it (`LocalOverscrollFactory provides null` / `overscrollEffect = null`) or
+replacing it with a custom bounce:
 
-- **A component with no edge** — a carousel that loops endlessly — has nothing to stretch
-  against, and `overscrollEffect = null` there is correct. Its structure is the reason; it
-  needs no comment.
-- **Any other per-component replacement** is permitted with its reason stated beside it.
-- **Replacing it product-wide** belongs in MOTION.md.
+- **Endless or looping carousels** have no boundary to stretch against, so disabling
+  overscroll on them is valid without a comment.
+- **Per-component replacements** on other views require a brief comment explaining why
+  platform overscroll does not fit that component.
+- **App-wide overscroll replacement or removal** must be recorded as a `DECIDED` entry in
+  `MOTION.md`.
 
-**Pinned.** Stretch overscroll is platform behaviour from Android 12 (API 31).
+**Pinned.** Stretch overscroll has been Android's platform default since Android 12
+(API 31).
 
 ---
 
 ### T-019 — Skeletons match structure; indicators have a floor
 
-**Detect: review-only.** Comparing a skeleton to the eventual layout is semantic.
+**Detect: review-only.** Checking whether a placeholder matches the loaded layout requires
+comparing both compositions.
 
-**Claim.** A skeleton promises content of a shape. If the real content does not match
-structurally, the promise breaks and the screen jumps.
+**Claim.** A skeleton placeholder previews the shape of incoming content, and a loading
+spinner that flashes for a few milliseconds looks like a rendering glitch.
 
-**Scope: a placeholder shown where content is loading** — a skeleton, a spinner in place
-of a list. What a control shows the moment it is pressed — a button becoming "Saving…" —
-acknowledges the input, and is outside it.
+**Scope: placeholders shown in place of loading content** (skeleton screens and loading
+spinners). Immediate press feedback inside the control the user just tapped—such as a
+button label changing to "Saving…"—is outside this rule.
 
-**Rule.** The bar is *structural* match, not exact match — a heterogeneous feed may ship
-an approximate card skeleton and it works, because the structure holds. Where the
-structure is unknown, an indeterminate indicator.
+**Rule.** When the loaded layout's structure is known in advance, use a skeleton that
+matches its coarse layout geometry. When the layout structure varies or is unknown, use an
+indeterminate progress indicator.
 
-Either way, apply a **delay before showing and a minimum visible duration**, so a fast
-response does not produce a flash. An indicator that appears and vanishes within 80ms is
-worse than no indicator.
+In both cases, prevent brief flashes on fast loads by following this four-step sequence:
 
-**The whole sequence, in order.** Each step exists to remove one kind of flicker:
+1. **Wait ~150ms before showing the placeholder.** If the data arrives within 150ms, never
+   show the placeholder at all.
+2. **Fade the placeholder in** rather than popping it onto the screen in a single frame.
+3. **Hold the placeholder for a minimum visible duration** once it appears, even if data
+   arrives right after the fade-in starts, so the placeholder does not flash and vanish.
+4. **Cross-fade from the placeholder to the loaded content** rather than cutting abruptly.
 
-1. **Delay before showing.** Nothing appears for the first ~150ms. A response that arrives
-   inside that window never shows a placeholder at all.
-2. **Fade the placeholder in.** It should not appear instantly; an abrupt skeleton is its
-   own flash.
-3. **Hold a minimum.** Once shown, it stays for a minimum — its fade-in plus a short
-   dwell — even if content arrives immediately after. A placeholder that vanishes before
-   the eye resolves it reads as a glitch, not as speed.
-4. **Cross-fade to content**, rather than swapping. The structural match means the two
-   frames are nearly aligned, so a short cross-fade reads as the content resolving rather
-   than as one thing being replaced by another.
+**Material binding.** Material 3 defines skeleton loaders as a standard transition pattern.
 
-Skipping step 3 is the common mistake, because it feels like deliberately slowing the app
-down. It is the opposite: it is what stops a fast response from looking broken.
-
-**Material binding.** M3 naming skeleton loaders a distinct transition pattern, which is
-what makes a skeleton the expected form rather than one option.
-
-**Outside Material.** Both halves stand alone: structural match is a property of the
-promise, and the indicator delay-and-minimum is about human perception of flashing, not
-about Material.
-
-**Pinned.** M3 lists skeleton loaders as a distinct transition pattern.
+**Outside Material.** Both the structural match requirement and the delay/minimum-hold
+timing apply in any design system.
 
 ---
 
 ### T-020 — One event, one scheme and one tier
 
-**Detect: review-only.** What counts as "one perceived event" is not in the source. A
-checker can compare tiers *within* a single transition block; it cannot decide where an
-event begins.
+**Detect: review-only.** Grouping separate animations into a single user-perceived event
+requires reading the screen composition as a whole.
 
-**Claim.** Elements moving together but timed differently read as unrelated. The viewer
-cannot say why the screen feels incoherent, only that it does.
+**Claim.** When a container and its contents animate together on mismatched speed tiers,
+the transition looks disjointed.
 
-**Rule.** Motion perceived as a single event uses one **scheme and tier** throughout — not
-necessarily one spec, since spatial and effects springs properly differ within a tier. The
-common defect is a pane transition on one tier with content on another.
+**Rule.** All animations that run together in the **same direction of a single user-perceived
+event** must use the same motion **scheme and speed tier** (for example, `defaultSpatialSpec`
+and `defaultEffectsSpec` from the same scheme). A common violation is animating an
+expanding panel on the `slow` tier while sliding its inner rows in on the `fast` tier.
 
-**Scope: elements moving for the same reason** — a pane and the content arriving with it.
-An element whose position is read as a value — a bar, a plotted point, a figure — moves
-to show that value, not with the pane, and is outside it.
+**Scope: elements moving together as part of one transition** (such as a panel and the
+controls revealed inside it). Data visualizations whose position encodes a value (chart
+bars, plotted points) move to show that value rather than moving with the pane, and are
+outside this rule.
 
-Compare elements moving in the *same direction* of one event: what enters with what
-enters, what leaves with what leaves. An exit is never compared with the entrance it
-mirrors, and a later input starts a new event, even one that undoes the last.
-
-Does not apply across the app/platform boundary — system transitions are not yours.
+Only compare animations moving in the same phase of the same event: compare entering
+elements with entering elements, and exiting elements with exiting elements. Do not compare
+an entrance spec with the exit spec that mirrors it, or compare across separate user
+inputs. System window transitions are also outside this rule.
 
 ---
 
 ### T-021 — Keys identify content, not position
 
-**Claim.** A list whose items re-animate on every insertion is telling the user everything
-changed, when one thing did.
+**Claim.** Keying a lazy list by index causes every item after an insertion or deletion to
+re-run its item animation as if the whole list had changed.
 
-**Rule.** `key = { it }` on an index, or any key derived from position, is stable and
-wrong: inserting one item shifts every subsequent key and re-animates the whole list. Keys
-are derived from item identity.
+**Rule.** Pass a stable item ID (such as `key = { item.id }`) to `items(...)` or
+`itemsIndexed(...)`, never the list index (`key = { index -> index }`) or a key derived
+from list position. When an item is inserted at the top, index-based keys shift for every
+following row and trigger false animations down the list.
 
-Scope: a key that is present. Whether one exists at all is outside it.
+Scope: lists that already provide a `key` parameter. Whether a `key` exists at all is
+outside this rule.
 
 ---
 
 ### T-022 — Content tracks the keyboard, it does not jump
 
-**Claim.** The keyboard animates in. Content that arrives in its final position partway
-through reads as a glitch rather than a response.
+**Claim.** The software keyboard slides smoothly onto the screen. Repositioning input
+fields on a boolean visibility callback causes the layout to jump in a single frame while
+the keyboard is still moving.
 
-**Rule.** Content follows the animated `WindowInsets.ime` value rather than repositioning
-on a visibility callback. The violating form is a boolean "keyboard visible" driving a
-layout change.
+**Rule.** Drive keyboard-avoiding layout shifts from the animated `WindowInsets.ime` inset
+(or `Modifier.imePadding()`) rather than toggling padding or arrangement from a boolean
+`isKeyboardVisible` state.
 
 **Pinned.** `WindowInsets.ime`, `Modifier.imePadding()`.
 
@@ -848,265 +821,216 @@ layout change.
 
 ### T-023 — Motion starts on the input frame
 
-**Claim.** Perceived speed is set by when feedback begins, not when work finishes. Motion
-that waits for a response makes a fast system feel slow.
+**Claim.** Users judge responsiveness by when visual feedback starts, not when a network or
+disk request finishes.
 
-**Rule.** Motion begins on the frame the input arrives, not the frame the result does. A
-transition that can start before data lands, starts — the destination arrives in a loading
-state rather than the origin holding still.
-
-**Why it is ours.** Nothing in Material or Android guidance connects motion timing to
-perceived performance, and it is the highest-yield judgment in app motion.
+**Rule.** Start visual feedback or screen transitions on the frame the user taps, rather
+than waiting for an asynchronous call to return before starting the animation. If a button
+triggers an async action, reflect the active state on the button immediately on tap. If a
+tap navigates to a new screen, transition immediately and show a loading state in the
+destination rather than holding the origin screen still.
 
 ---
 
 ### T-024 — Back plays the inverse of forward
 
-**Claim.** Reversal is how a user builds a model of where things live. An exit that is not
-the inverse of its entrance breaks the model, and predictive back now shows it happening.
+**Claim.** Navigating back reverses the path the user took to get there. If a screen slides
+in from the right on forward navigation, fading it out on back breaks spatial
+continuity—especially under predictive back, where the user scrubs the exit live.
 
-**Scope: something that travelled to where it is** — a screen, a sheet or panel from an
-edge, a shared element. A component that appears in place, like a menu or a popup, has no
-path to retrace.
+**Scope: surfaces and destinations that traveled from an edge or origin** (pushed screens,
+bottom or side sheets, drawers, and shared elements). Components that appear in place
+without directional travel (menus, tooltips, badges) have no path to retrace and are
+outside this rule.
 
-**Rule.** If forward enters from the right, back exits to the right. Enter-from-right
-paired with exit-by-fade was survivable when back was instantaneous; with predictive back
-rendering the reversal live under the user's finger, it is visibly wrong.
+**Rule.** Match the back/dismiss exit direction to the inverse of the entrance direction.
+A screen that enters by sliding from the right must exit by sliding back to the right on
+pop.
 
 ---
 
 ### T-025 — A hand-rolled surface drags like the one it replaces
 
-**Detect: review-only.** Which platform surface a custom one stands in for is semantic.
+**Detect: review-only.** Recognizing that a custom composable replaces a standard draggable
+sheet, drawer, or card requires reading the UI role in context.
 
-**Claim.** Continuous, velocity-carrying gesture motion is the single strongest signal of
-a native app. A surface that only opens and closes on a tap, where its platform
-counterpart follows the finger, is what ported apps feel like.
+**Claim.** Standard Android sheets, drawers, and dismissible cards follow the user's finger
+during a drag. A custom replacement that only opens and closes on button taps feels rigid.
 
-**Scope: a hand-rolled surface standing in for one the platform lets the user drag** — a
-bottom or side sheet, a navigation drawer, a swipe-to-dismiss card. Back, and how an
-existing drag carries its velocity, are outside it.
+**Scope: custom sheets, drawers, panels, and dismissible cards** that stand in for a
+platform component users normally drag. Predictive back and release velocity on an existing
+drag handler are outside this rule.
 
-**Rule.** It offers the drag its platform counterpart offers, not only a fired open and
-close.
+**Rule.** Support direct finger dragging (such as `anchoredDraggable` or `draggable`) on
+custom sheets, drawers, and swipeable cards rather than only toggling them with tap
+animations.
 
 ---
 
 ### T-026 — One hero motion per event
 
-**Claim.** When everything moves, nothing is emphasised. The thing that moves should be
-the thing that changed.
+**Claim.** When five separate cards, headers, and badges animate with independent springs
+on the same state change, they compete for attention and make the screen hard to scan.
 
-**Rule.** One element leads an event; the rest support it or hold still. Six individually
-correct springs firing at once satisfy every other rule in this file and still produce a
-screen nobody can read.
+**Rule.** Give each state change a single primary motion, and keep sibling elements either
+static or subordinate to that transition. Report this as **one finding at the parent
+composable** that coordinates the competing animations, rather than flagging each child
+composable separately.
 
-It is **one finding per event**, placed where the elements are composed onto it. Each
-mover is evidence for that finding, not a finding of its own; listing them separately
-reports one defect several times.
-
-**Count semantic controls, not composables.** Five star icons in a rating bar are *one*
-control with five discrete parts, and a tap changes that one control. The parts are not
-six competing motions to be cut down to one.
-
-**Where the parts of one control all changed, the resolution is sequence, not
-suppression.** Staggering them in a single direction gives the event its leader — the
-first part — and makes several movements read as one gesture. Holding four of five stars
-still to leave a single mover would hide the state change the user just made. Suppression
-is for elements that did not change, and for elements belonging to a different control;
-sequence is for the parts of the one that did.
-
-**Why it is ours.** Every other rule governs motion in isolation. This is the only one
-about how much motion an event may contain at all.
+**Group parts of a single control together:** Five stars inside one rating bar are five
+parts of a single control, not five competing controls. When multiple parts of one control
+change together, stagger them in sequence so they read as one coordinated sweep rather than
+suppressing four of the five stars. Reserve suppression for separate sibling components
+that do not need independent entrance or emphasis animations on the same event.
 
 ---
 
 ### T-027 — A correction is not a celebration
 
-**Detect: review-only.** Which direction a product considers progress is semantics, not
-source.
+**Detect: review-only.** Determining which state direction represents progress versus
+undoing an action depends on product semantics.
 
-**Claim.** Expressive motion reads as approval. Spent on a user undoing something, it
-congratulates them for the retraction and makes the correction feel as weighty as the
-commitment. A star is pleased to be lit and merely obedient when put out.
+**Claim.** Bouncy, expressive motion celebrates an action. Playing the same celebratory
+bounce when a user undoes an action—such as un-starring an item or clearing a
+bookmark—treats a retraction like an achievement.
 
-**Scope: a control changing state in place** — a rating rising or falling, a favourite set
-or cleared, a counter stepping up or down. Entering and leaving are outside it.
+**Scope: controls that toggle or step between states in place** (favorites, bookmarks,
+ratings, and counters). Component entrances and exits are outside this rule.
 
-**Rule.** Where the product treats one direction as progress and the other as a
-correction, the two should not move identically. The advance is the direction permitted
-expression; the retraction resolves more plainly, or more quickly, or both.
+**Rule.** When one direction of a control represents positive commitment (saving, liking,
+increasing a rating) and the opposite direction represents clearing or undoing it, make the
+retraction calmer or faster than the activation. For example, animate activation with an
+Expressive spring or scale pop, and animate clearing with a Standard spring or a simple
+color/fade transition.
 
-**How that is expressed is the product's decision.** The rule asks that the directions
-differ, not that they differ in a particular way. One example of an acceptable answer, if
-you are on M3 Expressive semantics and your UX wants it: advance on the Expressive scheme
-and retract on Standard — within a single scheme the bounciest spatial spring is also the
-quickest, so changing tier alone cannot buy "faster and plainer". A system with different
-tiering, or one mandating a single level of expression throughout, satisfies this another
-way or does not adopt it at all.
-
-**Not every pair has a direction.** A disclosure arrow, a theme switch, a filter turned on
-and off — where neither direction is the better one, symmetry is correct, and reaching for
-this rule invents a preference the product does not hold.
-
-**Why it is ours.** No source states it. Emil's asymmetry is interaction *phase* — slow
-where the user is deciding, fast where the system responds — and Material's is
-navigational direction. Neither reads the *valence* of a change.
+**Neutral toggles are exempt:** Controls where neither state is "progress"—such as a
+dark/light theme toggle, an expand/collapse chevron, or a filter chip—should animate
+symmetrically in both directions.
 
 ---
 
 ### T-028 — Background work finishes quietly
 
-**Detect: review-only.** Who started the work, and what a failure affects, are not always
-in the source.
+**Detect: review-only.** Telling background sync apart from user-blocking actions requires
+checking how the work was triggered and whether the current screen depends on it.
 
-**Claim.** Motion claims attention for something that just happened to the user. Spent on
-the outcome of background work, it interrupts whatever they are doing to report on the
-app's own housekeeping.
+**Claim.** Prominent banners and motion draw the user's eye away from what they are reading.
+Using them to announce routine background sync completions interrupts the user for app
+housekeeping.
 
-**Scope: work that runs in the background and its outcome**, whether the system scheduled
-it or the user asked for it — a periodic or manual sync, a prefetch, an upload the system
-resumed. Work the current screen is blocked on, such as submitting a form, is outside it.
+**Scope: background syncs, prefetches, and uploads**, whether scheduled automatically or
+started via a "Sync now" / pull-to-refresh action. Foreground actions that block the
+current screen (such as submitting a checkout form) are outside this rule.
 
 **Rule.**
 
-- **While it runs**, it may show that it is running, quietly and in place.
-- **When it succeeds**, the running indicator goes away and nothing else moves. Where the
-  user asked for the work through a control — a Sync now button, pull to refresh — one
-  transient confirmation is permitted, provided it neither blocks, covers nor displaces
-  what the user is reading: a snackbar, or the control itself briefly showing done. Never
-  a dialog.
-- **When it fails**, the current screen shows the failure prominently only if the failure
-  affects what that screen shows. Otherwise the failure goes to a notification: the work's
-  own ongoing notification where it has one, updated in place rather than posted anew, so
-  a failure that repeats does not alert the user again.
+- **While running:** Show progress quietly in place (such as a small inline icon or subtle
+  progress bar).
+- **On success:** Hide the running indicator without displacing layout content. If the user
+  explicitly triggered the sync (for example, tapping "Sync now"), a brief non-blocking
+  confirmation—such as a snackbar or the button briefly showing "Synced"—is allowed. Never
+  show a modal dialog or insert a layout-shifting banner for a completed background sync.
+- **On failure:** Show an inline error on the current screen only if the failure makes the
+  current screen's content stale or unusable. Otherwise, report the failure through a
+  system notification (updating the existing notification ID with `setOnlyAlertOnce(true)`
+  so repeated retries do not keep alerting the user).
 
-**Pinned.** developer.android.com, "Foreground services overview": foreground services
-"show a status bar notification, to make users aware that your app is performing a task".
-"Create a notification": calling `notify()` again with the same ID updates the existing
-notification, and `setOnlyAlertOnce()` makes it interrupt "only the first time the
-notification appears and not for later updates".
-
-**Why it is ours.** Material specifies how to show progress, not whose progress deserves
-the screen. The split between the app's work and the user's is a judgment no source makes.
+**Pinned.** developer.android.com ("Foreground services overview" and "Create a
+notification"): calling `notify()` with an existing ID updates the notification in place,
+and `setOnlyAlertOnce()` alerts the user only on the first appearance.
 
 ---
 
 ## Provenance
 
-Taste is mostly inherited, not invented. What each rule adds is the decision its source
-leaves open.
+Most rules in this file adapt existing Android, Compose, or motion-design guidance and fill
+in the concrete thresholds or Compose APIs that the upstream docs leave open.
 
-**Material is two things, and only one is taste.** Its *specs* — token values, component
-anatomy, elevation, type scale — are not ours and belong to
-[`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). Its
-*taste guidance* — which pattern suits which relationship, motion used sparingly,
-expression in service of usability — is what we integrate, as the default for a product
-that has not chosen otherwise.
+**Separation from Material 3 component specs:** Material 3 token tables, component padding,
+elevation values, and typography belong to
+[`hamen/material-3-skill`](https://github.com/hamen/material-3-skill). This file covers
+only motion behavior and transition choices.
 
-### Whose standard we serve
+### Whose standard applies
 
-**The product's own — whatever that is.** These skills help a team hold to the motion
-language *they* chose, and choose one when they have not. They do not argue an app toward
-Material.
+These skills enforce the **project's own motion language** first, whether that language is
+Material 3 Expressive, customized Material 3, or a custom design system:
 
-"Their own" covers every case equally: M3 adopted wholesale, M3 extended, a wholly custom
-system, or an inherited corporate language. A team that chose M3 has a standard that
-happens to be Material — not the same as us applying Material to them, and the difference
-shows the moment they want to depart from it.
+- **When the project has a defined standard (`MOTION.md` or clear code conventions):**
+  Check code for consistency with that standard rather than pushing it toward Material 3
+  defaults.
+- **When the project has no defined standard:** Use the fallback ladder below, and state
+  which rung provided the default so the team can approve or override it.
 
-- **A standard exists** → fidelity to it. Not improvement, not modernization, not M3
-  conformance. Inconsistency with their standard is the finding; disagreement with our
-  taste is not.
-- **No standard exists** → help them decide, then hold them to it. The M3E default is a
-  *proposal a human ratifies*, never applied silently.
+### Per-decision resolution ladder
 
-### Resolution is per decision, not per codebase
+Each motion question resolves independently down this list, stopping at the first rung that
+answers it:
 
-For **this decision**, has the team said anything? Stop at the first rung that speaks:
+0. **Project standard:** `DECIDED` entries in `MOTION.md`, or the design system it names.
+1. **Material 3 Expressive:** Default spatial and effects tokens from `MotionScheme`.
+2. **Craft defaults:** The rules in this file (drawing on
+   [Emil Kowalski's animation principles](https://github.com/emilkowalski/skills), MIT, re-derived
+   for Android).
+3. **Ask the user:** When the question depends on product intent not visible in code.
 
-0. The product's standard — `DECIDED` in MOTION.md, or a design system it points to
-1. Pragmatic M3 Expressive
-2. Craft — [Emil Kowalski's animation work](https://github.com/emilkowalski/skills) (MIT)
-   and community practice, covering what M3 leaves silent
-3. Ask
+A project that customizes three transitions uses Rung 0 for those three and falls back to
+Rung 1 or Rung 2 for the rest.
 
-The same codebase draws from different rungs for different questions. A product that
-customised three things follows its own standard for those three and M3E elsewhere. There
-is no *threshold* of customisation at which resolution changes.
+**Non-Material projects:** If a repository does not depend on
+`androidx.compose.material3` at all (building directly on Compose Foundation and UI, like
+[Jewel](https://github.com/JetBrains/jewel)), do not assume Material 3 Expressive as
+Rung 1. Ask once what fallback the team wants and record the answer in `MOTION.md`.
 
-**One signal matters, to the fallback rather than to resolution.** An app with no
-`androidx.compose.material3` dependency at all — built on Compose Foundation and UI, as
-[Jewel](https://github.com/JetBrains/jewel) is — has declined Material rather than
-customised it. Defaulting it to M3E imports a voice it avoided. Ask once; record the
-answer.
+**Unratified code patterns vs. standards:** Only human-approved `DECIDED` entries sit at
+Rung 0. Repeated patterns found in code (`OBSERVED`) are flagged when a new file breaks
+consistency with them, but they never override `floor` or `obligation` rules.
 
-**Gaps are normal.** Most design systems specify colour, type and spacing and say nothing
-about motion. That is the condition the fallback exists for, not a finding.
+### Rule sources
 
-**The fallback is overridable**, and **a skill says which rung it used** when a decision
-resolves below rung 0.
-
-### Two things this does not mean
-
-**An accident is not a standard.** Only `DECIDED` sits at rung 0. A spec recurring across
-thirty files is a copy-paste nobody examined. `OBSERVED` patterns are reported as
-inconsistency, never enforced as doctrine.
-
-**A standard is not a licence to harm users.** `floor` and `obligation` rules hold
-regardless of MOTION.md.
-
-### Sources
-
-| Rule | Derived from | What we add |
+| Rule | Upstream source | What this file adds |
 |---|---|---|
-| F-001, F-007, F-008, F-009, F-010 | d.android.com | Applied to motion specifically |
-| F-002, F-003 | Compose docs | Made blocking rather than advisory |
-| F-004 | d.android.com | Names the wrapping composables |
-| F-005 | `MotionDurationScale` | Enumerates what bypasses it |
-| F-006 | Open issue + source | Names the clip and scopes it to unintended cases |
-| O-001 | Emil — reduced motion | **Inverted**: Android annihilates, so the carrier must be static |
-| O-002 | Original (Lottie behaviour) | Makes the disabled frame a shipping requirement |
-| T-001 | Original | Navigation defaults as an always-finding |
-| T-002 | Emil — token discipline | Re-grounded on `MotionScheme`; extends to literal springs |
-| T-004 | M3 Expressive vs Standard | Per-element, not per-surface |
-| T-008 | d.android.com predictive back | Scoped to custom back |
-| T-009 | Emil — frequency gate | State layer survives; ceiling governs additions |
-| T-010 | M3 tier guidance | Tier and property count, not a duration ratio; scoped to components appearing in place |
-| T-011 | M3 transition patterns | Direction promises order; defines "peer" |
-| T-012 | Emil — interruptibility | Re-grounded: gating input, not spec choice |
-| T-013 | Emil — stagger | Budgets the sequence; fixes ordering; extends it to one control's own parts |
-| T-016 | M3 enter and exit | Scoped to unanchored centre scale |
-| T-017, T-021 | Original | Compose-specific lifecycle traps |
-| T-018 | Original | Platform fidelity as a product decision |
-| T-019 | M3 skeleton loaders | Structural match, plus indicator floor |
-| T-020 | Emil — cohesion | Scheme and tier, not one spec |
-| T-022, T-023, T-024, T-025, T-026 | Original | Platform motion, perceived performance, reversal, drag parity, restraint |
-| T-027 | Original | Motion answers to the valence of a change, not only its shape |
-| T-028 | Original | Background work does not take the screen to report its outcome |
+| F-001, F-007, F-008, F-009, F-010 | developer.android.com | Concrete Compose motion triggers and fixes |
+| F-002, F-003 | Compose animation docs | Treated as blocking review findings |
+| F-004 | developer.android.com | Lists the affected wrapper composables (`Dialog`, `ModalBottomSheet`) |
+| F-005 | `MotionDurationScale` docs | Lists every API path that bypasses the Compose clock |
+| F-006 | IssueTracker #225932760 + source | Splits checkable shadow clipping from review-only reveals |
+| O-001 | Emil Kowalski — reduced motion | Adapted for Android's `0.0f` scale: requires a static rest carrier |
+| O-002 | Lottie Android source | Requires a readable resting frame when animations are disabled |
+| T-001 | Navigation Compose source | Flags the 700ms default transition duration |
+| T-002 | Emil Kowalski — token discipline | Applied to `MotionScheme` and literal `spring()` / `tween()` calls |
+| T-004 | M3 Expressive vs. Standard | Scoped per element (data readouts vs. containers) |
+| T-008 | Predictive back docs | Scoped to custom back handlers (`NavHost` excluded) |
+| T-009 | Emil Kowalski — frequency gate | Preserves built-in state layers; caps added motion by usage frequency |
+| T-010 | M3 enter/exit guidance | Uses spring tier and property count rather than duration ratios |
+| T-011 | M3 transition patterns | Ties directional motion to ordered destinations |
+| T-012 | Emil Kowalski — interruptibility | Focuses on input-gating patterns in Compose |
+| T-013 | Emil Kowalski — stagger | Caps total stagger window (~300ms) and covers multi-part controls |
+| T-016 | M3 enter/exit guidance | Scoped to unanchored center-scaling surfaces |
+| T-017, T-021 | Original | Compose navigation and lazy-list key lifecycle bugs |
+| T-018 | Android 12 overscroll docs | Treats disabling platform overscroll as an explicit exception |
+| T-019 | M3 skeleton loader guidance | Adds the 4-step delay, fade-in, minimum-hold, and cross-fade sequence |
+| T-020 | Emil Kowalski — cohesion | Requires one scheme and speed tier per perceived event |
+| T-022, T-023, T-024, T-025, T-026 | Original | Keyboard tracking, input-frame feedback, back symmetry, drag parity, single hero motion |
+| T-027 | Original | Asymmetric motion between positive actions and retractions |
+| T-028 | Original | Quiet completion rules for background syncs and work |
 
-Eighteen of thirty-four derive from an existing source.
+## Revision history
 
-## Progress
+**Current total:** 34 rules (`10` `floor`, `2` `obligation`, `22` `taste`). Ten are marked
+`Detect: review-only`, one `Detect: heuristic`, and one `Detect: partial`; the remaining 22
+are directly checkable in source. Each rule defines its own scope so two rules do not
+fire on the same defect.
 
-**34 rules — 10 floor, 2 obligation, 22 taste.** Ten review-only, one heuristic, one
-partial, the rest checkable.
+- **Revision 01** applied three independent model reviews (`REVISION-01.md`).
+- **Revision 02** applied the first human engineering review (Seb, 2026-09-21: `26` keep,
+  `1` revise, `5` discuss, `0` remove), clarifying self-timed vs. touch-driven motion in
+  `F-005` and `F-007`, the one-way debug performance rule in `F-009`, built-in state layers
+  in `T-009`, the four-step anti-flicker sequence in `T-019`, the 700ms cross-fade rationale
+  in `T-001`, checkable vs. review-only clipping in `F-006`, and Android's "Remove
+  animations" setting vs. Lottie's `reduced motion` marker in `O-002`.
+- **Post-revision 02 additions:** `T-027` and `T-028`.
 
-No rule refers to another. Where two could fire on the same code, each states its own
-scope narrowly enough that only one does.
-
-Revision 01 applied three machine reviews. **Revision 02 applied the first human review**
-(Seb, 2026-09-21): 26 keep, 1 revise, 5 discuss, **0 remove**. No rule was cut. The
-outcomes were clarifications rather than reversals — self-timed versus touch-driven in
-F-005 and F-007, the one-directional nature of F-009, what "platform state layer" means in
-T-009, the full anti-flicker sequence in T-019, a real justification for T-001 in place of
-a circular one, an honest split in F-006 between what a checker can see and what it cannot,
-and untangling Android's *Remove animations* setting from Lottie's `reduced motion` marker
-in O-002.
-
-Still outstanding: a designer's review of the taste claims, which is a different question
-from the engineering review this was.
-
-Retired ids, not to be reused: **T-003** (restated a token fact), **T-007** (absorbed into
-T-011), **T-014** (claim wrong for background list changes), **T-015** (claim contradicted
-by Android's haptic vocabulary).
+**Retired rule IDs (never reused):** `T-003` (restated a token fact covered by `T-004`),
+`T-007` (merged into `T-011`), `T-014` (incorrectly banned `animateItem()` on background
+list updates), and `T-015` (contradicted Android's platform haptic constants).

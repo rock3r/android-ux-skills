@@ -1,16 +1,15 @@
 ---
 name: review-android-motion
 description: >
-  Adversarial review of Android motion that ends in an explicit block or approve. Judges
-  whether motion should exist at all, whether it matches the product's own motion language
-  recorded in MOTION.md, whether it still carries meaning when the user has switched
-  animations off, and whether it holds together as a single event. Forms its design judgment
-  in isolation before seeing any mechanical rule findings, so that gradeable defects do not
-  crowd out the expensive kind. Use when asked to review, critique or sanity-check motion,
-  an animation, a transition, or whether a screen feels right. Does not review general
-  Compose correctness, recomposition or stability — that is chrisbanes/skills; does not
-  score Material 3 conformance — that is hamen/material-3-skill; does not implement fixes —
-  that is animate-compose.
+  Review Android Jetpack Compose motion and end with an explicit Block or Approve verdict.
+  Judges whether the motion should exist, whether it matches the project's motion language
+  in MOTION.md, whether its meaning survives when animations are disabled, and whether the
+  screen holds together as a single coherent event. Runs its high-level motion judgment in
+  isolation before seeing mechanical rule findings so rule matches do not crowd out design
+  critique. Use when asked to review, critique, or check an animation, transition, or
+  screen motion. Does not review general Compose recomposition or stability
+  (use chrisbanes/skills), does not score Material 3 component conformance
+  (use hamen/material-3-skill), and does not implement fixes (use animate-compose).
 license: Apache-2.0
 tags:
   - motion
@@ -32,97 +31,90 @@ When invoked with no target, reply with exactly this and nothing else:
 
 ## Scope
 
-Review motion, and only motion. Every finding cites a rule id from
-`references/standards.md`. **A finding with no rule id is not a finding** — it is an
-opinion, and it does not go in the report.
+Review only motion behavior and implementation. Every finding in the table must cite a
+rule ID from `references/standards.md`. Do not add table findings without a rule ID from
+that file.
 
-Route elsewhere: Compose correctness and recomposition to `chrisbanes/skills`; Material 3
-conformance scoring to `hamen/material-3-skill`; implementing the fix to
-`animate-compose`.
+Route non-motion topics elsewhere: general Compose stability and recomposition to
+`chrisbanes/skills`, Material 3 component and token conformance to `hamen/material-3-skill`,
+and implementing code fixes to `animate-compose`.
 
-## Operating posture
+## Review criteria
 
-Default to flagging. Approval is earned.
+Judge code against **the project's own motion standard**, not personal preference:
 
-But flag against **the product's standard, not your preferences**. Read `MOTION.md` first,
-then the code around the change. Inconsistency with what the team decided is a finding.
-Disagreement with your own taste is not. A reviewer that argues an app toward Material when
-the team chose otherwise is noise, and will be ignored — correctly.
-
-The code is part of the standard. Where the surrounding code does the same thing the right
-way and this spot does not, that is a convention being broken, and the finding is **major**
-even with no `MOTION.md` — this is how a regression usually arrives. Where nothing in the
-code sets a convention, a taste finding is minor.
-
-An exception or entry that states its own condition — "until typed routes land", "first
-run only" — holds only while that condition does. Check the condition against the code
-before relying on it: a lapsed exception waives nothing.
+1. Read `MOTION.md` first (if present), then inspect the surrounding code. Contradicting a
+   `DECIDED` entry in `MOTION.md` is a **major** finding.
+2. Check whether the surrounding code already establishes a pattern. When another composable
+   in the reviewed code handles the same motion pattern the compliant way and the target
+   code does not, flag the inconsistency as **major** even when no `MOTION.md` exists. When
+   neither `MOTION.md` nor the surrounding code sets a convention, a `taste` finding is
+   **minor**.
+3. Verify the condition on any exception in `MOTION.md` before honoring it. An exception
+   granted "until typed routes land" or "for first-run onboarding only" does not waive
+   findings once typed routes are in use or outside onboarding.
 
 ## Procedure
 
-### Step 1 — Two assessments, isolated
+### Step 1 — Run two isolated assessments
 
-Assessment A and Assessment B **must** run as two isolated subagents whenever a subagent
-or task facility is available. Running them inline is possible but not permitted; it is a
-degraded run and must be labelled as one.
+Run Assessment A and Assessment B as two separate subagents with self-contained prompts
+and no inherited conversation context whenever subagent tools are available. Running them
+inline is a degraded run and must be labeled as one.
 
-**Assessment A — motion judgment, unanchored.** Given the target and `MOTION.md` only,
-with no rule findings. Judges:
+**Assessment A — unanchored motion judgment.** Start with an empty context containing only
+the target code and `MOTION.md`, without `references/standards.md` or any rule findings.
+It evaluates:
 
-- Should this motion exist? What purpose does it serve, named plainly?
-- Does it match the product's motion language, or assert something the product does not
-  say?
-- What does a user actually experience here — on the tenth encounter, not the first?
-  How often they meet it usually decides the answer, and is usually not in the code. If
-  `MOTION.md` does not say, **ask**, or give the verdict conditionally and name the
-  frequency it assumes. Never state a frequency you were not told.
-- Does it survive animations being switched off with its meaning intact?
-- Does the screen hold together as one event, or as several unrelated ones?
+- Should this motion exist at all, and what purpose does it serve?
+- Does it match the project's motion language in `MOTION.md`? (If `MOTION.md` was not
+  provided, state that plainly and never invent or guess its contents.)
+- How will this animation feel on the tenth encounter in a session? Usage frequency is
+  rarely visible in source code. If `MOTION.md` does not specify the frequency, **ask** or
+  state the conditional assumption explicitly instead of asserting a frequency.
+- Does the UI still communicate the state change when system animations are disabled?
+- Do simultaneous animations on the screen work together as one coherent event, or compete
+  for attention?
 
-**Assessment B — rule findings.** Applies `references/standards.md` and returns every hit
-as `path`, `line-range`, `rule-id`, `severity`, one line of evidence. Mechanical, no
-judgment.
+**Assessment B — rule checks.** Check the target code against `references/standards.md` and
+return every match with `path`, `line-range`, `rule-id`, `severity`, and one line of
+evidence.
 
-Take every line number from a numbered view — `cat -n`, `grep -n`, an editor's gutter.
-Many file readers return plain text, and lines counted by eye drift by several, onto the
-imports or the function next door.
+Always read line numbers from a numbered view (`cat -n`, `nl -ba`, `rg -n`, or editor line
+numbers) rather than counting lines by eye.
 
-The two must not see each other's output. Prefer no inherited context and self-contained
-prompts. B may run concurrently with A, but **B's findings must not enter the synthesis
-context until A has returned and been recorded.**
+Keep the two passes isolated from each other. Give each subagent a self-contained prompt
+with no inherited conversation context, so Assessment A never inherits
+`references/standards.md` or rule findings from the parent session. Assessment B can run
+in parallel with Assessment A, but **Assessment B's output must not enter the synthesis
+context until Assessment A has finished and been recorded.** This two-pass separation is
+adapted from `/impeccable critique` in
+[Impeccable](https://github.com/pbakaus/impeccable) (Paul Bakaus, Apache-2.0) so mechanical
+rule hits do not anchor the design critique.
 
-This structure is adapted from Impeccable's `/impeccable critique`
-([pbakaus/impeccable](https://github.com/pbakaus/impeccable), Apache-2.0). The reason is
-that gradeable findings drive out ungradeable ones: a reviewer holding a list of concrete
-rule hits writes a tidy report about those hits, and the expensive judgment quietly does
-not happen.
-
-If isolation is unavailable, run A to completion and record it before starting B, and open
-the report with exactly:
+If subagent isolation is unavailable, complete and record Assessment A before reading
+`references/standards.md` for Assessment B, and start the report with:
 
 > ⚠️ DEGRADED: single-context (<reason>)
 
-### Step 2 — Synthesize
+### Step 2 — Synthesize findings
 
-Weave, do not concatenate. Record explicitly where A and B agree, what B caught that A
-missed, and which of B's findings are false positives in context. A remains authoritative
-on whether the motion is right; B supplies mechanical evidence.
+Combine both assessments into one review:
 
-Place each finding where its fix goes. A defect in how several elements move together is
-fixed where they are composed — the parent that places them on one event — so that is its
-location, not the span of the children.
-
-Set severity here, not in B. B applies rules one construct at a time and cannot see a
-convention; the synthesis can. For each taste finding, look through the code under review
-for the same construct done the other way. If it is there, the finding is major. A
-convention needs no `MOTION.md`: one other function in the same file doing it the right
-way is enough.
+- Keep Assessment A in full as the `## Judgment` section.
+- Anchor each finding at the code location where the fix belongs. When multiple child
+  elements animate in conflict on the same event (`T-026` or `T-020`), report a single
+  finding at the parent composable that coordinates them rather than flagging each child.
+- Assign final severity during synthesis. `floor` and `obligation` findings are always
+  `major`. For each `taste` finding, check `MOTION.md` and the rest of the reviewed file:
+  if another function in the file or `MOTION.md` already establishes the compliant
+  convention, mark the finding `major`; otherwise mark it `minor`.
 
 ### Step 3 — Verdict
 
-**Block** on any unresolved `floor` violation, any `Overridable: no` violation, or any
-contradiction of a `DECIDED` entry in MOTION.md. Otherwise **Approve**, with findings
-noted.
+Return **Block** if there is any unresolved `floor` violation, any `Overridable: no`
+(`obligation`) violation, or any contradiction of a `DECIDED` entry in `MOTION.md`.
+Otherwise return **Approve** with the findings table.
 
 ## Required output
 
@@ -143,27 +135,26 @@ Method: dual-agent (A: <id> · B: <id>)      ← or the degraded banner
 Floor: n findings.  Taste: n findings.
 ```
 
-**Fix** names the change itself: the call, value or construct to write instead. A
-direction such as "use a calmer spec" leaves the reader to redo the review.
+In the **Fix** column, name the concrete code change (the exact modifier, API call, or
+token to use) rather than a vague instruction like "use a calmer animation".
 
-Report the two counts **separately, never averaged**. A run with zero taste findings and
-six floor findings is a linter run, not a review, and the numbers should say so.
+Report the `Floor` and `Taste` counts **separately** and never average them.
 
-## Never ship
+## Common blocking and high-priority defects
 
 | Pattern | Rule |
 |---|---|
-| A bare `tween(n)` outside a token definition | T-002 |
-| Motion on a 100+/day surface above the ceiling | T-009 |
-| Directional motion between unordered peer destinations | T-011 |
-| Meaning with no static carrier when animation is off | O-001 |
-| `NavHost` left on its default transition | T-001 |
-| Frame-rate state read during composition | F-001 |
-| `animateItem()` with no key | F-003 |
-| A `BackHandler` that closes animated UI in one step | T-008 |
-| A timing judgment made from a debug build | F-009 |
+| Raw `tween(n)` or `spring(...)` outside a token definition | T-002 |
+| Extra motion on a 100+/day control above the state-layer ceiling | T-009 |
+| Directional slide between unordered top-level destinations | T-011 |
+| State change communicated only by motion with no static indicator | O-001 |
+| `NavHost` left on its 700ms default transition | T-001 |
+| Per-frame animated value read during composition | F-001 |
+| `animateItem()` in a lazy list without a stable item key | F-003 |
+| Custom `BackHandler` closing animated UI without predictive back | T-008 |
+| Smoothness or jank claims taken from a debug build | F-009 |
 
 ## Tone
 
-Terse. Cite the rule, show the line, name the fix. No praise sandwich. If the answer is
-that this motion should not exist, lead with that.
+Be direct and specific. Cite the rule ID, give the exact line range, and name the concrete
+fix. If an animation should be removed altogether, state that first.
