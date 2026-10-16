@@ -66,8 +66,9 @@ Expressive and Standard schemes.
 
 - `floor` — Mechanical and performance bugs in Compose motion. Always major, and never
   overridden by `MOTION.md`.
-- `obligation` — Accessibility requirements when animations are disabled. Always major,
-  never overridden by `MOTION.md`, and counted separately from `taste` in evaluation scores.
+- `obligation` — Accessibility requirements: what the screen shows when animations are
+  disabled, and whether motion left running can be stopped. Always major, never overridden
+  by `MOTION.md`, and counted separately from `taste` in evaluation scores.
 - `taste` — Design and interaction judgment. Overridable by an explicit `DECIDED` entry in
   the project's `MOTION.md` unless the rule states `Overridable: no`.
 
@@ -338,8 +339,9 @@ changes".
 
 ## Obligation
 
-Accessibility requirements when animations are disabled. Never overridable, and counted
-separately from `taste` findings.
+Accessibility requirements: what the screen shows when animations are disabled, and
+whether motion left running can be stopped. Never overridable, and counted separately from
+`taste` findings.
 
 ### O-001 — Meaning must have a static carrier
 
