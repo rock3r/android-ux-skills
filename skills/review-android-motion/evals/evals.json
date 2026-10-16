@@ -869,8 +869,8 @@
         {
           "path": "Tickers.kt",
           "lines": [
-            20,
-            40
+            28,
+            67
           ],
           "rule": "F-005",
           "class": "floor",
@@ -881,10 +881,10 @@
         {
           "path": "Tickers.kt",
           "lines": [
-            42,
-            75
+            69,
+            117
           ],
-          "note": "EventsTicker reads the MotionDurationScale its effect carries on every frame, so it stops when animations are switched off, even mid-scroll, and shows the events wrapped in full."
+          "note": "EventsTicker reads the MotionDurationScale its effect carries on every frame, so it stops when animations are switched off, even mid-scroll, and shows the events wrapped in full. Its pause control is the same as NewsTicker's."
         }
       ],
       "expectations": [
@@ -1197,6 +1197,44 @@
         "Flags FiltersPanel: it stands in for a bottom sheet but can only be opened and closed, never dragged",
         "Names a drag that follows the finger and carries its release velocity as the fix",
         "Does NOT flag SortPanel"
+      ]
+    },
+    {
+      "id": 48,
+      "title": "A \u00b7 O-003 endless marquee with no way to stop it, twin that pauses on a tap",
+      "class": "A. Static twin",
+      "prompt": "Review the motion in this screen. File: BranchBanners.kt",
+      "files": [
+        "evals/files/c48/BranchBanners.kt"
+      ],
+      "expect": [
+        {
+          "path": "BranchBanners.kt",
+          "lines": [
+            33,
+            48
+          ],
+          "rule": "O-003",
+          "class": "obligation",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "BranchBanners.kt",
+          "lines": [
+            50,
+            73
+          ],
+          "note": "ClosuresBanner runs the same endless marquee and shows the same wrapped text when animations are off, but the marquee itself is clickable with an onClickLabel of Pause or Resume. Tapping it pauses the marquee and shows the closures wrapped in full; tapping again resumes from the start, as basicMarquee always does."
+        }
+      ],
+      "expectations": [
+        "Flags HoursBanner: its marquee starts by itself, never stops, shares the screen with the catalogue, and offers no way on the screen to pause, stop or hide it; going still when animations are off does not count",
+        "Names a pause or stop control, or static text in place of the marquee, as the fix; a lower `iterations` count is not a fix",
+        "Does NOT claim basicMarquee itself honours Remove animations",
+        "Does NOT treat honouring Remove animations as satisfying O-003",
+        "Does NOT flag ClosuresBanner, which pauses and resumes on a tap with an onClickLabel"
       ]
     },
     {
