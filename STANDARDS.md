@@ -1,11 +1,11 @@
 # Android motion standards
 
-This document defines the 34 rules used by the skills in this repository. If a rule is not
+This document defines the 35 rules used by the skills in this repository. If a rule is not
 listed here, the skills do not enforce it.
 
 > [!NOTE]
-> **Status: revision 02, plus T-027 and T-028.** 34 rules (`10` `floor`, `2` `obligation`,
-> `22` `taste`).
+> **Status: revision 02, plus T-027, T-028 and O-003.** 35 rules (`10` `floor`,
+> `3` `obligation`, `22` `taste`).
 >
 > Revision 01 applied three model reviews (taste, structure, and fact-check). Those reviews
 > removed three rules, resolved two contradictions between rules, and narrowed three rules
@@ -179,11 +179,12 @@ Code that bypasses the Compose animation clock must read the scale itself:
 | `LottieAnimatable.animate()` called directly | Declares `ignoreSystemAnimationsDisabled`, but never reads it. |
 | Video, `WebView`, `SurfaceView` content | Runs outside Compose's animation clock. |
 | `Animatable` launched from a coroutine scope without `MotionDurationScale` | `WindowRecomposer` only installs `MotionDurationScale` on the recomposer and effect contexts. |
+| `basicMarquee` | Runs under its own `MotionDurationScale`, fixed at 1 by design. |
 
 When the scale is zero, jump directly to a **static end state** and do not request new
-frames. Inside a `LaunchedEffect`, read `coroutineContext[MotionDurationScale]` on every
-iteration so the loop stops immediately if the user disables animations while the screen is
-open:
+frames. A marquee's static end state is its text, wrapped and in full. Inside a
+`LaunchedEffect`, read `coroutineContext[MotionDurationScale]` on every iteration so the
+loop stops immediately if the user disables animations while the screen is open:
 
 ```kotlin
 LaunchedEffect(Unit) {
@@ -214,7 +215,10 @@ recomposer context (inherited by `LaunchedEffect`) and updates `scaleFactor` fro
 `ContentObserver` on `ANIMATOR_DURATION_SCALE`. `withFrameNanos` does not apply the scale.
 `Settings.Global.ANIMATOR_DURATION_SCALE`: "Setting to 0.0f will cause animations to end
 immediately." `LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled` but
-never reads it in the implementation.
+never reads it in the implementation. `BasicMarquee.kt:401-404` runs the marquee inside
+`withContext(FixedMotionDurationScale)`, under the comment "Marquee animations should not
+be affected by motion accessibility settings"; `:545-549` defines that scale's
+`scaleFactor` as `1f`.
 
 ---
 
@@ -416,6 +420,74 @@ drawable.progress = markerForAnimationsDisabled.startFrame`), added in commit `6
 (dividing by zero yields `POSITIVE_INFINITY`); `LottieAnimatable.kt:242-260` snaps to
 `endProgress` when `speed.isInfinite()`; `:199-205` defines `endProgress` as `clipSpec` max
 (or min when speed is negative).
+
+---
+
+### O-003 — Endless motion can be stopped
+
+**Overridable: no.**
+
+**Detect: partial.** An endless run is in the source. Whether a finite one outlasts five
+seconds can depend on how wide its content is at runtime.
+
+**Claim.** Motion that keeps going beside something the user is trying to read pulls the
+eye back every time it moves. For some users that decides whether the screen can be read at
+all.
+
+**Scope: motion that starts by itself, runs longer than five seconds, and shares the screen
+with other content** — an `infiniteRepeatable` pulse or shimmer, a Lottie on
+`LottieConstants.IterateForever`, a `basicMarquee`, a pager that advances on a timer.
+Outside it:
+
+- **An indicator of work in progress.** It ends when the work does, and its motion is what
+  says the app has not frozen. This is narrower than WCAG, which exempts an indicator only
+  while nothing else on the screen can be used.
+- **Motion the user started and can stop** — a video they pressed play on, with its own
+  controls.
+- **Motion the finger drives.**
+
+**Rule.** It stops by itself within five seconds, or the screen gives the user a way to
+pause, stop or hide it — a control on that screen, not a setting somewhere else. Where a
+screen has several, one control stops them all. For text, the simplest way to comply is not
+to scroll it at all: wrap it, or truncate it and give the user a way to reach the full
+message.
+
+The control can be the moving element itself, paused and resumed by a tap, as long as
+accessibility services announce it as a control. Make it `clickable` with an `onClickLabel`
+that names the action, "Pause" or "Resume", so TalkBack and Switch Access can find it.
+Pausing only while a finger holds it does not count, for the same reason WCAG gives for
+motion that stops only while it has focus.
+
+Stopping by itself means a bounded run: a `repeatable` whose iterations total under five
+seconds, or a Lottie with a finite `iterations`. Lowering `basicMarquee`'s `iterations`
+rarely gets it under five seconds, and when a finite run ends the marquee snaps back to the
+start of its text, so the text stays clipped.
+
+Whichever way it stops, it rests somewhere readable. A marquee halted part-way through its
+text hides the rest of the message; show the message in full. A `basicMarquee` cannot pause
+where it is: stopping it returns it to the start of its text. So pausing a marquee should
+show the same static text as the animations-off state, wrapped and in full.
+
+**Remove animations is not the mechanism.** Where the motion ignores Remove animations,
+as `basicMarquee` and a frame loop that never reads the scale do, the app has to honour it
+itself (F-005). Doing so still does not satisfy this rule, because Remove animations is one
+system-wide switch, not a control on the screen.
+
+**What Android changes.** WCAG states the requirement for the web, where a page can
+listen for `prefers-reduced-motion`. Android has no such preference, and the one setting
+it has is bypassed by the framework's own marquee — so the control has to be in the app.
+
+**Pinned.** WCAG 2.2, SC 2.2.2 Pause, Stop, Hide (Level A): moving content that "starts
+automatically, lasts more than five seconds, and is presented in parallel with other
+content" needs "a mechanism for the user to pause, stop, or hide it"; sufficient techniques
+G152 (stop after n cycles, within five seconds) and G186 (a control that stops the moving
+content). Understanding SC 2.2.2, Intent: "other mechanisms than a button can be used", but
+"having an animation stop only so long as a user has focus on it … would not be considered
+a 'mechanism for the user to pause'". `BasicMarquee.kt:401-404` —
+`withContext(FixedMotionDurationScale)`, under the comment "Marquee animations should not
+be affected by motion accessibility settings", and `:545-549`, which pins its `scaleFactor`
+to `1f`; `:429-433` — every run, finished or cancelled, ends in
+`finally { offset.snapTo(0f) }`, back at the leading edge.
 
 ---
 
@@ -997,6 +1069,7 @@ consistency with them, but they never override `floor` or `obligation` rules.
 | F-006 | IssueTracker #225932760 + source | Splits checkable shadow clipping from review-only reveals |
 | O-001 | Emil Kowalski — reduced motion | Adapted for Android's `0.0f` scale: requires a static rest carrier |
 | O-002 | Lottie Android source | Requires a readable resting frame when animations are disabled |
+| O-003 | WCAG 2.2 SC 2.2.2 | Names the Compose forms; the system switch is not the mechanism, and the marquee ignores it |
 | T-001 | Navigation Compose source | Flags the 700ms default transition duration |
 | T-002 | Emil Kowalski — token discipline | Applied to `MotionScheme` and literal `spring()` / `tween()` calls |
 | T-004 | M3 Expressive vs. Standard | Scoped per element (data readouts vs. containers) |
@@ -1017,8 +1090,8 @@ consistency with them, but they never override `floor` or `obligation` rules.
 
 ## Revision history
 
-**Current total:** 34 rules (`10` `floor`, `2` `obligation`, `22` `taste`). Ten are marked
-`Detect: review-only`, one `Detect: heuristic`, and one `Detect: partial`; the remaining 22
+**Current total:** 35 rules (`10` `floor`, `3` `obligation`, `22` `taste`). Ten are marked
+`Detect: review-only`, one `Detect: heuristic`, and two `Detect: partial`; the remaining 22
 are directly checkable in source. Each rule defines its own scope so two rules do not
 fire on the same defect.
 
@@ -1029,7 +1102,7 @@ fire on the same defect.
   in `T-009`, the four-step anti-flicker sequence in `T-019`, the 700ms cross-fade rationale
   in `T-001`, checkable vs. review-only clipping in `F-006`, and Android's "Remove
   animations" setting vs. Lottie's `reduced motion` marker in `O-002`.
-- **Post-revision 02 additions:** `T-027` and `T-028`.
+- **Post-revision 02 additions:** `T-027`, `T-028` and `O-003`.
 
 **Retired rule IDs (never reused):** `T-003` (restated a token fact covered by `T-004`),
 `T-007` (merged into `T-011`), `T-014` (incorrectly banned `animateItem()` on background
