@@ -83,7 +83,7 @@ presence and state) is varied across four separate battery files (`evals*.json`)
 
 | Battery | Cases | Staged files | Question tested |
 |---|---|---|---|
-| `no-motion-language` | 10–12, 20–29, 30–39, 40–47, 50, 51, 60, 70, 80 | Kotlin source (and Lottie JSON for case 30) | Does the skill find the planted defect and leave the compliant twin alone? |
+| `no-motion-language` | 10–12, 20–29, 30–39, 40–48, 50, 51, 60, 70, 80 | Kotlin source (and Lottie JSON for case 30) | Does the skill find the planted defect and leave the compliant twin alone? |
 | `established-language` | 10, 11, 40 | Kotlin source + `MOTION.md` with `DECIDED` entries | Does severity escalate to `major`, does the fix name the project's token, and does the skill use the frequency map in `MOTION.md`? |
 | `stale-exception` | 10 | Kotlin source + `MOTION.md` with a lapsed exception | Does the reviewer check whether an exception's condition ("until typed routes land") still holds in the code? |
 | `phantom-language` | 10 | Kotlin source only, while the prompt claims a `MOTION.md` exists | Does the reviewer state that `MOTION.md` is missing instead of inventing conventions? |
@@ -94,7 +94,7 @@ file path never hints at the battery variant. Only cases whose expected result c
 
 ## Rule coverage
 
-The suite covers 33 of the 34 rules in `STANDARDS.md` (all except `F-009`, which governs
+The suite covers 34 of the 35 rules in `STANDARDS.md` (all except `F-009`, which governs
 debug-vs.-release benchmarking practice rather than source code). Every evaluation class in
 [`TAXONOMY.md`](TAXONOMY.md) is represented:
 
@@ -130,6 +130,7 @@ debug-vs.-release benchmarking practice rather than source code). Every evaluati
 | 45 | A. Static twin | T-027 | Favorite button playing a celebratory pop on both save and clear, beside one that pops only on save. |
 | 46 | A. Static twin | T-028 | Layout-shifting banner shown after background sync, beside a snackbar for a manual sync. |
 | 47 | A. Static twin | T-025 | Custom bottom sheet that only opens/closes on tap, beside one supporting finger drag. |
+| 48 | A. Static twin | O-003 | An endless marquee with no way to stop it, beside the same marquee paused and resumed by a tap. Both go still when animations are off. |
 | 50 | E. Composite-only | T-026 | Five individually valid child springs firing at once on a single screen event. |
 | 51 | E. Composite-only | T-020 | Expanding panel on the slow tier paired with inner options on the fast tier. |
 | 60 | F. Legitimate twin | F-006 | `animateContentSize` clipping an elevated Card's shadow (violation) vs. a flat text reveal (compliant). |

@@ -9,12 +9,12 @@ Agent skills for building, reviewing, and auditing Jetpack Compose motion on And
 > else is our own engineering and design opinion.
 
 > [!NOTE]
-> **Version 1.0.0.** [`STANDARDS.md`](STANDARDS.md) contains 34 rules (`10` floor, `2`
+> **Version 1.0.0.** [`STANDARDS.md`](STANDARDS.md) contains 35 rules (`10` floor, `3`
 > obligation, `22` taste). The 32 rules from revision 02 were fact-checked against primary
-> sources, reviewed by three models, and reviewed by an engineer. `T-027` and `T-028` were
-> added later and have not gone through those reviews yet. None of the taste rules have
-> been reviewed by a designer yet, so read them as one engineering team's defaults rather
-> than Material Design guidance.
+> sources, reviewed by three models, and reviewed by an engineer. `T-027`, `T-028`
+> and `O-003` were added later and have not gone through those reviews yet. None of the
+> taste rules have been reviewed by a designer yet, so read them as one engineering team's
+> defaults rather than Material Design guidance.
 
 ## Skills
 

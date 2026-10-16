@@ -148,6 +148,7 @@ Report the `Floor` and `Taste` counts **separately** and never average them.
 | Extra motion on a 100+/day control above the state-layer ceiling | T-009 |
 | Directional slide between unordered top-level destinations | T-011 |
 | State change communicated only by motion with no static indicator | O-001 |
+| Motion that runs past five seconds with no way to stop it | O-003 |
 | `NavHost` left on its 700ms default transition | T-001 |
 | Per-frame animated value read during composition | F-001 |
 | `animateItem()` in a lazy list without a stable item key | F-003 |

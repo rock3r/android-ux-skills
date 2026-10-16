@@ -143,6 +143,12 @@ destination layout at rest communicates the state change without relying on the 
 marker (`O-002`). For custom `withFrameNanos` loops, read `MotionDurationScale` each frame
 and stop requesting frames when `scaleFactor == 0f` (`F-005`).
 
+Animations left on bring a separate duty: motion that starts by itself and runs past five
+seconds stops by itself or gets a pause control on the screen (O-003). The control can be
+a tap on the moving element, if it is `clickable` with an `onClickLabel` of "Pause" or
+"Resume". `basicMarquee` ignores Remove animations, so show its text wrapped and in full
+when the scale is zero (F-005); that does not count as the pause control.
+
 ### 7. Check Compose phases (`F-001`, `F-008`)
 
 Read rapidly changing animation values inside lambda modifiers (`Modifier.offset { }`,
