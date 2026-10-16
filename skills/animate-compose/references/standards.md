@@ -445,9 +445,10 @@ with other content** — an `infiniteRepeatable` pulse or shimmer, a Lottie on
 `LottieConstants.IterateForever`, a `basicMarquee`, a pager that advances on a timer.
 Outside it:
 
-- **An indicator of work in progress.** It ends when the work does, and its motion is what
-  says the app has not frozen. This is narrower than WCAG, which exempts an indicator only
-  while nothing else on the screen can be used.
+- **An indicator of work that blocks the screen**, only while nothing else on the screen
+  can be used. The work holds the screen, and an indicator that did not move could make it
+  look frozen. An indicator that runs longer than five seconds beside content the user can
+  use is inside the rule.
 - **Motion the user started and can stop** — a video they pressed play on, with its own
   controls.
 - **Motion the finger drives.**
@@ -485,15 +486,18 @@ it has is bypassed by the framework's own marquee — so the control has to be i
 
 **Pinned.** WCAG 2.2, SC 2.2.2 Pause, Stop, Hide (Level A): moving content that "starts
 automatically, lasts more than five seconds, and is presented in parallel with other
-content" needs "a mechanism for the user to pause, stop, or hide it"; sufficient techniques
-G152 (stop after n cycles, within five seconds) and G186 (a control that stops the moving
-content). Understanding SC 2.2.2, Intent: "other mechanisms than a button can be used", but
-"having an animation stop only so long as a user has focus on it … would not be considered
-a 'mechanism for the user to pause'". `BasicMarquee.kt:401-404` —
-`withContext(FixedMotionDurationScale)`, under the comment "Marquee animations should not
-be affected by motion accessibility settings", and `:545-549`, which pins its `scaleFactor`
-to `1f`; `:429-433` — every run, finished or cancelled, ends in
-`finally { offset.snapTo(0f) }`, back at the leading edge.
+content" needs "a mechanism for the user to pause, stop, or hide it"; sufficient
+techniques G152 (stop after n cycles, within five seconds) and G186 (a control that stops
+the moving content). Understanding SC 2.2.2: "An animation that occurs as part of a
+preload phase or similar situation can be considered essential if interaction cannot occur
+during that phase for all users and if not indicating progress could confuse users or
+cause them to think that content was frozen or broken." Its Intent: "other mechanisms than
+a button can be used", but "having an animation stop only so long as a user has focus on
+it … would not be considered a 'mechanism for the user to pause'".
+`BasicMarquee.kt:401-404` — `withContext(FixedMotionDurationScale)`, under the comment
+"Marquee animations should not be affected by motion accessibility settings", and
+`:545-549`, which pins its `scaleFactor` to `1f`; `:429-433` — every run, finished or
+cancelled, ends in `finally { offset.snapTo(0f) }`, back at the leading edge.
 
 ---
 
@@ -1003,7 +1007,8 @@ current screen (such as submitting a checkout form) are outside this rule.
 **Rule.**
 
 - **While running:** Show progress quietly in place (such as a small inline icon or subtle
-  progress bar).
+  progress bar). If it keeps moving for longer than five seconds, it also needs a way to
+  pause, stop or hide it (O-003).
 - **On success:** Hide the running indicator without displacing layout content. If the user
   explicitly triggered the sync (for example, tapping "Sync now"), a brief non-blocking
   confirmation—such as a snackbar or the button briefly showing "Synced"—is allowed. Never
