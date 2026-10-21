@@ -141,8 +141,8 @@
         {
           "path": "ThemeSwitcherScreen.kt",
           "lines": [
-            33,
-            50
+            34,
+            51
           ],
           "rule": "F-001",
           "class": "floor",
@@ -151,8 +151,8 @@
         {
           "path": "ThemeSwitcherScreen.kt",
           "lines": [
-            53,
-            75
+            54,
+            76
           ],
           "rule": "T-013",
           "class": "taste",
@@ -163,10 +163,10 @@
         {
           "path": "ThemeSwitcherScreen.kt",
           "lines": [
-            78,
-            130
+            79,
+            132
           ],
-          "note": "SnapshotThemeHost captures a single GraphicsLayer bitmap before flipping the theme, blocks input while transitioning, and fades the overlay in drawWithContent."
+          "note": "SnapshotThemeHost captures a single GraphicsLayer bitmap before flipping the theme, blocks semantics, focus, and pointer input while transitioning, and fades the overlay in drawWithContent."
         }
       ],
       "expectations": [

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -104,6 +105,7 @@ fun SnapshotThemeHost(
             .then(
                 if (transitioning) {
                     Modifier
+                        .clearAndSetSemantics {}
                         .focusProperties { canFocus = false }
                         .pointerInput(Unit) {
                             awaitPointerEventScope {
