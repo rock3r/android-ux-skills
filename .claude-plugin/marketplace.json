@@ -8,7 +8,7 @@
     {
       "name": "android-ux-skills",
       "source": "./",
-      "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language, and review motion adversarially."
+      "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language, review motion adversarially, and eliminate transition and GPU jank."
     }
   ]
 }

@@ -1,0 +1,263 @@
+{
+  "skill_name": "optimize-android-motion",
+  "battery": "trace-and-code",
+  "description": "Perfetto trace signatures paired with Jetpack Compose transition and canvas fixtures, testing both mechanical floor detection and RenderThread/layout optimization remedies.",
+  "evals": [
+    {
+      "id": 10,
+      "title": "A · F-001 composition-phase offset and off-screen deck input gating",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance issues in this onboarding screen. Perfetto summary during step transition: UI: 42 frames, >8.3ms=19, max=18.4ms (Recomposer:recompose=11.2ms, measureAndLayout=5.8ms), plus keyboard focus and taps landing on the off-screen welcome step after advancing. File: OnboardingDeck.kt",
+      "files": [
+        "evals/files/c10/OnboardingDeck.kt"
+      ],
+      "expect": [
+        {
+          "path": "OnboardingDeck.kt",
+          "lines": [
+            25,
+            48
+          ],
+          "rule": "F-001",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "OnboardingDeck.kt",
+          "lines": [
+            51,
+            93
+          ],
+          "note": "ProfileStepDeck clips to bounds, gates semantics, focus, and pointer events when inactive before offsetting, and reads progress inside the lambda offset { IntOffset(...) } modifier."
+        }
+      ],
+      "expectations": [
+        "Flags WelcomeStepDeck for reading slideDp.value in composition via Modifier.offset(x = slideDp.value.dp)",
+        "Names the lambda modifier offset { IntOffset(...) } as the fix",
+        "Notes that clearAndSetSemantics {} alone does not block touch or focus on an off-screen precomposed step",
+        "Does NOT flag ProfileStepDeck"
+      ],
+      "checks": [
+        {
+          "id": "names_lambda_offset",
+          "type": "noul",
+          "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix for WelcomeStepDeck, rather than only advising in general terms to defer the state read.",
+          "expect": true,
+          "min_confidence": 0.65
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "A · F-008 animated padding and RenderThread saveLayer / alpha=0f prewarm stall",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance issues in this hero card reveal. Perfetto summary: UI: 38 frames, >8.3ms=14, max=16.2ms (measureAndLayout=12.1ms) | RT: max=64.5ms, >8.3ms=2, saveLayers=9, shaderMisses=4 (58.2ms) mid-reveal. File: HeroRevealCard.kt",
+      "files": [
+        "evals/files/c20/HeroRevealCard.kt"
+      ],
+      "expect": [
+        {
+          "path": "HeroRevealCard.kt",
+          "lines": [
+            28,
+            72
+          ],
+          "rule": "F-008",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "HeroRevealCard.kt",
+          "lines": [
+            75,
+            123
+          ],
+          "note": "SunsetHeroCard shifts position via lambda offset { }, animates alpha with defaultEffectsSpec(), and holds CompositingStrategy.Offscreen across its overlapping children."
+        }
+      ],
+      "expectations": [
+        "Flags SunriseHeroCard for animating Modifier.padding(top = topPad) on every frame (F-008)",
+        "Explains that alpha = 0f is skipped by RenderNode and does not prewarm GPU shaders, or recommends CompositingStrategy.Offscreen and defaultEffectsSpec() for alpha to prevent mid-animation saveLayer stalls",
+        "Does NOT flag SunsetHeroCard"
+      ],
+      "checks": [
+        {
+          "id": "explains_gpu_prewarm_or_savelayer",
+          "type": "noul",
+          "instructions": "The review explains at least one of the RenderThread causes in SunriseHeroCard: either that alpha = 0f skips RenderNode flushing (so GPU shader prewarming needs a small non-zero alpha such as 0.004f), or that holding CompositingStrategy.Offscreen / using a non-overshooting effects spec prevents mid-animation saveLayer allocations.",
+          "expect": true,
+          "min_confidence": 0.65
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "A · T-022 boolean keyboard layout switch inside BoxWithConstraints",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance issues in this bottom sheet search screen. Perfetto summary during sheet open + keyboard appear: UI: 34 frames, >8.3ms=8, max=14.1ms (SubcomposeLayout=8.4ms) | RT: max=19.8ms, >8.3ms=6. File: SearchSheet.kt",
+      "files": [
+        "evals/files/c30/SearchSheet.kt"
+      ],
+      "expect": [
+        {
+          "path": "SearchSheet.kt",
+          "lines": [
+            23,
+            46
+          ],
+          "rule": "T-022",
+          "class": "taste",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "SearchSheet.kt",
+          "lines": [
+            49,
+            65
+          ],
+          "note": "StationSearchSheet tracks IME insets continuously via WindowInsets.ime without BoxWithConstraints or a boolean keyboardOpen layout switch."
+        }
+      ],
+      "expectations": [
+        "Flags AirportSearchSheet for snapping between layouts with a boolean keyboardOpen check inside BoxWithConstraints instead of tracking WindowInsets.ime continuously (T-022)",
+        "Does NOT flag StationSearchSheet"
+      ]
+    },
+    {
+      "id": 40,
+      "title": "A · F-001 theme color interpolation in composition and T-013 unbounded list stagger",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance issues in this settings screen. Perfetto summary during theme toggle and list entry: UI: 40 frames, >8.3ms=22, max=21.7ms (Recomposer:recompose=14.9ms across 380 nodes), and the bottom of a 20-row settings list takes almost a full second to appear. File: ThemeSwitcherScreen.kt",
+      "files": [
+        "evals/files/c40/ThemeSwitcherScreen.kt"
+      ],
+      "expect": [
+        {
+          "path": "ThemeSwitcherScreen.kt",
+          "lines": [
+            33,
+            50
+          ],
+          "rule": "F-001",
+          "class": "floor",
+          "severity": "major"
+        },
+        {
+          "path": "ThemeSwitcherScreen.kt",
+          "lines": [
+            53,
+            75
+          ],
+          "rule": "T-013",
+          "class": "taste",
+          "severity": "minor"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "ThemeSwitcherScreen.kt",
+          "lines": [
+            78,
+            130
+          ],
+          "note": "SnapshotThemeHost captures a single GraphicsLayer bitmap before flipping the theme, blocks input while transitioning, and fades the overlay in drawWithContent."
+        }
+      ],
+      "expectations": [
+        "Flags InterpolatedThemeHost for reading animated progress in composition and recomposing content(fg) on every frame (F-001)",
+        "Flags StaggeredSettingsList for an uncapped index * 45L stagger delay (T-013)",
+        "Recommends either draw-phase color deferral or single-snapshot GraphicsLayer crossfade for full-screen theme transitions",
+        "Does NOT flag SnapshotThemeHost"
+      ],
+      "checks": [
+        {
+          "id": "recommends_snapshot_or_draw_deferral",
+          "type": "noul",
+          "instructions": "The review recommends fixing InterpolatedThemeHost either by deferring the color read into a draw lambda (such as drawBehind / drawWithCache) or by capturing a single GraphicsLayer snapshot and fading the overlay (like SnapshotThemeHost).",
+          "expect": true,
+          "min_confidence": 0.65
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "title": "A · F-005 infinite frame-clock loop ignoring MotionDurationScale and frame-rate pacing",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance and accessibility issues in this ambient globe header. Perfetto summary while idle on the plan screen: UI: 180 frames at 120Hz, >8.3ms=0, avg=2.4ms, continuous vsync wakeup with no user interaction. File: AmbientGlobeHeader.kt",
+      "files": [
+        "evals/files/c50/AmbientGlobeHeader.kt"
+      ],
+      "expect": [
+        {
+          "path": "AmbientGlobeHeader.kt",
+          "lines": [
+            25,
+            44
+          ],
+          "rule": "F-005",
+          "class": "floor",
+          "severity": "major"
+        }
+      ],
+      "negatives": [
+        {
+          "path": "AmbientGlobeHeader.kt",
+          "lines": [
+                47,
+            86
+          ],
+          "note": "PacedDotGlobe reads MotionDurationScale, stops ticking when scaleFactor == 0f, provides a clickable pause toggle, and hints preferredFrameRate(60f) with a graphicsLayer draw boundary."
+        }
+      ],
+      "expectations": [
+        "Flags LiveDotGlobe for running an infinite withFrameNanos loop without checking MotionDurationScale (F-005)",
+        "Does NOT flag PacedDotGlobe"
+      ]
+    },
+    {
+      "id": 60,
+      "title": "A · Precision on clean layout-offset, cached-path, and hoisted-remember patterns",
+      "class": "A. Static twin",
+      "prompt": "Diagnose and review the motion performance issues in this timeline screen. Perfetto summary during timeline scroll and badge toggle: UI: 60 frames, >8.3ms=0, max=3.9ms | RT: max=4.2ms, >8.3ms=0, saveLayers=0, shaderMisses=0. File: TripTimelineScreen.kt",
+      "files": [
+        "evals/files/c60/TripTimelineScreen.kt"
+      ],
+      "expect": [],
+      "negatives": [
+        {
+          "path": "TripTimelineScreen.kt",
+          "lines": [
+            28,
+            50
+          ],
+          "note": "SlideInSummaryCard shifts position via lambda offset { IntOffset(...) } without remeasuring."
+        },
+        {
+          "path": "TripTimelineScreen.kt",
+          "lines": [
+            53,
+            85
+          ],
+          "note": "CachedMorphBadge builds its Path in drawWithCache and reads progressState.value inside onDrawWithContent with an early p > 0f guard."
+        },
+        {
+          "path": "TripTimelineScreen.kt",
+          "lines": [
+            88,
+            109
+          ],
+          "note": "HoistedTimelineList hoists remember(scheme.primary, scheme.surface) above LazyColumn items and keys items by id."
+        }
+      ],
+      "expectations": [
+        "Reports FINDINGS / NONE on a clean file with clean Perfetto numbers"
+      ]
+    }
+  ]
+}

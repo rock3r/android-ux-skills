@@ -1,0 +1,201 @@
+{
+  "description": "Two-sided calibration items for every universal check and per-case check in optimize-android-motion.",
+  "items": [
+    {
+      "name": "remedy names concrete modifier",
+      "expect_verdict": "pass",
+      "state": "WelcomeStepDeck reads slideDp.value in composition. Replace Modifier.offset(x = slideDp.value.dp) with Modifier.offset { IntOffset(slideDp.value.dp.roundToPx(), 0) }.\n\nFINDINGS\nOnboardingDeck.kt:24-47 RULE floor major animated offset read during composition",
+      "check": {
+        "id": "remedy_quality",
+        "type": "choice",
+        "instructions": "When this review or diagnosis reports a problem, how specific is the remedy it offers?",
+        "criteria": {
+          "specific": "It names a concrete change — a particular modifier, API call, or construct to use instead",
+          "generic": "It names problems but only gives general advice, such as to optimize rendering or follow best practice",
+          "none_needed": "It reports no problems at all, so there is no remedy to give"
+        },
+        "expect": [
+          "specific",
+          "none_needed"
+        ],
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "OnboardingDeck.kt"
+      ]
+    },
+    {
+      "name": "remedy gives only vague advice",
+      "expect_verdict": "fail",
+      "state": "WelcomeStepDeck has a performance issue in its animation. You should optimize how the offset is applied and follow Jetpack Compose best practices to reduce recompositions.\n\nFINDINGS\nOnboardingDeck.kt:24-47 RULE floor major slow offset animation",
+      "check": {
+        "id": "remedy_quality",
+        "type": "choice",
+        "instructions": "When this review or diagnosis reports a problem, how specific is the remedy it offers?",
+        "criteria": {
+          "specific": "It names a concrete change — a particular modifier, API call, or construct to use instead",
+          "generic": "It names problems but only gives general advice, such as to optimize rendering or follow best practice",
+          "none_needed": "It reports no problems at all, so there is no remedy to give"
+        },
+        "expect": [
+          "specific",
+          "none_needed"
+        ],
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "OnboardingDeck.kt"
+      ]
+    },
+    {
+      "name": "prose and findings match",
+      "expect_verdict": "pass",
+      "state": "LiveDotGlobe runs a withFrameNanos loop that never reads MotionDurationScale, so it keeps animating when Remove animations is enabled.\n\nFINDINGS\nAmbientGlobeHeader.kt:25-44 RULE floor major withFrameNanos loop ignores MotionDurationScale",
+      "check": {
+        "id": "internally_consistent",
+        "type": "noul",
+        "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+        "expect": true,
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "AmbientGlobeHeader.kt"
+      ]
+    },
+    {
+      "name": "findings block contradicts prose",
+      "expect_verdict": "fail",
+      "state": "Both composables in TripTimelineScreen.kt properly defer state reads to the draw phase and hoist remembered colors above the LazyColumn. There are no motion issues in this file.\n\nFINDINGS\nTripTimelineScreen.kt:56-88 RULE floor major badge path allocated every frame\nTripTimelineScreen.kt:91-117 RULE floor major missing lazy list keys",
+      "check": {
+        "id": "internally_consistent",
+        "type": "noul",
+        "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+        "expect": true,
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "TripTimelineScreen.kt"
+      ]
+    },
+    {
+      "name": "stays focused on motion and performance",
+      "expect_verdict": "pass",
+      "state": "SunriseHeroCard animates Modifier.padding(top = topPad), which re-measures the Column on every frame. Use Modifier.offset { IntOffset(0, topPad.roundToPx()) } instead.\n\nFINDINGS\nHeroRevealCard.kt:35-77 RULE floor major animated padding re-measures layout each frame",
+      "check": {
+        "id": "stays_on_topic",
+        "type": "noul",
+        "instructions": "The review confines itself to what it was asked about — motion, animation, transitions, and frame performance — rather than branching into unrelated matters such as naming or general code style.",
+        "expect": true,
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "HeroRevealCard.kt"
+      ]
+    },
+    {
+      "name": "digresses into naming and architecture",
+      "expect_verdict": "fail",
+      "state": "Hardcoding hex color literals like 0xFFFFB300 violates clean architecture, and SunriseHeroCard should inject a ViewModel and strings from resources. Also the package name should follow feature-module conventions.\n\nFINDINGS\nHeroRevealCard.kt:35-77 RULE taste minor hardcoded color and string literals",
+      "check": {
+        "id": "stays_on_topic",
+        "type": "noul",
+        "instructions": "The review confines itself to what it was asked about — motion, animation, transitions, and frame performance — rather than branching into unrelated matters such as naming or general code style.",
+        "expect": true,
+        "min_confidence": 0.6
+      },
+      "provided": [
+        "HeroRevealCard.kt"
+      ]
+    },
+    {
+      "name": "c10 names lambda offset",
+      "expect_verdict": "pass",
+      "state": "WelcomeStepDeck reads slideDp.value during composition via Modifier.offset(x = slideDp.value.dp). Switch to the lambda modifier Modifier.offset { IntOffset(slideDp.value.dp.roundToPx(), 0) } so the offset is applied during layout.\n\nFINDINGS\nOnboardingDeck.kt:24-47 RULE floor major animated offset read in composition",
+      "check": {
+        "id": "names_lambda_offset",
+        "type": "noul",
+        "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix for WelcomeStepDeck, rather than only advising in general terms to defer the state read.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "OnboardingDeck.kt"
+      ]
+    },
+    {
+      "name": "c10 omits lambda offset",
+      "expect_verdict": "fail",
+      "state": "WelcomeStepDeck reads slideDp.value too early in the Compose pipeline, causing recomposition on every frame. Defer the state read to a later phase.\n\nFINDINGS\nOnboardingDeck.kt:24-47 RULE floor major animated offset read in composition",
+      "check": {
+        "id": "names_lambda_offset",
+        "type": "noul",
+        "instructions": "The review names the lambda form of the offset modifier — offset { IntOffset(...) } — as the specific fix for WelcomeStepDeck, rather than only advising in general terms to defer the state read.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "OnboardingDeck.kt"
+      ]
+    },
+    {
+      "name": "c20 explains prewarm alpha and saveLayer",
+      "expect_verdict": "pass",
+      "state": "In SunriseHeroCard, the prewarm Box uses alpha = 0f, which Android's RenderNode skips flushing entirely — use a tiny non-zero alpha such as 0.004f. In addition, set CompositingStrategy.Offscreen while scaling or fading and latch alpha at 1f once revealed so spring undershoot does not trigger mid-animation saveLayer allocations.\n\nFINDINGS\nHeroRevealCard.kt:35-77 RULE floor major animated padding and unlatched saveLayer",
+      "check": {
+        "id": "explains_gpu_prewarm_or_savelayer",
+        "type": "noul",
+        "instructions": "The review explains at least one of the RenderThread causes in SunriseHeroCard: either that alpha = 0f skips RenderNode flushing (so GPU shader prewarming needs a small non-zero alpha such as 0.004f), or that holding CompositingStrategy.Offscreen / latching alpha at 1f prevents mid-animation saveLayer allocations.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "HeroRevealCard.kt"
+      ]
+    },
+    {
+      "name": "c20 misses RenderThread prewarm and saveLayer",
+      "expect_verdict": "fail",
+      "state": "SunriseHeroCard animates Modifier.padding(top = topPad), which triggers measureAndLayout on every frame. Replace padding with Modifier.offset { IntOffset(0, topPad.roundToPx()) }.\n\nFINDINGS\nHeroRevealCard.kt:35-77 RULE floor major animated padding",
+      "check": {
+        "id": "explains_gpu_prewarm_or_savelayer",
+        "type": "noul",
+        "instructions": "The review explains at least one of the RenderThread causes in SunriseHeroCard: either that alpha = 0f skips RenderNode flushing (so GPU shader prewarming needs a small non-zero alpha such as 0.004f), or that holding CompositingStrategy.Offscreen / latching alpha at 1f prevents mid-animation saveLayer allocations.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "HeroRevealCard.kt"
+      ]
+    },
+    {
+      "name": "c40 recommends bitmap snapshot or draw deferral",
+      "expect_verdict": "pass",
+      "state": "InterpolatedThemeHost lerps bg and fg during composition on every frame, forcing the entire content tree to recompose on each vsync. Instead, capture the outgoing screen once via rememberGraphicsLayer().toImageBitmap() and fade the snapshot overlay in drawWithContent (as SnapshotThemeHost does), or read the animated color inside drawBehind.\n\nFINDINGS\nThemeSwitcherScreen.kt:33-50 RULE floor major per-frame color lerp in composition",
+      "check": {
+        "id": "recommends_snapshot_or_draw_deferral",
+        "type": "noul",
+        "instructions": "For InterpolatedThemeHost, the review recommends either capturing a bitmap snapshot of the outgoing screen (such as rememberGraphicsLayer().toImageBitmap() as in SnapshotThemeHost) or deferring the animated color read to the draw phase (such as drawBehind / drawWithContent) so the subtree does not recompose every frame.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "ThemeSwitcherScreen.kt"
+      ]
+    },
+    {
+      "name": "c40 only suggests changing animation duration",
+      "expect_verdict": "fail",
+      "state": "InterpolatedThemeHost uses defaultEffectsSpec which is too slow for a theme switch. Shorten the tween duration to 100ms so fewer frames are dropped.\n\nFINDINGS\nThemeSwitcherScreen.kt:33-50 RULE taste minor theme animation is too slow",
+      "check": {
+        "id": "recommends_snapshot_or_draw_deferral",
+        "type": "noul",
+        "instructions": "For InterpolatedThemeHost, the review recommends either capturing a bitmap snapshot of the outgoing screen (such as rememberGraphicsLayer().toImageBitmap() as in SnapshotThemeHost) or deferring the animated color read to the draw phase (such as drawBehind / drawWithContent) so the subtree does not recompose every frame.",
+        "expect": true,
+        "min_confidence": 0.65
+      },
+      "provided": [
+        "ThemeSwitcherScreen.kt"
+      ]
+    }
+  ]
+}

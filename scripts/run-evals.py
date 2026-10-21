@@ -352,9 +352,73 @@ def resolve_actor(command: str) -> tuple[str, list[str]]:
     return str(real), grants
 
 
+def _prepare_pi_home(battery: Path) -> tuple[Path | None, dict[str, str]]:
+    """Stage a sandbox-safe Pi home under `battery`.
+
+    Pioneer's Seatbelt sandbox forbids `fork`/`exec` inside the actor. User packages
+    that spawn background processes at startup fail with `EPERM (syscall: spawn)`
+    when inherited from `~/.pi/agent`. Staging a clean `--pi-home` without `packages`
+    — and materialising any local-loopback providers from `models-store.json` into
+    `models.json` — keeps both cloud and local-proxy providers working inside the
+    sandbox.
+    """
+    src = Path.home() / ".pi" / "agent"
+    if not src.is_dir():
+        return None, {}
+    dest = battery / "pi-home"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "auth.json",
+        "models-store.json",
+        "claude-code.json",
+        "claude-code-models.json",
+        "kimi-code-models.json",
+    ):
+        f = src / name
+        if f.is_file():
+            shutil.copy2(f, dest / name)
+
+    settings_file = src / "settings.json"
+    if settings_file.is_file():
+        settings = json.loads(settings_file.read_text())
+        settings.pop("packages", None)
+        (dest / "settings.json").write_text(json.dumps(settings, indent=2))
+
+    models_data: dict = {"providers": {}}
+    models_file = src / "models.json"
+    if models_file.is_file():
+        models_data = json.loads(models_file.read_text())
+        models_data.setdefault("providers", {})
+
+    loopback_hosts: dict[str, str] = {}
+    store_file = src / "models-store.json"
+    if store_file.is_file():
+        store = json.loads(store_file.read_text())
+        for prov, pdata in store.items():
+            if not isinstance(pdata, dict):
+                continue
+            pmodels = pdata.get("models") or []
+            if not pmodels or not isinstance(pmodels[0], dict):
+                continue
+            base_url = pmodels[0].get("baseUrl") or ""
+            m_loop = re.match(r"^https?://(127\.0\.0\.1|localhost):(\d+)", base_url)
+            if m_loop:
+                loopback_hosts[prov] = f"{m_loop.group(1)}:{m_loop.group(2)}"
+                if prov not in models_data["providers"]:
+                    models_data["providers"][prov] = {
+                        "api": pmodels[0].get("api", "openai-completions"),
+                        "baseUrl": base_url,
+                        "apiKey": "local",
+                        "models": pmodels,
+                    }
+    (dest / "models.json").write_text(json.dumps(models_data, indent=2))
+    return dest, loopback_hosts
+
+
 def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
             timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None,
-            thinking: str = "") -> ArmResult:
+            thinking: str = "", pi_home: Path | None = None,
+            loopback: str | None = None) -> ArmResult:
     arm = run_dir.name
     # A dry run only prints the command, so the bare name will do; resolving it would
     # make the plan fail wherever pi is not installed, which is CI.
@@ -365,6 +429,10 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         "--timeout-ms", str(timeout_ms),
         "--deny-read-probe", str(ROOT / "skills"),  # answer keys must be unreachable
     ]
+    if pi_home is not None:
+        cmd += ["--pi-home", str(pi_home)]
+    if loopback is not None:
+        cmd += ["--allow-loopback", loopback]
     for g in grants:
         cmd += ["--runtime-read", g]
     cmd += ["--", actor_path, "--model", model]
@@ -642,6 +710,8 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
             raise SystemExit(f"pioneer eval prepare failed for {name}:\n  {detail}")
 
     actor = None if dry else resolve_actor(actor_command)
+    pi_home, loopback_hosts = (None, {}) if dry else _prepare_pi_home(battery)
+    loopback = loopback_hosts.get(model.partition("/")[0])
 
     cases = []
     for case in spec["evals"]:
@@ -677,7 +747,7 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                 ("with-skill", case_dir / f"with-skill{suffix}" / "skills" / skill),
             ):
                 r = run_arm(case_dir / f"{arm}{suffix}", prompt, skill_path,
-                            model, timeout_ms, dry, actor, thinking)
+                            model, timeout_ms, dry, actor, thinking, pi_home, loopback)
                 arms[arm].append(r)
                 if not dry:
                     f = transcripts / f"{arm}{suffix}.md"

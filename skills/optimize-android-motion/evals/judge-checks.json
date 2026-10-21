@@ -1,0 +1,34 @@
+{
+  "description": "Universal quality checks applied to every transcript in optimize-android-motion batteries.",
+  "universal": [
+    {
+      "id": "remedy_quality",
+      "type": "choice",
+      "instructions": "When this review or diagnosis reports a problem, how specific is the remedy it offers?",
+      "criteria": {
+        "specific": "It names a concrete change — a particular modifier, API call, or construct to use instead",
+        "generic": "It names problems but only gives general advice, such as to optimize rendering or follow best practice",
+        "none_needed": "It reports no problems at all, so there is no remedy to give"
+      },
+      "expect": [
+        "specific",
+        "none_needed"
+      ],
+      "min_confidence": 0.6
+    },
+    {
+      "id": "internally_consistent",
+      "type": "noul",
+      "instructions": "The review's prose and its summary list of findings agree: the list contains the problems the prose raised, and does not add problems the prose never mentioned.",
+      "expect": true,
+      "min_confidence": 0.6
+    },
+    {
+      "id": "stays_on_topic",
+      "type": "noul",
+      "instructions": "The review confines itself to what it was asked about — motion, animation, transitions, and frame performance — rather than branching into unrelated matters such as naming or general code style.",
+      "expect": true,
+      "min_confidence": 0.6
+    }
+  ]
+}
