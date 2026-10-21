@@ -221,15 +221,24 @@ private const val FrameStep60HzNanos = 16_000_000L
 internal fun rememberThrottledPhase(periodMs: Int): State<Float> {
     val phase = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(periodMs) {
+        val scale = coroutineContext[MotionDurationScale]
         var nextFrameNs = 0L
-        var startNs = 0L
+        var lastNs = -1L
         while (isActive) {
+            val factor = scale?.scaleFactor ?: 1f
+            if (factor == 0f) {
+                lastNs = -1L
+                delay(500)
+                continue
+            }
             withFrameNanos { frameNs ->
-                if (startNs == 0L) startNs = frameNs
                 if (frameNs >= nextFrameNs) {
                     nextFrameNs = frameNs + FrameStep60HzNanos
-                    val elapsedMs = (frameNs - startNs) / 1_000_000f
-                    phase.floatValue = (elapsedMs % periodMs) / periodMs
+                    if (lastNs >= 0L) {
+                        val deltaMs = (frameNs - lastNs) / 1_000_000f / factor
+                        phase.floatValue = (phase.floatValue + deltaMs / periodMs) % 1f
+                    }
+                    lastNs = frameNs
                 }
             }
         }

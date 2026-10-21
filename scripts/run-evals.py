@@ -356,11 +356,12 @@ def _prepare_pi_home(battery: Path) -> tuple[Path | None, dict[str, str]]:
     """Stage a sandbox-safe Pi home under `battery`.
 
     Pioneer's Seatbelt sandbox forbids `fork`/`exec` inside the actor. User packages
-    that spawn background processes at startup fail with `EPERM (syscall: spawn)`
-    when inherited from `~/.pi/agent`. Staging a clean `--pi-home` without `packages`
-    — and materialising any local-loopback providers from `models-store.json` into
-    `models.json` — keeps both cloud and local-proxy providers working inside the
-    sandbox.
+    that spawn background processes at startup (`pi-subagents`) fail with
+    `EPERM (syscall: spawn)` when inherited from `~/.pi/agent`. Staging a `--pi-home`
+    that preserves `extensions/` and `npm/` while filtering `pi-subagents` from
+    `packages` — and materialising any local-loopback providers from `models-store.json`
+    into `models.json` — keeps both cloud/extension and local-proxy providers working
+    inside the sandbox.
     """
     src = Path.home() / ".pi" / "agent"
     if not src.is_dir():
@@ -378,10 +379,20 @@ def _prepare_pi_home(battery: Path) -> tuple[Path | None, dict[str, str]]:
         if f.is_file():
             shutil.copy2(f, dest / name)
 
+    for dirname in ("extensions", "npm"):
+        d = src / dirname
+        target = dest / dirname
+        if d.is_dir() and not target.exists():
+            target.symlink_to(d, target_is_directory=True)
+
     settings_file = src / "settings.json"
     if settings_file.is_file():
         settings = json.loads(settings_file.read_text())
-        settings.pop("packages", None)
+        if isinstance(settings.get("packages"), list):
+            settings["packages"] = [
+                pkg for pkg in settings["packages"]
+                if "pi-subagents" not in str(pkg)
+            ]
         (dest / "settings.json").write_text(json.dumps(settings, indent=2))
 
     models_data: dict = {"providers": {}}
