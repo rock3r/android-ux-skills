@@ -27,17 +27,19 @@ This guide covers the Compose-specific build isolation, transition windowing, an
 
 First-run transitions, onboarding flows, and cold GPU pipeline tests require `adb shell pm
 clear`, which wipes app data. On a shared development phone, use a `benchmark` build
-variant or pass a temporary Gradle `--init-script` that appends `.perf` to
-`applicationId`:
+variant or pass a temporary Gradle `--init-script` that hooks `finalizeDsl` to append
+`.perf` after the module's `android {}` block is evaluated:
 
 ```groovy
 // /tmp/perf-id.gradle — passed via ./gradlew assembleRelease --init-script /tmp/perf-id.gradle
 allprojects {
     plugins.withId("com.android.application") {
-        extensions.configure(com.android.build.api.dsl.ApplicationExtension) { ext ->
-            ext.defaultConfig.applicationId = "${ext.defaultConfig.applicationId}.perf"
-            ext.buildTypes.named("release") {
-                it.signingConfig = ext.signingConfigs.named("debug").get()
+        extensions.configure(com.android.build.api.variant.ApplicationAndroidComponentsExtension) { components ->
+            components.finalizeDsl { ext ->
+                ext.buildTypes.named("release") {
+                    it.applicationIdSuffix = "${it.applicationIdSuffix ?: ""}.perf"
+                    it.signingConfig = ext.signingConfigs.named("debug").get()
+                }
             }
         }
     }
@@ -45,10 +47,12 @@ allprojects {
 ```
 
 Never commit the init script or hardcode the `.perf` suffix in tracked build files. Note
-that `allprojects { plugins.withId(...) }` in an init script runs before the module's own
-`build.gradle.kts`, so scalar flags set by the module (`isMinifyEnabled`, `isDebuggable`)
-silently overwrite the init script. Use `-P` project properties or `androidComponents`
-variant callbacks when overriding build flags.
+that plain `extensions.configure(ApplicationExtension)` in an init script runs when the
+plugin is applied, before the module's own `build.gradle.kts`, so the module's DSL block
+silently overwrites any scalar flags set there (`applicationId`, `isMinifyEnabled`,
+`isDebuggable`). Always mutate DSL properties inside `androidComponents.finalizeDsl` (or
+via `-P` project properties) and verify the packaged application ID (`aapt2 dump
+packagename <apk>`) before installing or clearing app data.
 
 Fresh `adb install` runs in `verify` mode (`nterp` interpreter), adding `30–40%` to cold
 start and first-time screen opens. For **performance A/B runs only** (never normal
