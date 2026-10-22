@@ -164,9 +164,9 @@
           "path": "ThemeSwitcherScreen.kt",
           "lines": [
             79,
-            132
+            139
           ],
-          "note": "SnapshotThemeHost captures a single GraphicsLayer bitmap before flipping the theme, blocks semantics, focus, and pointer input while transitioning, and fades the overlay in drawWithContent."
+          "note": "SnapshotThemeHost captures a single GraphicsLayer bitmap before flipping the theme, cleans up snapshot state on cancellation in finally, blocks semantics, focus, and pointer input while transitioning, and fades the overlay in drawWithContent."
         }
       ],
       "expectations": [

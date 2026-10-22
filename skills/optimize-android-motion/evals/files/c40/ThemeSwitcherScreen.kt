@@ -89,11 +89,18 @@ fun SnapshotThemeHost(
     val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
 
     LaunchedEffect(darkTheme) {
-        if (displayedDark != darkTheme) {
+        if (displayedDark == darkTheme) {
+            overlayAlpha.snapTo(0f)
+            snapshot = null
+            return@LaunchedEffect
+        }
+        try {
             snapshot = captureLayer.toImageBitmap()
             overlayAlpha.snapTo(1f)
             displayedDark = darkTheme
             overlayAlpha.animateTo(0f, animationSpec = effectsSpec)
+        } finally {
+            overlayAlpha.snapTo(0f)
             snapshot = null
         }
     }

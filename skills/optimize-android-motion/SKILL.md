@@ -27,10 +27,26 @@ When invoked with no target or trace, reply with this sentence:
 ## Scope
 
 This skill diagnoses and fixes frame drops in Jetpack Compose animations, screen
-transitions, shape morphs, expandable panes, and sheets. It enforces the mechanical floor
-rules in `references/standards.md` (`F-001`, `F-002`, `F-005`, `F-008`, `F-009`) and
-covers the layout, subcomposition, and `RenderThread` bottlenecks that remain after code
-already uses lambda modifiers.
+transitions, shape morphs, overlays, and sheets. Start with the simplest, highest-leverage
+fixes before reaching for specialized workarounds:
+
+1. **Data pipeline first:** Fixing bad data handling (moving synchronous transformations,
+   sorting, formatting, or I/O out of composition into ViewModels or background flows, and
+   avoiding unrelated `UiState` emissions mid-transition) almost always brings cleaner,
+   larger wins than band-aids in the UI layer.
+2. **Composition and phase deferral second:** Apply standard Compose hygiene
+   (`jetpack-compose-performance`) and the mechanical floor rules in
+   `references/standards.md` (`F-001`, `F-002`, `F-005`, `F-008`, `F-009`): defer
+   frame-rate state reads to layout (`offset { IntOffset(...) }`) and draw
+   (`graphicsLayer`, `drawWithCache`), match `remember` scopes to data lifetime, narrow
+   recomposition scopes, and make long scrollable content lazy.
+3. **Last-resort workarounds for composition, layout, or GPU side effects:** The advanced
+   patterns in this skill's references (off-screen deck precomposition, non-disposing
+   layout slots, bitmap snapshots, and manual GPU shader prewarming) are a rulebook for
+   when a release-build Perfetto trace shows that the data pipeline and composition are
+   already clean, and the remaining lag comes purely from unavoidable side effects of
+   mounting a complex tree, measuring cold text (`Minikin`), or compiling GPU shaders
+   mid-animation.
 
 Route other questions to the matching skill:
 
@@ -52,36 +68,19 @@ Route other questions to the matching skill:
 2. **Isolate the test build's application ID on shared devices.** Use a benchmark build
    variant or a temporary Gradle `--init-script` that appends `.perf` to `applicationId`.
    This keeps installed user data untouched during `pm clear` or scripted UI loops.
-3. **Separate UI-thread stalls, `RenderThread` stalls, and GPU buffer starvation.** A `40
-   ms` frame where `Choreographer#doFrame` takes `2 ms` and `DrawFrames` takes `38 ms` is
-   a GPU pipeline or `saveLayer` stall on `RenderThread`. When `doFrame` blocks in
+3. **Separate UI-thread stalls, `RenderThread` stalls, and GPU buffer starvation.** When
+   `Choreographer#doFrame` is fast but `DrawFrames` exceeds the frame budget, the bottleneck
+   is a GPU pipeline or `saveLayer` stall on `RenderThread`. When `doFrame` blocks in
    `postAndWait` and `RenderThread` blocks in `dequeueBuffer`, the GPU is starving the
    buffer queue.
-4. **Reduce destination composition cost at the source.** Never stagger non-lazy sibling
-   sections across active transition frames or keep every top-level screen permanently
-   composed. Keep ViewModels and UI models warm, hoist heavy allocations, and make long
-   scrollable content lazy.
+4. **Fix the data pipeline and composition cost before reaching for workarounds.** Never
+   time-slice a slow screen by mounting its sections across consecutive `withFrameNanos`
+   ticks during a transition, and do not keep every top-level screen permanently composed.
+   Do not introduce precomposition or shader prewarming until you have eliminated
+   synchronous data work and composition-phase state reads.
 5. **Preserve disabled-animation behavior and accessibility (`O-001`, `F-005`).** Hidden
-   precomposed surfaces must block TalkBack semantics, pointer input, and focus.
-   Self-timed prewarm or shader loops must read `MotionDurationScale`.
-
-## Diagnose from the trace signature
-
-Pair every symptom with the thread and slice that take the most time in the slow frame:
-
-| Symptom or Perfetto signature | Root cause | Fix and reference |
-|---|---|---|
-| First visit to a step or tab drops `15–40 ms` in `Recomposer:recompose` + `measureAndLayout` | The incoming step mounts, measures text (`Minikin` cold miss), and builds paths on frame 1 of the transition. | Precompose bounded steps in one `Layout`, keep inactive steps off-screen and inert, and warm them one per idle frame. See `references/transition-and-layout-patterns.md`. |
-| First-run morph or `SeekableTransitionState` cuts straight to the middle of the motion | The transition clock advances on the frame the target mounts, before its bounds exist. | Gate clock advancement until the incoming target completes one layout pass. See `references/transition-and-layout-patterns.md`. |
-| `20–30` consecutive frames `> 8.3 ms` while a search bar, keyboard, or header folds | Parent `Layout` passes animated height in `Constraints` to a precomposed deck, or `BoxWithConstraints` runs `subcompose()` each frame. | Measure the deck at constant `Constraints.fixed(width, height)` and apply the animated inset in `Modifier.layout` only on the active step. See `references/transition-and-layout-patterns.md`. |
-| `25–35 ms` UI-thread spike when pressing Back to close inline search or an expanded pane | `AnimatedVisibility` or `AnimatedContent` disposed folded nodes on open and recreates them on Back, or focus clear and collapse split across two frames. | Keep folded slots composed in a `FoldingSlot` (`inertWhen` folded) and coalesce `focusManager.clearFocus()` with state updates in one `SideEffect`. See `references/transition-and-layout-patterns.md`. |
-| Root screen recomposes on frame 1 of every step change or exit takeoff | Root composable reads `state.step` by value, or the exit action mutates `UiState` (`isSaving = true`) as the animation starts. | Pass `State<Step>` to leaf consumers, keep save state out of `UiState` during exits, and latch initial morph origins. See `references/transition-and-layout-patterns.md`. |
-| `30–80 ms` `RenderThread` stall mid-reveal (`CreateGraphicsPipeline` + `alpha caused saveLayer`) | Art starts at `alpha = 0f` (skipped by HWUI) and flushes mid-entrance, or an underdamped spring undershoots `1.0f` and flips to `flush layers`. | Prewarm one covered frame at rest, latch `artAlpha` at `1f` after reveal, and hold `CompositingStrategy.Offscreen` while `scale != 1f`. See `references/gpu-and-canvas-pipeline.md`. |
-| `80–120 ms` `RenderThread` stall when `ModalBottomSheet` bounces at its top anchor | `ModalBottomSheet`'s `.verticalScaleUp` ($H_1$) and `.verticalScaleDown` ($H_2 = H_1 - \text{insets}$) leave $s_y \neq 1.0$, forcing Skia (`kScale_Mask`) to compile scaled shaders. | Set `CompositingStrategy.Offscreen` on sheet content while `sheetState` is moving, and skip canvas draws while `SheetValue.Hidden`. See `references/gpu-and-canvas-pipeline.md`. |
-| Every frame of a canvas reveal or scroll spends `4–15 ms` in `AndroidOwner:draw` | `drawWithCache` reads a frame clock in its cache body, `onDraw` builds `Morph` or `Path` objects, or the canvas emits hundreds of primitives. | Read clocks only inside `onDrawWithContent`, cache `SceneGeometry` per size, and collapse dense draws into an AGSL `RuntimeShader` or `BlendMode.DstIn` mask. See `references/gpu-and-canvas-pipeline.md`. |
-| Full-screen theme or style transition (cross-fade, circular reveal) drops `25+` frames `> 8.3 ms` | Animating `ColorScheme` or theme values per frame recomposes every reader across the window on every tick. | Capture the static outgoing screen once via `rememberGraphicsLayer().toImageBitmap()`, switch the theme in one recomposition, and animate the bitmap overlay while blocking input (note that ongoing motion pauses on the snapshot). See `references/transition-and-layout-patterns.md`. |
-| Cold lazy-list fling or item/day switch drops `15–35 ms` in composition and text layout | Per-item `remember` recomputes theme-wide values (`4×` per frame in `keepAroundItems`), or `key(selectedItem)` destroys a canvas component's `rememberTextMeasurer()`. | Match `remember` scope to data lifetime (hoist theme/screen-level computations above the list) and keep canvas components mounted across item switches. See `references/transition-and-layout-patterns.md`. |
-| Main thread blocks in `postAndWait` and `RenderThread` blocks in `dequeueBuffer`, or an idle screen redraws at `120 Hz` | A full-window AGSL shader saturates the GPU, or an expensive ambient wave/rotation invalidates the window on every `120 Hz` vsync. | Add cheap early-out cell/radius checks in AGSL followed by a full shader pass (LUTs, cheaper math, CPU uniforms), and step down expensive ambient loops to `60 fps` (`preferredFrameRate` or `FrameGate(60)` in lazy lists). See `references/gpu-and-canvas-pipeline.md`. |
+   precomposed or transitioning surfaces must block TalkBack semantics, pointer input, and
+   focus. Self-timed prewarm or shader loops must read `MotionDurationScale`.
 
 ## Workflow
 
@@ -89,46 +88,74 @@ Pair every symptom with the thread and slice that take the most time in the slow
    `applicationId`, drive the interaction with `adb shell input`, and pull three
    `.perfetto-trace` files per `references/perfetto-workflow.md`.
 2. **Analyze UI-thread and `RenderThread` slices.** Run `scripts/analyze_motion_trace.py`
-   on the baseline traces to get the over-budget frame count (`> 8.33 ms` at 120 Hz),
-   worst `Choreographer#doFrame`, worst `DrawFrames`, and dominant child slices.
-3. **Apply the targeted fix.** Use `references/transition-and-layout-patterns.md` for
-   composition, subcomposition, and measurement spikes, or
-   `references/gpu-and-canvas-pipeline.md` for `RenderThread`, `saveLayer`, shader
-   compilation, and canvas draw stalls.
+   on the baseline traces to get the over-budget frame count, worst
+   `Choreographer#doFrame`, worst `DrawFrames`, and dominant child slices.
+3. **Fix the root cause before reaching for workarounds.** Address data-pipeline work and
+   standard composition/phase-deferral issues first. If the trace still shows frame drops
+   caused by first-time mount, layout, or GPU compilation side effects, apply the matching
+   pattern in `references/transition-and-layout-patterns.md` or
+   `references/gpu-and-canvas-pipeline.md`.
 4. **Verify with three post-fix traces and screenshot tests.** Run the same trace script
    three times on the updated release APK and compare the median and worst frames against
    baseline. Run unit and screenshot tests to confirm visual and accessibility parity.
 
+## Diagnose from the trace signature
+
+Once you have a trace, use the dominant thread and slice in the slow frames to identify the
+root cause and select the simplest effective fix:
+
+| Symptom or Perfetto signature | Root cause | Fix (root cause → last resort) |
+|---|---|---|
+| First visit to a destination or step spikes `Recomposer:recompose` + `measureAndLayout` | The incoming destination runs synchronous data setup, composes a large non-lazy tree, or pays cold `Minikin` text layout and path setup on frame 1. | Warm UI state in the ViewModel, hoist allocations, and make long lists lazy. **Last resort:** for bounded flows, precompose steps in one `Layout`, keep inactive steps off-screen and inert, and warm them on idle frames (`references/transition-and-layout-patterns.md`). |
+| First-run morph or `SeekableTransitionState` cuts straight to the middle of the motion | The transition clock advances on the frame the target mounts, before layout resolves its bounds. | Gate clock advancement until the incoming target completes its first layout pass (`references/transition-and-layout-patterns.md`). |
+| Consecutive frames exceed budget in `measureAndLayout` while a bar, keyboard, or header animates | Animated size or padding is applied in composition (`F-008`), `BoxWithConstraints` runs `subcompose()` each frame, or a parent `Layout` passes changing `Constraints` to a shared deck. | Defer offsets and insets to `Modifier.layout` or `offset { IntOffset(...) }`, track `WindowInsets.ime` continuously, and measure shared decks at constant `Constraints` (`references/transition-and-layout-patterns.md`). |
+| UI-thread spike when changing UI state (such as going in or out of an overlay, search mode, or collapsible pane) | Unrelated `UiState` fields mutate mid-transition, focus clear and state change split across frames, or `AnimatedVisibility` / `AnimatedContent` disposes and recreates a heavy subtree. | Coalesce state and focus updates in one frame and narrow recomposition scopes. **Last resort:** keep frequently toggled subtrees composed in a non-disposing `FoldingSlot` (`inertWhen` folded) (`references/transition-and-layout-patterns.md`). |
+| Root screen recomposes on frame 1 of every state transition or exit animation | Root composable reads transition state by value, or the exit action mutates `UiState` (such as `isSaving = true`) as the animation starts. | Pass `State<T>` or lambdas to leaf consumers, keep save state out of `UiState` during exits, and latch initial morph origins (`references/transition-and-layout-patterns.md`). |
+| `RenderThread` stalls mid-reveal in `CreateGraphicsPipeline` or `alpha caused saveLayer` | Complex vector/canvas art flushes for the first time mid-entrance, or an underdamped spring crosses `alpha = 1.0f` and toggles HWUI `flush layers`. | Simplify draw primitives, use non-overshooting effects springs (`defaultEffectsSpec()`) for alpha, and hold `CompositingStrategy.Offscreen` across overlapping translucent children. **Last resort:** prewarm one covered frame at rest (`references/gpu-and-canvas-pipeline.md`). |
+| `RenderThread` stalls in `CreateGraphicsPipeline` when `ModalBottomSheet` bounces at its top anchor | Upstream `ModalBottomSheet` scale modifiers leave a non-uniform vertical scale ($s_y \neq 1.0$) when insets are present, forcing Skia (`kScale_Mask`) to compile elliptical shaders. | Skip heavy canvas draws while `SheetValue.Hidden`. **Last resort:** hold `CompositingStrategy.Offscreen` on sheet content while `sheetState` is moving (`references/gpu-and-canvas-pipeline.md`). |
+| Every frame of a canvas animation or scroll spends excessive time in `AndroidOwner:draw` | `drawWithCache` reads a frame clock in its outer cache body, `onDraw` allocates `Morph`, `Path`, or `Brush` objects, or the canvas emits hundreds of individual draw calls. | Read clocks only inside `onDrawWithContent`, cache geometry per canvas size, and collapse dense procedural loops into an AGSL `RuntimeShader` or `BlendMode.DstIn` mask (`references/gpu-and-canvas-pipeline.md`). |
+| Full-screen theme or style transition (cross-fade, circular reveal) drops every frame in `Recomposer:recompose` | Animating `ColorScheme` or theme values per frame recomposes every reader across the window on every vsync. | If only a local surface changes color, read the animated color inside a draw lambda (`drawBehind`). **Last resort:** for full-window theme switches on static screens, snapshot the outgoing screen once via `rememberGraphicsLayer().toImageBitmap()`, switch the theme in one recomposition, and animate the bitmap overlay while blocking input (`references/transition-and-layout-patterns.md`). |
+| Lazy-list fling or item switch spikes in composition and text layout | Per-item `remember` recomputes screen-level or theme-level values during prefetch, or `key(selectedItem)` destroys a canvas component's `rememberTextMeasurer()`. | Match `remember` scope to data lifetime (hoist theme/screen computations above the list) and keep stateful canvas components mounted across item switches (`references/transition-and-layout-patterns.md`). |
+| Main thread blocks in `postAndWait` and `RenderThread` blocks in `dequeueBuffer`, or an idle screen redraws at `120 Hz` | A full-window AGSL shader saturates the GPU, or an expensive ambient animation invalidates the window on every `120 Hz` vsync. | Add cheap early-out checks in AGSL followed by a full shader optimization pass (CPU uniforms, LUTs, simpler math), and step down expensive ambient loops to `60 fps` (`references/gpu-and-canvas-pipeline.md`). |
+
 ## Gotchas
 
-- `alpha = 0f` does not warm GPU pipelines. Android's `RenderNode` skips display-list
-  flushing when `alpha == 0f`, so Vulkan defers shader compilation to the first visible
-  frame. Use a tiny non-zero alpha (`0.004f`) or draw at full alpha under an opaque cover.
-- A process-global `var prewarmed = true` breaks after process death or configuration
-  change when the GPU context is discarded. Store prewarm state in `remember` so a fresh
-  composition re-warms its pipelines.
-- `Modifier.clearAndSetSemantics {}` hides a precomposed off-screen step from TalkBack,
-  but does not block touch or hardware keyboard focus. Pair it with a
-  `PointerEventPass.Initial` consumer and `focusProperties { canFocus = false }`.
-- Replacing `TextAutoSize.StepBased` with a custom step size (such as `0.5.sp` instead of
-  `StepBased`'s `0.25.sp`) changes rendered glyph metrics at `1.3x` and `1.5x` font scales
-  and breaks screenshot goldens. If you add a fast path that checks `maxFontSize` first,
-  delegate overflow cases to `TextAutoSize.StepBased`.
-- Do not stagger non-lazy sibling sections across active transition frames to lower
-  `uiMax`. Mounting one section per frame during a fade-in halves the peak frame (`61.5 →
-  34.5 ms`) but increases total missed vsyncs (`5.0 → 8.4` FrameTimeline jank). Fix why
-  the destination is slow to compose instead.
-- Separate platform window and library floors from app code. Compose `Dialog`,
-  `ModalBottomSheet`, and `Popup` pay a `12–15 ms` window creation floor on Frame 1, and
-  an open `Popup` ticks `BroadcastFrameClock` at `120 Hz` to poll anchor coordinates. File
-  upstream issues for library bottlenecks and link any local workaround to the bug.
+- **Do not reach for last-resort workarounds before fixing the root cause.** Never
+  time-slice a slow screen across frames (mounting section 1 on frame 1 and section 2 on
+  frame 2 via `withFrameNanos`) to lower single-frame `uiMax`; splitting composition across
+  fade-in frames increases total missed vsyncs (`FrameTimeline` jank). Fix the data
+  pipeline and composition cost instead.
+- **Why transitioning or off-screen surfaces need `inertWhen` instead of `enabled = false`:**
+  Passing `enabled = false` to controls during a transition alters their visual appearance
+  (switching to disabled colors and alphas mid-animation) and is not supported by arbitrary
+  layout containers. Conversely, `Modifier.clearAndSetSemantics {}` hides a subtree from
+  TalkBack without changing visuals, but does not block touch or hardware keyboard focus.
+  Combine `clearAndSetSemantics {}`, a `PointerEventPass.Initial` pointer consumer, and
+  `focusProperties { canFocus = false }` when keeping a hidden or snapshotted surface
+  mounted.
+- **When forced to prewarm a GPU pipeline, `alpha = 0f` is a no-op:** Android's
+  `RenderNode` skips display-list flushing when `alpha == 0f`, so Vulkan defers shader
+  compilation to the first visible frame. Use a tiny non-zero alpha (`0.004f`) or draw at
+  full alpha under an opaque cover, and store the prewarm flag in `remember` (never a
+  process-global `var`) so process recreation re-warms pipelines when the GPU context
+  resets.
+- **Custom `TextAutoSize` step sizes shift glyph metrics:** Replacing
+  `TextAutoSize.StepBased` with a coarser step size (such as `0.5.sp` instead of
+  `StepBased`'s `0.25.sp`) changes rendered glyph metrics at large font scales and breaks
+  screenshot goldens. If you add a fast path that checks `maxFontSize` first, delegate
+  overflow cases to `TextAutoSize.StepBased`.
+- **Separate platform window and library floors from app code:** Compose `Dialog`,
+  `ModalBottomSheet`, and `Popup` pay a one-time platform window creation cost on Frame 1
+  (`relayoutWindow#first=true`), and an open `Popup` ticks `BroadcastFrameClock` on every
+  vsync to poll anchor coordinates. Optimize app-owned content and file upstream issues for
+  library bottlenecks rather than hacking around framework state.
 
 ## References and scripts
 
 - Read `references/perfetto-workflow.md` before building a test APK or recording Perfetto
   traces on a physical device.
 - Read `references/transition-and-layout-patterns.md` when fixing UI-thread spikes in
-  `Recomposer:recompose`, `measureAndLayout`, `SubcomposeLayout`, or Back navigation.
+  `Recomposer:recompose`, `measureAndLayout`, `SubcomposeLayout`, or state transitions.
 - Read `references/gpu-and-canvas-pipeline.md` when fixing `RenderThread` stalls in
   `DrawFrames`, `saveLayer`, `CreateGraphicsPipeline`, `ModalBottomSheet`, or `Canvas`.
 - Read `references/standards.md` when checking the shared floor, obligation, and taste
