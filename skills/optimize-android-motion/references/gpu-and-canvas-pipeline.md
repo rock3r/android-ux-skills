@@ -31,8 +31,8 @@ Start with standard drawing hygiene before reaching for lower-level GPU workarou
    stalls](#3-defeat-modalbottomsheet-non-uniform-scale-shader-stalls)
 4. [Collapse dense procedural draws and optimize heavy AGSL
    shaders](#4-collapse-dense-procedural-draws-and-optimize-heavy-agsl-shaders)
-5. [Step down expensive ambient redraws to 60
-   fps](#5-step-down-expensive-ambient-redraws-to-60-fps)
+5. [Isolate ambient redraw bounds (and step down to 60 fps only as a last
+   resort)](#5-isolate-ambient-redraw-bounds-and-step-down-to-60-fps-only-as-a-last-resort)
 6. [Last resort: Prewarm GPU pipelines and text
    layouts](#6-last-resort-prewarm-gpu-pipelines-and-text-layouts)
 
@@ -147,12 +147,13 @@ Issuing hundreds of individual canvas draw calls per frame saturates `AndroidOwn
 and `RenderThread` `IssueDrawCommands`. Collapse high-cardinality procedural draws into a
 single GPU pass — for example:
 
-- For procedural grids, particle fields, or globes, replace per-element `drawCircle` /
-  `drawPath` loops with one `RuntimeShader` (`AGSL` on API 33+) drawn in a single
-  `drawRect` call.
-- For scrolling header or list-edge fade-outs, render the content inside
+- For dense procedural shapes, grids, or particle fields, replace per-element
+  `drawCircle` / `drawPath` loops with one `RuntimeShader` (`AGSL` on API 33+) drawn in a
+  single `drawRect` call.
+- When resizing or fading a complex header during user scroll is too expensive to re-render
+  on every frame, one potential approach is to composite the header inside
   `CompositingStrategy.Offscreen` and draw a sliding `BlendMode.DstIn` alpha mask at the
-  edge instead of redrawing a complex gradient scrim each frame.
+  edge instead of redrawing the underlying content each frame.
 
 Moving work into `AGSL` can trade CPU canvas overhead for GPU fragment saturation. UI
 `doFrame` and `RenderThread` `DrawFrame` can look fast while `FrameTimeline` reports `App
@@ -179,14 +180,29 @@ a full optimization pass on the shader itself:
 - Render the procedural effect into a lower-resolution offscreen target when the visual
   detail is coarse.
 
-## 5. Step down expensive ambient redraws to 60 fps
+## 5. Isolate ambient redraw bounds (and step down to 60 fps only as a last resort)
 
-Do not cap frame rates across animations in general. Step down an endless ambient
-animation to `60 fps` only when its redraw is expensive, such as when it forces
-SurfaceFlinger to composite a full-window buffer at `120 Hz`.
+When an endless ambient animation causes expensive redraws or forces SurfaceFlinger to
+composite a full-window buffer at `120 Hz`, first investigate **why** it is invalidating a
+wide area and fix the root cause:
 
-For standard composables, pair `Modifier.preferredFrameRate(60f)` with `.graphicsLayer()`
-so the `RenderNode` votes for `60 Hz` when no sibling animates at `120 Hz`:
+1. Read the animation phase only inside the leaf draw scope (`onDrawBehind` / `Canvas`) so
+   parent layouts do not recompose or remeasure.
+2. Isolate the animated element inside its own `Modifier.graphicsLayer()` so its dirty
+   region is bounded to that `RenderNode` rather than invalidating the parent layer. A
+   default `Modifier.graphicsLayer()` (`CompositingStrategy.Auto` with `alpha = 1f` and no
+   `renderEffect` or `blendMode`) records a lightweight display-list `RenderNode` without
+   allocating an offscreen GPU texture buffer (unlike `CompositingStrategy.Offscreen`, which
+   allocates `width × height × 4` bytes in VRAM).
+
+Stepping down the frame rate is a **last-resort workaround**, not a primary fix. Use it only
+when the redraw bounds are already minimized and the per-frame GPU cost still cannot be
+avoided.
+
+For standard composables, pair `Modifier.preferredFrameRate(60f)` with a trailing
+`.graphicsLayer()` so the inner `RenderNode` receives the `60 Hz` vote (workaround for
+[issuetracker 577011983](https://issuetracker.google.com/issues/577011983), where
+`preferredFrameRate` places its internal `graphicsLayer()` before `FrameRateModifierNode`):
 
 ```kotlin
 Canvas(
@@ -199,13 +215,15 @@ Canvas(
 }
 ```
 
-Inside `LazyVerticalGrid` or `LazyColumn`, an upstream Compose `SubcomposeLayout` /
-`TraversableNode` bug prevents `Modifier.preferredFrameRate(60f)` from propagating to the
-root view. Until the upstream bug is resolved, advance the animation clock with a
-deadline-based frame gate (and link the upstream issue in a code comment):
+Inside `LazyVerticalGrid` or `LazyColumn`, an upstream `FrameRateModifierNode` bug
+([issuetracker 577011983](https://issuetracker.google.com/issues/577011983)) prevents
+`Modifier.preferredFrameRate(60f)` from propagating to child layers across
+`SubcomposeLayout` boundaries or when a child's outer coordinator has no layer. Until
+[issuetracker 577011983](https://issuetracker.google.com/issues/577011983) is fixed,
+advance the animation clock with a deadline-based frame gate:
 
 ```kotlin
-// Workaround for upstream Compose SubcomposeLayout preferredFrameRate propagation bug.
+// Workaround for https://issuetracker.google.com/issues/577011983
 private const val FrameStep60HzNanos = 16_000_000L
 
 @Composable
@@ -262,7 +280,7 @@ internal fun ScenePrewarm(targetSize: Dp) {
     Box(
         Modifier
             .size(targetSize)
-            .clearAndSetSemantics {}
+            .inertWhen(true)
             .graphicsLayer { alpha = PrewarmAlpha }
     ) {
         SceneCanvas(Modifier.fillMaxSize().graphicsLayer {
@@ -275,6 +293,14 @@ internal fun ScenePrewarm(targetSize: Dp) {
 private const val PrewarmAlpha = 0.004f
 ```
 
+Apply `inertWhen(true)` (blocking semantics, focus, keyboard, and pointer/mouse events;
+see `references/transition-and-layout-patterns.md`) so the prewarm box cannot intercept
+input or focus during its single armed frame if the prewarmed subtree contains interactive
+children.
+
 Never use `alpha = 0f` for GPU prewarming: Android's `RenderNode` skips flushing display
-lists when `alpha == 0f`. Keep `armed` in `remember` rather than a process-global `var` so
-process restoration or device recreation re-warms pipelines when the GPU context resets.
+lists when `alpha == 0f`. Keep `armed` in plain `remember` (not `rememberSaveable` and not
+a process-global `var`): `rememberSaveable` would persist `armed = false` across process
+death even though the newly spawned process has a cold in-memory GPU pipeline cache and
+`Minikin` `LayoutCache`, while a process-global `var` would skip prewarming when an
+Activity window or `ComposeView` is recreated with a new render context.

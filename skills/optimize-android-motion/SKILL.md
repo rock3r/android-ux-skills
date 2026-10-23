@@ -116,7 +116,7 @@ root cause and select the simplest effective fix:
 | Every frame of a canvas animation or scroll spends excessive time in `AndroidOwner:draw` | `drawWithCache` reads a frame clock in its outer cache scope, per-frame draw lambdas (`onDraw`, `onDrawWithContent`) initialize or allocate objects (such as `Morph`, `Path`, or `Brush`), or the canvas emits hundreds of individual draw calls. | Initialize objects in the `drawWithCache` cache scope, read animation state inside the draw lambda, and collapse dense procedural loops into an AGSL `RuntimeShader` or `BlendMode.DstIn` mask (`references/gpu-and-canvas-pipeline.md`). |
 | Full-screen theme or style transition (cross-fade, circular reveal) drops every frame in `Recomposer:recompose` | Animating `ColorScheme` or theme values per frame recomposes every reader across the window on every vsync. | If only a local surface changes color, read the animated color inside a draw lambda (`drawBehind`). **Last resort:** for full-window theme switches on static screens, snapshot the outgoing screen once via `rememberGraphicsLayer().toImageBitmap()`, switch the theme in one recomposition, and animate the bitmap overlay while blocking input (`references/transition-and-layout-patterns.md`). |
 | Lazy-list fling or item switch spikes in composition and text layout | Per-item `remember` recomputes screen-level or theme-level values during prefetch, or `key(selectedItem)` destroys a canvas component's `rememberTextMeasurer()`. | Match `remember` scope to data lifetime (hoist theme/screen computations above the list) and keep stateful canvas components mounted across item switches (`references/transition-and-layout-patterns.md`). |
-| Main thread blocks in `postAndWait` and `RenderThread` blocks in `dequeueBuffer`, or an idle screen redraws at `120 Hz` | A full-window AGSL shader saturates the GPU, or an expensive ambient animation invalidates the window on every `120 Hz` vsync. | Add cheap early-out checks in AGSL followed by a full shader optimization pass (CPU uniforms, LUTs, simpler math), and step down expensive ambient loops to `60 fps` (`references/gpu-and-canvas-pipeline.md`). |
+| Main thread blocks in `postAndWait` and `RenderThread` blocks in `dequeueBuffer`, or an idle screen redraws at `120 Hz` | A full-window AGSL shader saturates the GPU, or an ambient animation invalidates a wide area on every `120 Hz` vsync. | Add cheap early-out checks in AGSL followed by a full shader optimization pass (CPU uniforms, LUTs, simpler math), and isolate ambient redraws to a bounded `graphicsLayer()`. **Last resort:** step down expensive ambient loops to `60 fps` (`references/gpu-and-canvas-pipeline.md`). |
 
 ## Gotchas
 
@@ -138,9 +138,10 @@ root cause and select the simplest effective fix:
 - **When forced to prewarm a GPU pipeline, `alpha = 0f` is a no-op:** Android's
   `RenderNode` skips display-list flushing when `alpha == 0f`, so Vulkan defers shader
   compilation to the first visible frame. Use a tiny non-zero alpha (`0.004f`) or draw at
-  full alpha under an opaque cover, and store the prewarm flag in `remember` (never a
-  process-global `var`) so process recreation re-warms pipelines when the GPU context
-  resets.
+  full alpha under an opaque cover, and store the `armed` flag in plain `remember` (not
+  `rememberSaveable`, which would skip prewarming after process death when native caches are
+  cold, and not a process-global `var`, which would skip prewarming when a window is
+  recreated).
 - **Custom `TextAutoSize` step sizes shift glyph metrics:** Replacing
   `TextAutoSize.StepBased` with a coarser step size (such as `0.5.sp` instead of
   `StepBased`'s `0.25.sp`) changes rendered glyph metrics at large font scales and breaks
