@@ -64,7 +64,10 @@ jobs:
         run: ./scripts/test-judge-evals.py
 
       - name: Eval batteries parse and plan
-        run: ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
+        run: |
+          for s in review-android-motion optimize-android-motion; do
+            ./scripts/run-evals.py --skill "$s" --dry-run --out /dev/null
+          done
 
       - name: Shell scripts parse
         run: for f in scripts/*.sh; do bash -n "$f"; done

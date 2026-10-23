@@ -18,13 +18,14 @@ Agent skills for building, reviewing, and auditing Jetpack Compose motion on And
 
 ## Skills
 
-All three skills share the 34 rules defined in [`STANDARDS.md`](STANDARDS.md):
+All four skills share the 35 rules defined in [`STANDARDS.md`](STANDARDS.md):
 
 | Skill | Purpose |
 |---|---|
 | [`animate-compose`](skills/animate-compose/SKILL.md) | Decide whether an element should animate, pick the transition pattern and token spec, and implement the motion with reduced-motion fallback. |
 | [`review-android-motion`](skills/review-android-motion/SKILL.md) | Review Compose motion changes against [`STANDARDS.md`](STANDARDS.md) and the project's `MOTION.md`, separating design judgment from rule checks. |
 | [`improve-android-motion`](skills/improve-android-motion/SKILL.md) | Audit motion across a repository, draft a `MOTION.md` file from existing code conventions, and write self-contained fix plans. |
+| [`optimize-android-motion`](skills/optimize-android-motion/SKILL.md) | Trace, diagnose, and fix dropped frames, first-visit stutters, and per-frame measurement or GPU stalls in Compose animations and transitions. |
 
 ## Install
 
@@ -64,8 +65,9 @@ specialized skill sets:
 
 | Topic | Skill repository |
 |---|---|
-| Which Compose animation API to call, recomposition, stability, phases | [`chrisbanes/skills`](https://github.com/chrisbanes/skills) |
-| XML-to-Compose migration, edge-to-edge, Navigation 3, Wear, TV | [`android/skills`](https://github.com/android/skills) |
+| Static Compose performance audit (`computedStateOf`, stability, lazy `key`/`contentType`, `Modifier.Node`) | [`android/skills` (`jetpack-compose-performance`)](https://github.com/android/skills/tree/main/jetpack-compose/jetpack-compose-performance) · [`chrisbanes/skills`](https://github.com/chrisbanes/skills) |
+| General Perfetto recording, CPU/heap profiling, Binder/thermal/LMK triage, PerfettoSQL stdlib | [`android/skills` (`android-profiler`)](https://github.com/android/skills/tree/main/profilers/android-profiler) |
+| XML-to-Compose migration, edge-to-edge, Navigation 3, adaptive layouts, Wear, XR | [`android/skills`](https://github.com/android/skills) |
 | Material 3 tokens, components, and theming conformance | [`hamen/material-3-skill`](https://github.com/hamen/material-3-skill) |
 | Kotlin, Gradle, and Android Gradle Plugin (AGP) upgrades | [`Kotlin/kotlin-agent-skills`](https://github.com/Kotlin/kotlin-agent-skills) |
 
