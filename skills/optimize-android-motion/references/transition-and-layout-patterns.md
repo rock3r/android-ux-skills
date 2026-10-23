@@ -277,9 +277,10 @@ screen code:
 
 - **`Dialog`, `ModalBottomSheet`, and `Popup` window floor:** Creating a new platform
   dialog or popup window pays a fixed one-time window creation and `relayoutWindow#first=true`
-  cost on Frame 1 before app content measures. Optimize the app-owned content (for example,
-  using a lazy list inside a long sheet), and do not chase the platform window attach
-  slice.
+  cost on Frame 1 before app content measures (for `ModalBottomSheet`, see
+  [issuetracker 574117772](https://issuetracker.google.com/issues/574117772)). Optimize the
+  app-owned content (for example, using a lazy list inside a long sheet), and do not chase
+  the platform window attach slice.
 - **Open `DropdownMenu` / `Popup` frame loop:** While a `Popup` sits open, Compose ticks
   `BroadcastFrameClock.withFrameNanos` on every vsync to poll anchor coordinates. That is
   an upstream `compose-ui` behavior, not an app animation leak; file or link the upstream

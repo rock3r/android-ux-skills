@@ -106,14 +106,19 @@ with vector or rounded-shape children, Skia's matrix flips from `kTranslate_Mask
 `kScale_Mask`. Skia then compiles elliptical Vulkan pipelines (such as `EllipseOp` or
 `EllipticalRRectOp`) and re-rasterizes vector paths on every frame.
 
-A common example is Material 3's `ModalBottomSheet`: when it overshoots its `Expanded`
-anchor, it applies `.verticalScaleUp(state)` to the outer `Surface` ($H_1$) and
-`.verticalScaleDown(state)` to the inner `Column` ($H_2 = H_1 - \text{insets}$). Because
+A common example is Material 3's `ModalBottomSheet`
+([issuetracker 576993363](https://issuetracker.google.com/issues/576993363)): when it
+overshoots its `Expanded` anchor, it applies `.verticalScaleUp(state)` to the outer
+`Surface` ($H_1$) and `.verticalScaleDown(state)` to the inner `Column`
+($H_2 = H_1 - \text{insets}$) after `.windowInsetsPadding(contentWindowInsets())`. Because
 $H_1 \neq H_2$, the scales do not cancel, leaving $s_y \neq 1.0, s_x = 1.0$ on every child.
 
-Skip heavy canvas drawing on Frame 1 while the sheet is still `SheetValue.Hidden`
-off-screen, and composite the sheet body into a single offscreen layer while the sheet is
-moving so child vector and shape primitives are rendered at unscaled `1:1` into the layer:
+Until [issuetracker 574117772](https://issuetracker.google.com/issues/574117772) (first-frame
+off-screen work) and [issuetracker 576993363](https://issuetracker.google.com/issues/576993363)
+(non-uniform bounce scale) are fixed upstream, skip heavy canvas drawing on Frame 1 while
+the sheet is still `SheetValue.Hidden` off-screen, and composite the sheet body into a
+single offscreen layer while the sheet is moving so child vector and shape primitives are
+rendered at unscaled `1:1` into the layer:
 
 ```kotlin
 val sheetMoving = sheetState.targetValue != sheetState.currentValue ||
