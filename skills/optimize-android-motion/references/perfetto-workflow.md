@@ -34,12 +34,10 @@ variant or pass a temporary Gradle `--init-script` that hooks `finalizeDsl` to a
 // /tmp/perf-id.gradle — passed via ./gradlew assembleRelease --init-script /tmp/perf-id.gradle
 allprojects {
     plugins.withId("com.android.application") {
-        extensions.configure(com.android.build.api.variant.ApplicationAndroidComponentsExtension) { components ->
-            components.finalizeDsl { ext ->
-                ext.buildTypes.named("release") {
-                    it.applicationIdSuffix = "${it.applicationIdSuffix ?: ""}.perf"
-                    it.signingConfig = ext.signingConfigs.named("debug").get()
-                }
+        extensions.getByName("androidComponents").finalizeDsl { ext ->
+            ext.buildTypes.named("release") {
+                it.applicationIdSuffix = "${it.applicationIdSuffix ?: ""}.perf"
+                it.signingConfig = ext.signingConfigs.named("debug").get()
             }
         }
     }
@@ -187,8 +185,12 @@ Stuffing`, and `late` frames) across interleaved A/B runs (`A B A B`). Also comp
 7. **Avoid first-install shader noise, `uiautomator dump`, and buffer overflow:**
    Reinstalling an APK clears the Vulkan pipeline cache, causing one-time
    `CreateGraphicsPipeline` misses on the first open. Never run `uiautomator dump` during
-   recording, and keep phone traces under `40 s` (`~3 MB/s` overflows a `128 MB` ring
-   buffer).
+   a traced run: it attaches an accessibility `UiAutomation` session that forces
+   `AndroidComposeView` to walk and serialize the semantics tree (`AccessibilityNodeInfo`
+   allocation and Binder IPC on the UI thread) and blocks on window-idle checks, skewing
+   frame timings. Look up tap coordinates once before the measurement loop, then drive
+   traced runs with plain `input tap` / `input swipe`. Keep phone traces under `40 s`
+   (`~3 MB/s` overflows a `128 MB` ring buffer).
 
 ## 5. Read the dominant slice in each slow frame
 
