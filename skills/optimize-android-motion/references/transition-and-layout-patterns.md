@@ -44,26 +44,30 @@ bars forces the entire screen root to recompose on frame 1 of every state change
 `State<T>` (via `rememberUpdatedState` or `derivedStateOf`) or state-reading lambdas down
 to small leaf composables so only those leaves recompose.
 
-Avoid mutating `UiState` at the start or end of a heavy animation:
+Avoid mutating `UiState` fields that trigger wide recompositions at the start or end of a
+heavy animation, and coalesce coupled state changes into the same frame — for example:
 
 - During exit and takeoff actions, mark the screen inert and start the background save
-  without flipping an `isSaving` flag in `UiState` on the takeoff frame.
+  without flipping a wide `isSaving` flag in `UiState` on the takeoff frame.
 - When cleaning up a reveal animation, keep the active boolean separate from the reveal
-  origin coordinates so ending the reveal does not rebuild `ShapeMorph` caches.
-- When closing an inline search mode or keyboard-driven overlay, combine the layout state
-  update and `focusManager.clearFocus()` in one `SideEffect` on the same frame rather than
-  splitting them across two frames.
+  origin coordinates so ending the reveal does not rebuild cached morph geometry.
+- When changing UI state that also shifts focus (such as closing an inline search mode or
+  overlay), combine the layout state update and `focusManager.clearFocus()` in one
+  `SideEffect` on the same frame rather than splitting them across two frames.
 
 ## 2. Match remember scopes to data lifetime
 
-Make sure `remember` and `key(...)` scopes match the actual lifetime of their inputs:
+Make sure `remember` and `key(...)` scopes match the actual rate of change of their inputs,
+neither narrower (which recomputes during list prefetch) nor destructively keyed (which
+discards expensive internal caches on selection changes) — for example:
 
-- **Hoist theme-level `remember` work out of list items:** A `remember` block inside a
-  `LazyColumn` item that depends only on theme state re-runs across prefetched items during
-  flings (`keepAroundItems`). Compute it once at the screen level and pass it down.
+- **Hoist screen- or theme-level `remember` work out of list items:** A `remember` block
+  inside a `LazyColumn` item that depends only on theme or screen state re-runs across
+  prefetched items during flings (`keepAroundItems`). Compute it once at the screen level
+  and pass it down.
 - **Keep stateful canvas caches mounted across item switches:** Wrapping a dial or canvas
-  in `key(selectedItem)` destroys its `rememberTextMeasurer()` cache on every selection.
-  Keep the component mounted and reset only its interaction state.
+  in `key(selectedItem)` destroys internal caches such as `rememberTextMeasurer()` on every
+  selection. Keep the component mounted and reset only its interaction state.
 
 When a destination is slow to open, **do not** time-slice it by mounting one section per
 frame via `withFrameNanos` during the fade-in, and do not keep every top-level tab
@@ -73,8 +77,9 @@ jank). Fix why the destination is slow to compose instead:
 
 - Keep ViewModels and pre-computed UI state warm across navigation so destination entry
   does zero synchronous data transformation.
-- Cache heavy drawing objects (`Morph`, boolean `Path.op` results, and vector painters)
-  outside first-frame composition so they are not rebuilt when the screen opens.
+- Hoist or cache heavy drawing objects (such as `Morph` instances, boolean `Path.op`
+  results, or complex painters) outside first-frame composition so they are not rebuilt
+  when the screen opens.
 - Use `LazyColumn` for long scrollable screens so off-screen sections do not compose on
   Frame 1.
 
@@ -187,7 +192,8 @@ frames — keep the steps mounted in one `Layout` and place inactive steps past 
 Plain `enabled = false` is not suitable for deactivating hidden or transitioning steps: it
 changes component visuals (switching controls to disabled colors and alphas mid-animation)
 and is not supported on arbitrary layout containers. Instead, use an `inertWhen` modifier
-that blocks semantics, focus, and pointer events without altering appearance:
+that blocks accessibility semantics, focus traversal, hardware key events on any child that
+already held focus, and pointer events without altering appearance:
 
 ```kotlin
 internal fun Modifier.inertWhen(inert: Boolean): Modifier =
@@ -197,6 +203,7 @@ internal fun Modifier.inertWhen(inert: Boolean): Modifier =
         this
             .clearAndSetSemantics {}
             .focusProperties { canFocus = false }
+            .onPreviewKeyEvent { true }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {

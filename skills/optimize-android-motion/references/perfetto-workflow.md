@@ -18,8 +18,8 @@ This guide covers the Compose-specific build isolation, transition windowing, an
    runs](#2-separate-frame-measurement-runs-from-cause-finding-runs)
 3. [Extract FrameTimeline, UI-thread, and RenderThread
    metrics](#3-extract-frametimeline-ui-thread-and-renderthread-metrics)
-4. [Guard against the seven measurement
-   traps](#4-guard-against-the-seven-measurement-traps)
+4. [Guard against common measurement
+   traps](#4-guard-against-common-measurement-traps)
 5. [Read the dominant slice in each slow
    frame](#5-read-the-dominant-slice-in-each-slow-frame)
 
@@ -71,9 +71,9 @@ off so ART records unobfuscated symbol names). Never record a profile on a debug
 ## 2. Separate frame-measurement runs from cause-finding runs
 
 AndroidX Tracing 2 (`androidx.tracing:tracing-wire` +
-`androidx.compose.runtime:runtime-tracing` 1.13+) records roughly `20,000` composable
-slices on a single screen open. That tracing overhead slows composition and skews frame
-durations. Always use two distinct trace modes:
+`androidx.compose.runtime:runtime-tracing`) emits thousands of composable slices during a
+screen transition. That tracing overhead slows composition and skews frame durations.
+Always use two distinct trace modes:
 
 - **Frame-measurement mode (for A/B numbers):** Record a lightweight Perfetto trace with
   `sched`, `gfx`, `view`, `wm`, `input`, and `android.surfaceflinger.frametimeline`, with
@@ -157,7 +157,7 @@ SurfaceFlinger `FrameTimeline` jank counts (`app_jank`, `any_jank` excluding `Bu
 Stuffing`, and `late` frames) across interleaved A/B runs (`A B A B`). Also compare UI and
 `RenderThread` frames over `8.33 ms` along with median and `p90` durations.
 
-## 4. Guard against the seven measurement traps
+## 4. Guard against common measurement traps
 
 1. **Verify animation scales and foreground focus before and after every run:** UI-test
    runners or concurrent sessions can leave `animator_duration_scale`,
@@ -197,9 +197,9 @@ fix category:
 
 | Slice in Perfetto | Thread | Meaning and next action |
 |---|---|---|
-| `Recomposer:recompose` | UI thread | State read during composition or first-time child mount. Isolate state reads or precompose the target step. |
-| `AndroidOwner:measureAndLayout` | UI thread | Constraint change across a precomposed deck, `SubcomposeLayout` (`BoxWithConstraints`), or uncached text measurement. |
-| `AndroidOwner:draw` | UI thread | Path, `Morph`, or `Brush` allocation inside `onDraw` or an invalidated `drawWithCache` lambda. |
-| `alpha caused saveLayer` / `flush layers` | `RenderThread` | Offscreen layer allocated or toggled mid-animation. Hold `CompositingStrategy.Offscreen` and latch `alpha` at `1f`. |
-| `CreateGraphicsPipeline-CompileAfterCacheMiss` | `RenderThread` | First-time Vulkan shader compilation for a shape, gradient, stroke, or scale matrix. Prewarm on a covered frame or use `CompositingStrategy.Offscreen`. |
-| `relayoutWindow#first=true` | UI thread | New platform `Dialog` or `ModalBottomSheet` window created on frame 1 while content also draws. Skip canvas draws while `SheetValue.Hidden`. |
+| `Recomposer:recompose` | UI thread | Synchronous data work, wide recomposition from state reads, or first-time subtree mount. Move data prep out of composition and narrow state reads; as a last resort on bounded flows, precompose the target step. |
+| `AndroidOwner:measureAndLayout` | UI thread | Animated size/padding in composition, per-frame `SubcomposeLayout` (such as `BoxWithConstraints`), or changing constraints across a shared container. |
+| `AndroidOwner:draw` | UI thread | Object initialization or allocation inside a per-frame draw lambda (such as `Path`, `Morph`, or `Brush`), an invalidated `drawWithCache` scope, or hundreds of individual draw calls. |
+| `alpha caused saveLayer` / `flush layers` | `RenderThread` | Offscreen layer allocated or toggled mid-animation (for example, an overshooting spring crossing `alpha = 1f`). Use non-overshooting effects springs for alpha and hold `CompositingStrategy.Offscreen` across translucent subtrees. |
+| `CreateGraphicsPipeline-CompileAfterCacheMiss` | `RenderThread` | First-time Vulkan shader compilation (such as complex paths, gradients, or non-uniform scale matrices). Simplify primitives or hold `CompositingStrategy.Offscreen`; as a last resort, prewarm on a covered frame. |
+| `relayoutWindow#first=true` | UI thread | New platform window (such as `Dialog`, `ModalBottomSheet`, or `Popup`) attaching on frame 1. Keep initial sheet/dialog content lightweight and skip off-screen canvas draws while hidden. |

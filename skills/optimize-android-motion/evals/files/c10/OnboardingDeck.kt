@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -70,6 +71,7 @@ fun ProfileStepDeck(
                         Modifier
                             .clearAndSetSemantics {}
                             .focusProperties { canFocus = false }
+                            .onPreviewKeyEvent { true }
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {
@@ -87,7 +89,7 @@ fun ProfileStepDeck(
                 },
         ) {
             Text("Your sleep schedule", style = MaterialTheme.typography.headlineMedium)
-            Button(onClick = onContinue, enabled = isActive) { Text("Save") }
+            Button(onClick = onContinue) { Text("Save") }
         }
     }
 }

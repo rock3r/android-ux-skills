@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -114,6 +115,7 @@ fun SnapshotThemeHost(
                     Modifier
                         .clearAndSetSemantics {}
                         .focusProperties { canFocus = false }
+                        .onPreviewKeyEvent { true }
                         .pointerInput(Unit) {
                             awaitPointerEventScope {
                                 while (true) {
