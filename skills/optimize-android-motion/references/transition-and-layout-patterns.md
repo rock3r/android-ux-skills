@@ -9,9 +9,11 @@ Start with the simplest root-cause fixes before reaching for structural workarou
 1. **Data pipeline:** Keep ViewModels and pre-computed UI state warm off the UI thread so
    entering a destination or toggling state performs no synchronous domain transformation,
    formatting, or sorting. Fixing slow data preparation beats any composition band-aid.
-2. **Composition and phase reads:** Narrow recomposition scopes (pass `State<T>` or lambdas
-   to leaf composables), hoist `remember` caches to match data lifetime, defer offsets and
-   insets to `Modifier.layout`, and use `LazyColumn` for long scrollable content.
+2. **Composition, state holders, and phase reads:** Group related transition or layout
+   state into a single `@Stable` state holder (rather than scattering many `State<T>` boxes
+   and lambdas), narrow recomposition scopes so only leaf readers observe changing state,
+   hoist `remember` caches to match data lifetime, defer offsets and insets to
+   `Modifier.layout`, and use `LazyColumn` for long scrollable content.
 3. **Last-resort workarounds for mount, disposal, or full-window side effects:** Use
    off-screen step precomposition, non-disposing `FoldingSlot` containers, or
    `GraphicsLayer` bitmap snapshots only when release traces show that data handling and
@@ -21,8 +23,8 @@ Start with the simplest root-cause fixes before reaching for structural workarou
 
 ## Contents
 
-1. [Isolate state reads and coalesce coupled
-   transitions](#1-isolate-state-reads-and-coalesce-coupled-transitions)
+1. [Group transition state into a state holder and coalesce coupled
+   updates](#1-group-transition-state-into-a-state-holder-and-coalesce-coupled-updates)
 2. [Match remember scopes to data
    lifetime](#2-match-remember-scopes-to-data-lifetime)
 3. [Gate transition clocks on first layout](#3-gate-transition-clocks-on-first-layout)
@@ -37,12 +39,34 @@ Start with the simplest root-cause fixes before reaching for structural workarou
 8. [Separate platform window and library floors from app
    code](#8-separate-platform-window-and-library-floors-from-app-code)
 
-## 1. Isolate state reads and coalesce coupled transitions
+## 1. Group transition state into a state holder and coalesce coupled updates
 
-Reading transition or step state at a root composable and passing it by value into child
-bars forces the entire screen root to recompose on frame 1 of every state change. Pass
-`State<T>` (via `rememberUpdatedState` or `derivedStateOf`) or state-reading lambdas down
-to small leaf composables so only those leaves recompose.
+Reading transition or step state at a root composable and passing unpacked values into
+children forces the entire screen root to recompose on frame 1 of every state change.
+However, scattering dozens of individual `State<T>` boxes (`mutableStateOf`,
+`rememberUpdatedState`, `derivedStateOf`), `@Composable` tracking helpers, and
+state-reading lambdas across child parameters is also expensive: each `@Composable` helper
+and `mutableStateOf` box adds slot-table groups, `StateRecord` allocations, and snapshot
+read/write bookkeeping.
+
+Prefer grouping related transition or layout tracking into a single `@Stable` **state
+holder** class remembered once (`remember(transition) { ... }`) and passing that holder to
+children and modifiers (see
+[aosp/4318506](https://android-review.googlesource.com/c/platform/frameworks/support/+/4318506)):
+
+- **Use plain fields for synchronous pass-through state:** Values computed synchronously
+  during composition and consumed downstream in the same pass (such as active enter/exit
+  configs, previous targets, or layout-phase room metrics) can live as plain properties on
+  the state holder updated via a single `tracker.update(...)` call, avoiding
+  `mutableStateOf` and `remember` overhead per field.
+- **Gate effects behind plain booleans on the holder:** Only enter a `LaunchedEffect` when
+  the state holder indicates work is needed (for example,
+  `if (tracker.needsCatchup) LaunchedEffect(tracker) { ... }`) rather than registering idle
+  effect groups on every instance.
+- **Read animated state in leaf scopes:** Expose animated values as properties or methods
+  on the state holder and read them inside leaf composables, `Modifier.layout`, or
+  `graphicsLayer` blocks so the root composable neither recomposes nor allocates
+  per-property lambdas.
 
 Avoid mutating `UiState` fields that trigger wide recompositions at the start or end of a
 heavy animation, and coalesce coupled state changes into the same frame — for example:
