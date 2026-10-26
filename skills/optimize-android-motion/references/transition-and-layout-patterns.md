@@ -51,8 +51,7 @@ read/write bookkeeping.
 
 Prefer grouping related transition or layout tracking into a single `@Stable` **state
 holder** class remembered once (`remember(transition) { ... }`) and passing that holder to
-children and modifiers (see
-[aosp/4318506](https://android-review.googlesource.com/c/platform/frameworks/support/+/4318506)):
+children and modifiers — for example:
 
 - **Use plain fields for synchronous pass-through state:** Values computed synchronously
   during composition and consumed downstream in the same pass (such as active enter/exit
