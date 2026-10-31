@@ -1192,6 +1192,80 @@ fun RealRhsNamedArgRead(visible: Boolean) {
       0,
       'CleanNamedLabelsAndCallee must emit 0 F-001 candidates'
     );
+
+    // 14. `O-002` `outerValBindings` must exclude non-composable function locals and sibling class properties,
+    //     while resolving file-level properties even when declared below the `@Composable` consumer!
+    const lottieScopeDir = path.join(tmpDir, 'lottie-scope');
+    const lottieScopeRawDir = path.join(lottieScopeDir, 'src', 'main', 'res', 'raw');
+    const lottieScopeUiDir = path.join(lottieScopeDir, 'src', 'main', 'java', 'demo');
+    fs.mkdirSync(lottieScopeRawDir, { recursive: true });
+    fs.mkdirSync(lottieScopeUiDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(lottieScopeRawDir, 'reverse_safe.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        // Visible at start frame ip=0 ([0, 30)), transparent at final frame op=60 -> safe when speed = -1f, FAILS when speed = 1f!
+        layers: [{ ty: 4, ip: 0, op: 30, ks: { o: { a: 0, k: 100 } } }],
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(lottieScopeUiDir, 'HelperLocalDoesNotLeak.kt'),
+      `package demo
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+const val speed = -1f
+
+fun helper() {
+    val speed = 1f
+}
+
+@Composable
+fun HelperIsolatedBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.reverse_safe))
+    LottieAnimation(comp, speed = speed)
+}
+`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(lottieScopeUiDir, 'SiblingClassAndForwardConst.kt'),
+      `package demo2
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+@Composable
+fun ForwardConstBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.reverse_safe))
+    LottieAnimation(comp, speed = speed)
+}
+
+class UnrelatedSibling {
+    val speed = 1f
+    init {
+        val speed = 1f
+    }
+}
+
+private const val speed = -1f
+`,
+      'utf8'
+    );
+    const lottieScopeRes = runStaticScan({ targets: [lottieScopeDir], cwd: tmpDir });
+    assert.equal(
+      lottieScopeRes.findings.filter((f) => f.rule === 'O-002').length,
+      0,
+      `Helper local and sibling class property must not override file-level const val speed = -1f, got: ${JSON.stringify(lottieScopeRes.findings)}`
+    );
+    assert.equal(
+      lottieScopeRes.candidates.filter((c) => c.rule === 'O-002').length,
+      0,
+      `Proven reverse file-level const val speed = -1f must emit 0 O-002 candidates, got: ${JSON.stringify(lottieScopeRes.candidates)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

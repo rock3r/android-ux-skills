@@ -4966,7 +4966,7 @@ function getLottieOverloadArg(call, paramName, positionalSlot = null, allowPosit
   }
   return null;
 }
-function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, depth = 0) {
+function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, depth = 0, visited = null) {
   if (!Array.isArray(exprTokens) || exprTokens.length === 0 || depth > 4) {
     return "unknown";
   }
@@ -4977,7 +4977,7 @@ function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, 
   if (toks.length === 0) return "unknown";
   if (toks[0].type === "Punct" && (toks[0].value === "-" || toks[0].value === "+")) {
     const sign = toks[0].value;
-    const innerClass = classifyLottieSpeedExpr(toks.slice(1), "", atTokIdx, scopedBindings, depth + 1);
+    const innerClass = classifyLottieSpeedExpr(toks.slice(1), "", atTokIdx, scopedBindings, depth + 1, visited);
     if (sign === "+") return innerClass;
     if (innerClass === "positive") return "negative";
     if (innerClass === "negative") return "positive";
@@ -4993,12 +4993,17 @@ function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, 
   if (toks.length === 1 && toks[0].type === "Identifier" && isUnqualifiedLocalIdent(toks, 0)) {
     const binding = resolveScopedBinding(toks[0].value, atTokIdx, scopedBindings);
     if (binding?.kind === "local-val" && Array.isArray(binding.rhsTokens)) {
+      const seen = visited || /* @__PURE__ */ new Set();
+      if (seen.has(binding)) return "unknown";
+      const nextSeen = new Set(seen);
+      nextSeen.add(binding);
       return classifyLottieSpeedExpr(
         binding.rhsTokens,
         binding.rhsText || "",
-        binding.declStartIdx,
+        binding.rhsEvalAtIdx ?? binding.declStartIdx,
         scopedBindings,
-        depth + 1
+        depth + 1,
+        nextSeen
       );
     }
   }
@@ -5039,32 +5044,97 @@ function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scope
     hasUnknownPlayback: false
   };
 }
+function findImmediatelyEnclosingDelimiter(tokens, atIdx, openSym, closeSym) {
+  let depth = 0;
+  for (let i = atIdx - 1; i >= 0; i -= 1) {
+    const t = tokens[i];
+    if (t.type === "Punct") {
+      if (t.value === closeSym) depth += 1;
+      else if (t.value === openSym) {
+        if (depth === 0) return i;
+        depth -= 1;
+      }
+    }
+  }
+  return -1;
+}
+function computeOuterValScope(tokens, declarations, d) {
+  const enclosingDecls = declarations.filter((other) => other !== d && other.startTokIdx <= d.startTokIdx && other.endTokIdx >= d.endTokIdx).sort((a, b) => a.startTokIdx - b.startTokIdx);
+  if (enclosingDecls.some((ed) => ed.kind === "fun" || ed.kind === "val" || ed.kind === "var")) {
+    return null;
+  }
+  const enclOpenBrace = findImmediatelyEnclosingDelimiter(tokens, d.startTokIdx, "{", "}");
+  const enclOpenParen = findImmediatelyEnclosingDelimiter(tokens, d.startTokIdx, "(", ")");
+  if (enclosingDecls.length === 0) {
+    if (enclOpenBrace !== -1 || enclOpenParen !== -1) return null;
+    return {
+      scopeStartIdx: -1,
+      scopeEndIdx: tokens.length - 1,
+      declStartIdx: -2,
+      declEndIdx: -2
+    };
+  }
+  if (!enclosingDecls.every(
+    (ed) => ed.kind === "class" || ed.kind === "object" || ed.kind === "companion" || ed.kind === "interface"
+  )) {
+    return null;
+  }
+  const innerType = enclosingDecls[enclosingDecls.length - 1];
+  const isDirectBodyMember = innerType.bodyOpenIdx !== -1 && enclOpenBrace === innerType.bodyOpenIdx && enclOpenParen < innerType.bodyOpenIdx;
+  const isPrimaryCtorProp = Boolean(innerType.paramRange) && d.startTokIdx > innerType.paramRange[0] && d.endTokIdx < innerType.paramRange[1] && enclOpenParen === innerType.paramRange[0] && enclOpenBrace < innerType.startTokIdx;
+  if (!isDirectBodyMember && !isPrimaryCtorProp) {
+    return null;
+  }
+  const ownerType = innerType.kind === "companion" && enclosingDecls.length >= 2 ? enclosingDecls[enclosingDecls.length - 2] : innerType;
+  return {
+    scopeStartIdx: ownerType.startTokIdx,
+    scopeEndIdx: ownerType.endTokIdx,
+    declStartIdx: ownerType.startTokIdx - 1,
+    declEndIdx: ownerType.startTokIdx - 1
+  };
+}
 function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
   const { declarations, calls, tokens } = kf;
   const composableFuns = declarations.filter((d) => d.kind === "fun" && d.isComposable);
   const outerValBindings = [];
+  const outerCandidates = [];
   const outerDecls = declarations.filter((d) => (d.kind === "val" || d.kind === "var") && (d.rhsStartIdx >= 0 || d.delegateIdx >= 0)).sort((a, b) => a.startTokIdx - b.startTokIdx);
   for (const d of outerDecls) {
-    const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
-    if (insideComposable) continue;
+    const scopeInfo = computeOuterValScope(tokens, declarations, d);
+    if (!scopeInfo) continue;
     const exprStart = d.rhsStartIdx >= 0 ? d.rhsStartIdx : d.delegateIdx;
     if (exprStart < 0 || exprStart > d.endTokIdx) continue;
-    const exprToks = tokens.slice(exprStart, d.endTokIdx + 1);
-    const rawSelection = extractLottieAssetSelectionForExpr(tokens, calls, exprToks, outerValBindings, d.startTokIdx);
-    const assetSelection = rawSelection ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || d.kind === "var" } : null;
+    outerCandidates.push({ decl: d, scopeInfo, exprToks: tokens.slice(exprStart, d.endTokIdx + 1) });
+  }
+  const createdEntries = [];
+  for (const item of outerCandidates) {
+    const { decl: d, scopeInfo, exprToks } = item;
     if (d.kind === "val" && d.delegateIdx === -1 && d.rhsStartIdx >= 0) {
-      outerValBindings.push({
+      const entry = {
         name: d.name,
         kind: "local-val",
-        assetSelection,
+        assetSelection: null,
         animStateMeta: null,
         rhsTokens: exprToks,
         rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
-        declStartIdx: d.startTokIdx,
-        declEndIdx: d.endTokIdx,
-        scopeStartIdx: 0,
-        scopeEndIdx: tokens.length - 1
-      });
+        rhsEvalAtIdx: d.startTokIdx,
+        declStartIdx: scopeInfo.declStartIdx,
+        declEndIdx: scopeInfo.declEndIdx,
+        scopeStartIdx: scopeInfo.scopeStartIdx,
+        scopeEndIdx: scopeInfo.scopeEndIdx
+      };
+      outerValBindings.push(entry);
+      createdEntries.push({ item, entry });
+    } else {
+      createdEntries.push({ item, entry: null });
+    }
+  }
+  for (const slot of createdEntries) {
+    const { decl: d, scopeInfo, exprToks } = slot.item;
+    const rawSelection = extractLottieAssetSelectionForExpr(tokens, calls, exprToks, outerValBindings, d.startTokIdx);
+    const assetSelection = rawSelection ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || d.kind === "var" } : null;
+    if (slot.entry) {
+      slot.entry.assetSelection = assetSelection;
     } else if (assetSelection) {
       outerValBindings.push({
         name: d.name,
@@ -5073,10 +5143,11 @@ function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
         animStateMeta: null,
         rhsTokens: null,
         rhsText: null,
-        declStartIdx: d.startTokIdx,
-        declEndIdx: d.endTokIdx,
-        scopeStartIdx: 0,
-        scopeEndIdx: tokens.length - 1
+        rhsEvalAtIdx: d.startTokIdx,
+        declStartIdx: scopeInfo.declStartIdx,
+        declEndIdx: scopeInfo.declEndIdx,
+        scopeStartIdx: scopeInfo.scopeStartIdx,
+        scopeEndIdx: scopeInfo.scopeEndIdx
       });
     }
   }
@@ -6846,7 +6917,7 @@ Options:
   --json           Emit a single JSON document on stdout
   --help, -h       Show this help message
 `;
-var ANDROID_UX_HOOK_CMD_RE = /android-ux(?:\.cmd|\.mjs)?['"]?\s+hook(?:\s|$|['"&|;)])/;
+var ANDROID_UX_HOOK_CMD_RE = /(?:^|[\s'"/\\;|&(])android-ux(?:\.cmd|\.mjs)?['"]?\s+hook(?:\s|$|['"&|;)])/;
 var MOTION_API_HINT_RE = /\b(animate\w*AsState|Animatable|AnimatedVisibility|AnimatedContent|Crossfade|NavHost|NavDisplay|motionScheme|withFrameNanos|LottieAnimation|sharedElement|sharedBounds|animateItem|animateContentSize|PredictiveBackHandler)\b/;
 function collectEnabledHookCommands(obj) {
   const out = [];
@@ -10398,6 +10469,13 @@ function defaultIo6() {
 // cli/src/commands/hooks.mjs
 import fs10 from "node:fs";
 import path11 from "node:path";
+function isOwnedAndroidUxHookCommand(cmd) {
+  return typeof cmd === "string" && ANDROID_UX_HOOK_CMD_RE.test(cmd);
+}
+function isOwnedAndroidUxHookEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  return isOwnedAndroidUxHookCommand(entry.command) || isOwnedAndroidUxHookCommand(entry.commandWindows) || isOwnedAndroidUxHookCommand(entry.bash) || isOwnedAndroidUxHookCommand(entry.powershell);
+}
 var SUPPORTED_PROVIDERS = ["claude", "codex", "cursor", "copilot", "jetski"];
 var OWNED_SKILL_PREFERENCE = [
   "animate-compose",
@@ -10595,8 +10673,8 @@ function installProviderHookManifest(info) {
     next.hooks = next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks) ? { ...next.hooks } : {};
     for (const [k, list] of Object.entries(next.hooks)) {
       if (Array.isArray(list)) {
-        const hadAndroidUx = list.some((h) => String(h?.command || "").includes("android-ux"));
-        const kept = list.filter((h) => !String(h?.command || "").includes("android-ux"));
+        const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+        const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
         if (kept.length === 0 && hadAndroidUx) {
           delete next.hooks[k];
         } else {
@@ -10619,12 +10697,8 @@ function installProviderHookManifest(info) {
     next.hooks = next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks) ? { ...next.hooks } : {};
     for (const [k, list] of Object.entries(next.hooks)) {
       if (Array.isArray(list)) {
-        const hadAndroidUx = list.some(
-          (h) => String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
-        );
-        const kept = list.filter(
-          (h) => !String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
-        );
+        const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+        const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
         if (kept.length === 0 && hadAndroidUx) {
           delete next.hooks[k];
         } else {
@@ -10729,8 +10803,8 @@ function uninstallProviderHooks(info) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          const hadAndroidUx = list.some((h) => String(h?.command || "").includes("android-ux"));
-          const kept = list.filter((h) => !String(h?.command || "").includes("android-ux"));
+          const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+          const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
           if (hadAndroidUx) {
             hadRemoved = true;
             if (kept.length === 0) delete next.hooks[k];
@@ -10747,12 +10821,8 @@ function uninstallProviderHooks(info) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          const hadAndroidUx = list.some(
-            (h) => String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
-          );
-          const kept = list.filter(
-            (h) => !String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
-          );
+          const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+          const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
           if (hadAndroidUx) {
             hadRemoved = true;
             if (kept.length === 0) delete next.hooks[k];
@@ -10794,14 +10864,14 @@ function stripAndroidUxEntriesFromClaudeOrCodex(obj) {
     let evtRemoved = false;
     clone.hooks[evt] = entries.map((entry) => {
       if (Array.isArray(entry?.hooks)) {
-        const kept = entry.hooks.filter((h) => !String(h?.command || "").includes("android-ux"));
+        const kept = entry.hooks.filter((h) => !isOwnedAndroidUxHookEntry(h));
         if (kept.length !== entry.hooks.length) {
           evtRemoved = true;
           hadRemoved = true;
         }
         return kept.length > 0 ? { ...entry, hooks: kept } : null;
       }
-      if (String(entry?.command || "").includes("android-ux")) {
+      if (isOwnedAndroidUxHookEntry(entry)) {
         evtRemoved = true;
         hadRemoved = true;
         return null;

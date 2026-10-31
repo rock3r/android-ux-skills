@@ -601,6 +601,69 @@ test('PR review regressions: malformed manifest preservation (hooks install/unin
     );
     const copilotStatusInactive = JSON.parse((await runCmd(['hooks', 'status', '--json'], copilotProj)).stdout);
     assert.equal(copilotStatusInactive.active, false, 'hooks status must report inactive after uninstalling android-ux entry');
+
+    // 5. User hooks whose path happens to contain `android-ux` (e.g. `bash /home/me/android-ux-skills/scripts/check-skills.sh`)
+    //    must NEVER be deleted by `hooks install` or `hooks uninstall` across claude, codex, cursor, and copilot!
+    const customHookCmd = 'bash /home/me/android-ux-skills/scripts/check-skills.sh';
+    const narrowProj = path.join(tmpDir, 'narrow-ownership-proj');
+    const claudeNarrowPath = path.join(narrowProj, '.claude', 'settings.local.json');
+    const codexNarrowPath = path.join(narrowProj, '.codex', 'hooks.json');
+    const cursorNarrowPath = path.join(narrowProj, '.cursor', 'hooks.json');
+    const copilotNarrowPath = path.join(narrowProj, '.github', 'hooks', 'android-ux.json');
+
+    fs.mkdirSync(path.dirname(claudeNarrowPath), { recursive: true });
+    fs.mkdirSync(path.dirname(codexNarrowPath), { recursive: true });
+    fs.mkdirSync(path.dirname(cursorNarrowPath), { recursive: true });
+    fs.mkdirSync(path.dirname(copilotNarrowPath), { recursive: true });
+
+    const seedClaudeOrCodex = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Edit|Write',
+            hooks: [{ type: 'command', command: customHookCmd, timeout: 10 }],
+          },
+        ],
+      },
+    };
+    const seedCursor = {
+      version: 1,
+      hooks: {
+        postToolUse: [{ command: customHookCmd, matcher: '^Write$', timeout: 10 }],
+      },
+    };
+    const seedCopilot = {
+      version: 1,
+      hooks: {
+        postToolUse: [{ type: 'command', matcher: 'edit', bash: customHookCmd, timeoutSec: 10 }],
+      },
+    };
+
+    fs.writeFileSync(claudeNarrowPath, `${JSON.stringify(seedClaudeOrCodex, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(codexNarrowPath, `${JSON.stringify(seedClaudeOrCodex, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(cursorNarrowPath, `${JSON.stringify(seedCursor, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(copilotNarrowPath, `${JSON.stringify(seedCopilot, null, 2)}\n`, 'utf8');
+
+    assert.equal(
+      (await runCmd(['hooks', 'install', '--providers', 'claude,codex,cursor,copilot'], narrowProj)).code,
+      0
+    );
+    for (const mp of [claudeNarrowPath, codexNarrowPath, cursorNarrowPath, copilotNarrowPath]) {
+      assert.equal(
+        fs.readFileSync(mp, 'utf8').includes(customHookCmd),
+        true,
+        `hooks install must preserve user hook containing "android-ux" in path (${mp})`
+      );
+    }
+
+    assert.equal(
+      (await runCmd(['hooks', 'uninstall', '--providers', 'claude,codex,cursor,copilot'], narrowProj)).code,
+      0
+    );
+    assert.deepEqual(JSON.parse(fs.readFileSync(claudeNarrowPath, 'utf8')), seedClaudeOrCodex);
+    assert.deepEqual(JSON.parse(fs.readFileSync(codexNarrowPath, 'utf8')), seedClaudeOrCodex);
+    assert.deepEqual(JSON.parse(fs.readFileSync(cursorNarrowPath, 'utf8')), seedCursor);
+    assert.deepEqual(JSON.parse(fs.readFileSync(copilotNarrowPath, 'utf8')), seedCopilot);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

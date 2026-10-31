@@ -15,7 +15,21 @@ import {
   getProjectCachePath,
   resolveHomeDir,
 } from '../cache.mjs';
-import { detectActiveHookMode } from './context.mjs';
+import { detectActiveHookMode, ANDROID_UX_HOOK_CMD_RE } from './context.mjs';
+
+export function isOwnedAndroidUxHookCommand(cmd) {
+  return typeof cmd === 'string' && ANDROID_UX_HOOK_CMD_RE.test(cmd);
+}
+
+export function isOwnedAndroidUxHookEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  return (
+    isOwnedAndroidUxHookCommand(entry.command) ||
+    isOwnedAndroidUxHookCommand(entry.commandWindows) ||
+    isOwnedAndroidUxHookCommand(entry.bash) ||
+    isOwnedAndroidUxHookCommand(entry.powershell)
+  );
+}
 
 export const SUPPORTED_PROVIDERS = ['claude', 'codex', 'cursor', 'copilot', 'jetski'];
 
@@ -253,8 +267,8 @@ export function installProviderHookManifest(info) {
       : {};
     for (const [k, list] of Object.entries(next.hooks)) {
       if (Array.isArray(list)) {
-        const hadAndroidUx = list.some((h) => String(h?.command || '').includes('android-ux'));
-        const kept = list.filter((h) => !String(h?.command || '').includes('android-ux'));
+        const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+        const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
         if (kept.length === 0 && hadAndroidUx) {
           delete next.hooks[k];
         } else {
@@ -279,12 +293,8 @@ export function installProviderHookManifest(info) {
       : {};
     for (const [k, list] of Object.entries(next.hooks)) {
       if (Array.isArray(list)) {
-        const hadAndroidUx = list.some((h) =>
-          String(h?.bash || h?.powershell || h?.command || '').includes('android-ux')
-        );
-        const kept = list.filter(
-          (h) => !String(h?.bash || h?.powershell || h?.command || '').includes('android-ux')
-        );
+        const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+        const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
         if (kept.length === 0 && hadAndroidUx) {
           delete next.hooks[k];
         } else {
@@ -396,8 +406,8 @@ export function uninstallProviderHooks(info) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          const hadAndroidUx = list.some((h) => String(h?.command || '').includes('android-ux'));
-          const kept = list.filter((h) => !String(h?.command || '').includes('android-ux'));
+          const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+          const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
           if (hadAndroidUx) {
             hadRemoved = true;
             if (kept.length === 0) delete next.hooks[k];
@@ -414,12 +424,8 @@ export function uninstallProviderHooks(info) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          const hadAndroidUx = list.some((h) =>
-            String(h?.bash || h?.powershell || h?.command || '').includes('android-ux')
-          );
-          const kept = list.filter(
-            (h) => !String(h?.bash || h?.powershell || h?.command || '').includes('android-ux')
-          );
+          const hadAndroidUx = list.some((h) => isOwnedAndroidUxHookEntry(h));
+          const kept = list.filter((h) => !isOwnedAndroidUxHookEntry(h));
           if (hadAndroidUx) {
             hadRemoved = true;
             if (kept.length === 0) delete next.hooks[k];
@@ -462,14 +468,14 @@ function stripAndroidUxEntriesFromClaudeOrCodex(obj) {
     clone.hooks[evt] = entries
       .map((entry) => {
         if (Array.isArray(entry?.hooks)) {
-          const kept = entry.hooks.filter((h) => !String(h?.command || '').includes('android-ux'));
+          const kept = entry.hooks.filter((h) => !isOwnedAndroidUxHookEntry(h));
           if (kept.length !== entry.hooks.length) {
             evtRemoved = true;
             hadRemoved = true;
           }
           return kept.length > 0 ? { ...entry, hooks: kept } : null;
         }
-        if (String(entry?.command || '').includes('android-ux')) {
+        if (isOwnedAndroidUxHookEntry(entry)) {
           evtRemoved = true;
           hadRemoved = true;
           return null;

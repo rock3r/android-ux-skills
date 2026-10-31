@@ -19,7 +19,8 @@ Options:
   --help, -h       Show this help message
 `;
 
-const ANDROID_UX_HOOK_CMD_RE = /android-ux(?:\.cmd|\.mjs)?['"]?\s+hook(?:\s|$|['"&|;)])/;
+export const ANDROID_UX_HOOK_CMD_RE =
+  /(?:^|[\s'"/\\;|&(])android-ux(?:\.cmd|\.mjs)?['"]?\s+hook(?:\s|$|['"&|;)])/;
 
 const MOTION_API_HINT_RE = /\b(animate\w*AsState|Animatable|AnimatedVisibility|AnimatedContent|Crossfade|NavHost|NavDisplay|motionScheme|withFrameNanos|LottieAnimation|sharedElement|sharedBounds|animateItem|animateContentSize|PredictiveBackHandler)\b/;
 
