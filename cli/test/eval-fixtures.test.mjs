@@ -562,6 +562,99 @@ fun QualifiedMemberShowcase(model: UiModel, nullableModel: UiModel?) {
       0,
       `Qualified member reads must not trigger F-001, got: ${JSON.stringify(memberRes.findings)}`
     );
+
+    // 6. Positional `LottieAnimation` arguments:
+    //    - `val still: () -> Float = { 0.5f }; LottieAnimation(comp, still)` -> 0 proven O-002 findings
+    //    - Unresolved positional progress (`stillParam: () -> Float` or `::provideProgress`) -> 0 proven O-002 findings (candidate only)
+    //    - Proven positional `Modifier` (`Modifier.size(48.dp)` or `modifier: Modifier = Modifier`) -> still emits proven O-002 finding!
+    const posLottieDir = path.join(tmpDir, 'pos-lottie');
+    const posRawDir = path.join(posLottieDir, 'src', 'main', 'res', 'raw');
+    const posUiDir = path.join(posLottieDir, 'src', 'main', 'java', 'demo');
+    fs.mkdirSync(posRawDir, { recursive: true });
+    fs.mkdirSync(posUiDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(posRawDir, 'sparkle.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        layers: [{ ty: 4, ip: 10, op: 50, ks: { o: { a: 0, k: 100 } } }], // visible only in [10, 50), blank at 0 and 60
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(posUiDir, 'PositionalProgressSafe.kt'),
+      `package demo
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+private fun provideProgress(): Float = 0.5f
+
+@Composable
+fun LocalValStillBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.sparkle))
+    val still: () -> Float = { 0.5f }
+    LottieAnimation(comp, still)
+}
+
+@Composable
+fun ParamStillBadge(still: () -> Float) {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.sparkle))
+    LottieAnimation(comp, still)
+}
+
+@Composable
+fun CallableRefBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.sparkle))
+    LottieAnimation(comp, ::provideProgress)
+}
+`,
+      'utf8'
+    );
+    const posSafeRes = runStaticScan({ targets: [posLottieDir], cwd: tmpDir });
+    assert.equal(
+      posSafeRes.findings.filter((f) => f.rule === 'O-002').length,
+      0,
+      `Positional progress variable / callable ref must NOT emit proven O-002 findings, got: ${JSON.stringify(posSafeRes.findings)}`
+    );
+    const posSafeO002Cands = posSafeRes.candidates.filter((c) => c.rule === 'O-002');
+    assert.equal(
+      posSafeO002Cands.length,
+      2,
+      `Unresolved param \`still\` and \`::provideProgress\` should emit 2 O-002 candidates (while constant \`val still = { 0.5f }\` emits 0), got: ${JSON.stringify(posSafeO002Cands)}`
+    );
+
+    fs.writeFileSync(
+      path.join(posUiDir, 'PositionalModifierBroken.kt'),
+      `package demo
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.airbnb.lottie.compose.*
+
+@Composable
+fun PositionalModifierChainBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.sparkle))
+    LottieAnimation(comp, Modifier.size(48.dp))
+}
+
+@Composable
+fun PositionalModifierParamBadge(modifier: Modifier = Modifier) {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.sparkle))
+    LottieAnimation(comp, modifier)
+}
+`,
+      'utf8'
+    );
+    const posBrokenRes = runStaticScan({ targets: [posLottieDir], cwd: tmpDir });
+    const posBrokenO002 = posBrokenRes.findings.filter((f) => f.rule === 'O-002');
+    assert.equal(
+      posBrokenO002.length,
+      2,
+      `Positional Modifier.size(48.dp) and modifier: Modifier param must still emit 2 proven O-002 findings, got: ${JSON.stringify(posBrokenO002)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

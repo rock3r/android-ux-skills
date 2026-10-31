@@ -520,7 +520,7 @@ function findEnclosingBraceScope(tokens, declTokIdx, fnStartIdx, fnEndIdx) {
   return [openIdx, closeIdx !== -1 ? closeIdx : fnEndIdx];
 }
 
-function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
+function resolveScopedBinding(varName, atTokIdx, scopedBindings) {
   let best = null;
   for (const b of scopedBindings) {
     if (b.name !== varName) continue;
@@ -533,6 +533,11 @@ function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
       best = b;
     }
   }
+  return best;
+}
+
+function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
+  const best = resolveScopedBinding(varName, atTokIdx, scopedBindings);
   return best ? best.kind : null;
 }
 
@@ -2039,40 +2044,326 @@ function checkCandidatesMisc(kf, rawCandidates) {
   }
 }
 
+const NON_MODIFIER_RETURN_MEMBERS = new Set([
+  'let',
+  'run',
+  'with',
+  'toString',
+  'hashCode',
+  'equals',
+]);
+
+function isModifierTypeTokens(typeToks) {
+  const clean = [];
+  for (let i = 0; i < typeToks.length; i += 1) {
+    const t = typeToks[i];
+    if (t.type === 'Annotation') {
+      if (typeToks[i + 1]?.type === 'Punct' && typeToks[i + 1].value === '(') {
+        const closeP = findMatchingForward(typeToks, i + 1, '(', ')');
+        if (closeP !== -1) i = closeP;
+      }
+      continue;
+    }
+    clean.push(t);
+  }
+  if (clean.length === 0 || clean.length % 2 === 0) return false;
+  for (let i = 0; i < clean.length; i += 1) {
+    if (i % 2 === 0) {
+      if (clean[i].type !== 'Identifier') return false;
+    } else if (clean[i].type !== 'Punct' || clean[i].value !== '.') {
+      return false;
+    }
+  }
+  const last = clean[clean.length - 1];
+  const pkgPrefix = clean.slice(0, -1).map((t) => t.value).join('');
+  return last.value === 'Modifier' && (pkgPrefix === '' || pkgPrefix === 'androidx.compose.ui.');
+}
+
+function collectLottieFunctionParamBindings(tokens, fn, scopedBindings) {
+  if (!fn.paramRange) return;
+  const [openP, closeP] = fn.paramRange;
+  const slice = tokens.slice(openP + 1, closeP);
+  const paramSlices = [];
+  let curStart = 0;
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  let tDepth = 0;
+  let inType = false;
+
+  for (let i = 0; i < slice.length; i += 1) {
+    const t = slice[i];
+    if (t.type === 'Punct') {
+      if (t.value === '(') pDepth += 1;
+      else if (t.value === ')') pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === '{') bDepth += 1;
+      else if (t.value === '}') bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === '[') kDepth += 1;
+      else if (t.value === ']') kDepth = Math.max(0, kDepth - 1);
+      else if (pDepth === 0 && bDepth === 0 && kDepth === 0) {
+        if (t.value === ':' && !inType) {
+          inType = true;
+          tDepth = 0;
+        } else if (t.value === '=' && inType && tDepth === 0) {
+          inType = false;
+        } else if (inType && t.value === '<') {
+          tDepth += 1;
+        } else if (inType && t.value === '>') {
+          tDepth = Math.max(0, tDepth - 1);
+        } else if (t.value === ',' && !(inType && tDepth > 0)) {
+          paramSlices.push(slice.slice(curStart, i));
+          curStart = i + 1;
+          inType = false;
+          tDepth = 0;
+        }
+      }
+    }
+  }
+  if (curStart < slice.length) {
+    paramSlices.push(slice.slice(curStart));
+  }
+
+  for (const paramToks of paramSlices) {
+    if (paramToks.length === 0) continue;
+    let pd = 0;
+    let bd = 0;
+    let kd = 0;
+    let td = 0;
+    let colonIdx = -1;
+    let eqIdx = -1;
+    for (let i = 0; i < paramToks.length; i += 1) {
+      const t = paramToks[i];
+      if (t.type === 'Punct') {
+        if (t.value === '(') pd += 1;
+        else if (t.value === ')') pd = Math.max(0, pd - 1);
+        else if (t.value === '{') bd += 1;
+        else if (t.value === '}') bd = Math.max(0, bd - 1);
+        else if (t.value === '[') kd += 1;
+        else if (t.value === ']') kd = Math.max(0, kd - 1);
+        else if (pd === 0 && bd === 0 && kd === 0) {
+          if (t.value === ':' && colonIdx === -1) {
+            colonIdx = i;
+          } else if (colonIdx !== -1 && eqIdx === -1 && t.value === '<') {
+            td += 1;
+          } else if (colonIdx !== -1 && eqIdx === -1 && t.value === '>') {
+            td = Math.max(0, td - 1);
+          } else if (colonIdx !== -1 && eqIdx === -1 && td === 0 && t.value === '=') {
+            eqIdx = i;
+            break;
+          }
+        }
+      }
+    }
+    if (colonIdx > 0 && paramToks[colonIdx - 1]?.type === 'Identifier') {
+      const paramName = paramToks[colonIdx - 1].value;
+      const typeToks = paramToks.slice(colonIdx + 1, eqIdx === -1 ? paramToks.length : eqIdx);
+      scopedBindings.push({
+        name: paramName,
+        kind: isModifierTypeTokens(typeToks) ? 'modifier' : 'other',
+        declStartIdx: openP,
+        declEndIdx: closeP,
+        scopeStartIdx: fn.startTokIdx,
+        scopeEndIdx: fn.endTokIdx,
+      });
+    }
+  }
+}
+
+function isProvenModifierExprTokens(toks, atTokIdx, scopedBindings) {
+  if (!Array.isArray(toks) || toks.length === 0) return false;
+
+  let cursor = 0;
+  if (
+    toks.length >= 7 &&
+    toks[0]?.type === 'Identifier' && toks[0].value === 'androidx' &&
+    toks[1]?.value === '.' &&
+    toks[2]?.type === 'Identifier' && toks[2].value === 'compose' &&
+    toks[3]?.value === '.' &&
+    toks[4]?.type === 'Identifier' && toks[4].value === 'ui' &&
+    toks[5]?.value === '.' &&
+    toks[6]?.type === 'Identifier' && toks[6].value === 'Modifier'
+  ) {
+    cursor = 7;
+  } else if (toks[0]?.type === 'Identifier' && isUnqualifiedLocalIdent(toks, 0)) {
+    if (toks[0].value === 'Modifier') {
+      cursor = 1;
+    } else {
+      const binding = resolveScopedBinding(toks[0].value, atTokIdx, scopedBindings);
+      if (binding && binding.kind === 'modifier') {
+        cursor = 1;
+      } else {
+        return false;
+      }
+    }
+  } else {
+    return false;
+  }
+
+  while (cursor < toks.length) {
+    if (toks[cursor]?.type !== 'Punct' || toks[cursor].value !== '.') {
+      return false;
+    }
+    cursor += 1;
+    const member = toks[cursor];
+    if (!member || member.type !== 'Identifier' || NON_MODIFIER_RETURN_MEMBERS.has(member.value)) {
+      return false;
+    }
+    cursor += 1;
+    if (toks[cursor]?.type === 'Punct' && toks[cursor].value === '<') {
+      const closeAngle = findMatchingForward(toks, cursor, '<', '>');
+      if (closeAngle === -1) return false;
+      cursor = closeAngle + 1;
+    }
+    if (toks[cursor]?.type === 'Punct' && toks[cursor].value === '(') {
+      const closeParen = findMatchingForward(toks, cursor, '(', ')');
+      if (closeParen === -1) return false;
+      cursor = closeParen + 1;
+    }
+    if (toks[cursor]?.type === 'Punct' && toks[cursor].value === '{') {
+      const closeBrace = findMatchingForward(toks, cursor, '{', '}');
+      if (closeBrace === -1) return false;
+      cursor = closeBrace + 1;
+    }
+  }
+
+  return true;
+}
+
+function unwrapZeroArgLambdaTokens(toks) {
+  if (
+    toks.length >= 2 &&
+    toks[0].type === 'Punct' &&
+    toks[0].value === '{' &&
+    toks[toks.length - 1].type === 'Punct' &&
+    toks[toks.length - 1].value === '}' &&
+    findMatchingForward(toks, 0, '{', '}') === toks.length - 1
+  ) {
+    const inner = toks.slice(1, -1);
+    if (inner[0]?.type === 'Punct' && inner[0].value === '->') {
+      return inner.slice(1);
+    }
+    return inner;
+  }
+  return toks;
+}
+
+function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scopedBindings) {
+  const inner = unwrapZeroArgLambdaTokens(progressTokens);
+
+  let varName = null;
+  const isBareVar = inner.length === 1 && inner[0].type === 'Identifier';
+  const isStateMember =
+    inner.length === 3 &&
+    inner[0].type === 'Identifier' &&
+    inner[1].type === 'Punct' &&
+    (inner[1].value === '.' || inner[1].value === '::') &&
+    inner[2].type === 'Identifier' &&
+    (inner[2].value === 'progress' || inner[2].value === 'value');
+
+  if (isBareVar || isStateMember) {
+    varName = inner[0].value;
+  }
+
+  if (varName) {
+    const binding = resolveScopedBinding(varName, atTokIdx, scopedBindings);
+    if (binding?.kind === 'lottie-anim-state' && binding.animStateMeta) {
+      return {
+        progressKind: 'animated-state',
+        hasClipSpec: binding.animStateMeta.hasClipSpec,
+        isNegativeSpeed: binding.animStateMeta.isNegativeSpeed,
+      };
+    }
+    if (isBareVar && binding?.kind === 'local-val' && typeof binding.rhsText === 'string') {
+      return {
+        progressKind: classifyExplicitLottieProgress(binding.rhsText),
+        hasClipSpec: false,
+        isNegativeSpeed: false,
+      };
+    }
+  }
+
+  return {
+    progressKind: classifyExplicitLottieProgress(progressText),
+    hasClipSpec: false,
+    isNegativeSpeed: false,
+  };
+}
+
 function collectLottieConsumers(kf, outConsumers) {
   const { declarations, calls, tokens } = kf;
   const composableFuns = declarations.filter((d) => d.kind === 'fun' && d.isComposable);
 
   for (const fn of composableFuns) {
-    // Map `composition` var -> `{ kind: 'raw'|'asset', baseName, assetRelPath }`
-    const compVarToAsset = new Map();
-    const stateVarToProgressOpts = new Map();
+    const scopedBindings = [];
+    collectLottieFunctionParamBindings(tokens, fn, scopedBindings);
+    collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings);
 
-    const localDecls = declarations.filter(
-      (d) => (d.kind === 'val' || d.kind === 'var') && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
-    );
+    const localDecls = declarations
+      .filter(
+        (d) => (d.kind === 'val' || d.kind === 'var') && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
+      )
+      .sort((a, b) => a.startTokIdx - b.startTokIdx);
 
     for (const ld of localDecls) {
+      const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, ld.startTokIdx, fn.startTokIdx, fn.endTokIdx);
       const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
       const assetRef = extractLottieAssetFromTokens(declToks);
-      if (assetRef) {
-        compVarToAsset.set(ld.name, assetRef);
-      }
+
       const animStateCall = calls.find(
         (c) => c.name === 'animateLottieCompositionAsState' && c.nameTokIdx >= ld.startTokIdx && c.endTokIdx <= ld.endTokIdx
       );
+
+      let explicitTypeToks = null;
+      if (tokens[ld.nameIdx + 1]?.type === 'Punct' && tokens[ld.nameIdx + 1].value === ':') {
+        const typeEnd = ld.rhsStartIdx >= 0
+          ? ld.rhsStartIdx - 1
+          : ld.delegateIdx >= 0
+            ? ld.delegateIdx - 1
+            : ld.endTokIdx + 1;
+        if (typeEnd >= ld.nameIdx + 2) {
+          explicitTypeToks = tokens.slice(ld.nameIdx + 2, typeEnd);
+        }
+      }
+
+      let kind = 'other';
+      let animStateMeta = null;
+      let rhsText = null;
+
       if (animStateCall) {
         const compArg = getCallArg(animStateCall, 'composition', 0);
         const compIdent = compArg?.tokens.find((t) => t.type === 'Identifier')?.value;
         const hasClipSpec = animStateCall.args.some((a) => a.name === 'clipSpec' && a.text !== 'null');
         const speedArg = animStateCall.args.find((a) => a.name === 'speed');
         const isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
-        stateVarToProgressOpts.set(ld.name, {
+        kind = 'lottie-anim-state';
+        animStateMeta = {
           compIdent,
           hasClipSpec,
           isNegativeSpeed,
-        });
+        };
+      } else if (
+        (explicitTypeToks && isModifierTypeTokens(explicitTypeToks)) ||
+        (ld.rhsStartIdx >= 0 &&
+          ld.rhsStartIdx <= ld.endTokIdx &&
+          isProvenModifierExprTokens(tokens.slice(ld.rhsStartIdx, ld.endTokIdx + 1), ld.startTokIdx, scopedBindings))
+      ) {
+        kind = 'modifier';
+      } else if (ld.kind === 'val' && ld.delegateIdx === -1 && ld.rhsStartIdx >= 0 && ld.rhsStartIdx <= ld.endTokIdx) {
+        kind = 'local-val';
+        rhsText = kf.source.slice(tokens[ld.rhsStartIdx].start, tokens[ld.endTokIdx].end).trim();
       }
+
+      scopedBindings.push({
+        name: ld.name,
+        kind,
+        assetRef: assetRef || null,
+        animStateMeta,
+        rhsText,
+        declStartIdx: ld.startTokIdx,
+        declEndIdx: ld.endTokIdx,
+        scopeStartIdx,
+        scopeEndIdx,
+      });
     }
 
     const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
@@ -2085,9 +2376,12 @@ function collectLottieConsumers(kf, outConsumers) {
       if (!assetRef) {
         for (let idx = 0; idx < compArg.tokens.length; idx += 1) {
           const t = compArg.tokens[idx];
-          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(compArg.tokens, idx) && compVarToAsset.has(t.value)) {
-            assetRef = compVarToAsset.get(t.value);
-            break;
+          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(compArg.tokens, idx)) {
+            const binding = resolveScopedBinding(t.value, c.nameTokIdx, scopedBindings);
+            if (binding?.assetRef) {
+              assetRef = binding.assetRef;
+              break;
+            }
           }
         }
       }
@@ -2098,23 +2392,43 @@ function collectLottieConsumers(kf, outConsumers) {
       let isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
 
       // Determine `progress` provenance (`default-forward` vs `animated-state` vs `constant-*` vs `custom-progress`)
-      const progressArg = getCallArg(c, 'progress', 1);
+      const namedProgressArg = c.args.find((a) => a.name === 'progress');
+      const firstIsCompSlot = c.args.length >= 1 && (c.args[0].name === null || c.args[0].name === 'composition');
+      const posSlot1Arg = firstIsCompSlot && c.args.length >= 2 && c.args[1].name === null ? c.args[1] : null;
+      const trailingProgressLambda =
+        !namedProgressArg && firstIsCompSlot && c.args.length === 1 && c.trailingLambda
+          ? c.trailingLambda
+          : null;
+
+      let explicitProgress = null;
+      if (namedProgressArg) {
+        explicitProgress = { tokens: namedProgressArg.tokens, text: namedProgressArg.text };
+      } else if (trailingProgressLambda) {
+        explicitProgress = {
+          tokens: tokens.slice(trailingProgressLambda.openBraceIdx, trailingProgressLambda.closeBraceIdx + 1),
+          text: trailingProgressLambda.text,
+        };
+      } else if (posSlot1Arg && !isProvenModifierExprTokens(posSlot1Arg.tokens, c.nameTokIdx, scopedBindings)) {
+        explicitProgress = { tokens: posSlot1Arg.tokens, text: posSlot1Arg.text };
+      }
+
       let progressKind = 'default-forward';
-      if (progressArg && (progressArg.name === 'progress' || progressArg.text.startsWith('{') || /^[0-9.]/.test(progressArg.text))) {
-        let matchedAnimState = false;
-        for (let idx = 0; idx < progressArg.tokens.length; idx += 1) {
-          const t = progressArg.tokens[idx];
-          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(progressArg.tokens, idx) && stateVarToProgressOpts.has(t.value)) {
-            const st = stateVarToProgressOpts.get(t.value);
-            if (st.hasClipSpec) hasClipSpec = true;
-            if (st.isNegativeSpeed) isNegativeSpeed = true;
-            matchedAnimState = true;
-          }
-        }
-        if (matchedAnimState) {
-          progressKind = 'animated-state';
-        } else {
-          progressKind = classifyExplicitLottieProgress(progressArg.text);
+      if (explicitProgress) {
+        const resolved = resolveLottieProgressExpr(
+          explicitProgress.tokens,
+          explicitProgress.text,
+          c.nameTokIdx,
+          scopedBindings
+        );
+        progressKind = resolved.progressKind;
+        if (resolved.hasClipSpec) hasClipSpec = true;
+        if (resolved.isNegativeSpeed) isNegativeSpeed = true;
+      } else {
+        const isPlayingArg =
+          c.args.find((a) => a.name === 'isPlaying') ||
+          (posSlot1Arg && c.args.length >= 3 && c.args[2].name === null ? c.args[2] : null);
+        if (isPlayingArg && isPlayingArg.text.trim() !== 'true') {
+          progressKind = 'custom-progress';
         }
       }
 
