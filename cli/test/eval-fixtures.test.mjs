@@ -1266,6 +1266,84 @@ private const val speed = -1f
       0,
       `Proven reverse file-level const val speed = -1f must emit 0 O-002 candidates, got: ${JSON.stringify(lottieScopeRes.candidates)}`
     );
+
+    // 15. `O-002` must resolve top-level `animateLottieCompositionAsState` initializers before attaching state metadata!
+    const lottieInitDir = path.join(tmpDir, 'lottie-animstate-init');
+    const lottieInitRawDir = path.join(lottieInitDir, 'src', 'main', 'res', 'raw');
+    const lottieInitUiDir = path.join(lottieInitDir, 'src', 'main', 'java', 'demo');
+    fs.mkdirSync(lottieInitRawDir, { recursive: true });
+    fs.mkdirSync(lottieInitUiDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(lottieInitRawDir, 'endpoint_blank.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        // Visible in [10, 50), transparent at both start ip=0 and end op=60!
+        layers: [{ ty: 4, ip: 10, op: 50, ks: { o: { a: 0, k: 100 } } }],
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(lottieInitUiDir, 'AnimStateInitCases.kt'),
+      `package demo
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+@Composable
+fun LetTransformedProgressBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.endpoint_blank))
+    val still = animateLottieCompositionAsState(comp).let { 0.5f }
+    LottieAnimation(comp, progress = { still })
+}
+
+@Composable
+fun CoercedProgressBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.endpoint_blank))
+    val clamped = animateLottieCompositionAsState(comp).progress.coerceAtMost(0.5f)
+    LottieAnimation(comp, progress = { clamped })
+}
+
+@Composable
+fun DirectDelegatedProgressBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.endpoint_blank))
+    val p by animateLottieCompositionAsState(comp)
+    LottieAnimation(comp, progress = { p })
+}
+
+@Composable
+fun DirectStateObjectBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.endpoint_blank))
+    val st = animateLottieCompositionAsState(comp)
+    LottieAnimation(comp, progress = { st.progress })
+}
+`,
+      'utf8'
+    );
+    const lottieInitRes = runStaticScan({ targets: [lottieInitDir], cwd: tmpDir });
+    const lottieInitFindings = lottieInitRes.findings.filter((f) => f.rule === 'O-002');
+    assert.equal(
+      lottieInitFindings.length,
+      2,
+      `Expected exactly 2 proven O-002 findings (DirectDelegatedProgressBadge + DirectStateObjectBadge), got: ${JSON.stringify(lottieInitFindings)}`
+    );
+    assert.equal(
+      lottieInitFindings.some((f) => /DirectDelegatedProgressBadge/.test(f.evidence)),
+      true,
+      'DirectDelegatedProgressBadge must emit proven O-002'
+    );
+    assert.equal(
+      lottieInitFindings.some((f) => /DirectStateObjectBadge/.test(f.evidence)),
+      true,
+      'DirectStateObjectBadge must emit proven O-002'
+    );
+    const lottieInitCands = lottieInitRes.candidates.filter((c) => c.rule === 'O-002');
+    assert.equal(
+      lottieInitCands.length,
+      2,
+      `Expected 2 O-002 candidates for transformed initializers (LetTransformedProgressBadge + CoercedProgressBadge), got: ${JSON.stringify(lottieInitCands)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

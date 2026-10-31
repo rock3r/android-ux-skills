@@ -5010,8 +5010,45 @@ function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, 
   void rawText;
   return "unknown";
 }
+function isUnqualifiedOrLottieQualifiedCall(tokens, call) {
+  if (!call) return false;
+  if (!call.receiver && call.chainRootIdx === call.nameTokIdx) return true;
+  const prefix = tokens.slice(call.chainRootIdx, call.nameTokIdx);
+  if (prefix.length < 2 || prefix[0].type !== "Identifier" || prefix[0].value !== "com") {
+    return false;
+  }
+  return prefix.every(
+    (t, idx) => idx % 2 === 0 ? t.type === "Identifier" : t.type === "Punct" && t.value === "."
+  );
+}
+function extractDirectLottieAnimStateInit(tokens, calls, ld, fn) {
+  if (isLocalVarReassignedInFn(tokens, ld, fn)) return null;
+  if (ld.delegateIdx >= 0 && ld.delegateIdx <= ld.endTokIdx) {
+    const delToks = stripOuterParensTokens(tokens.slice(ld.delegateIdx, ld.endTokIdx + 1));
+    const topCall = findDirectTopLevelCall(tokens, calls, delToks);
+    if (topCall && topCall.name === "animateLottieCompositionAsState" && topCall.hasParens && !topCall.trailingLambda && isUnqualifiedOrLottieQualifiedCall(tokens, topCall)) {
+      return { call: topCall, valueKind: "float" };
+    }
+    return null;
+  }
+  if (ld.rhsStartIdx >= 0 && ld.rhsStartIdx <= ld.endTokIdx) {
+    const rhsToks = stripOuterParensTokens(tokens.slice(ld.rhsStartIdx, ld.endTokIdx + 1));
+    const topCall = findDirectTopLevelCall(tokens, calls, rhsToks);
+    if (topCall && topCall.name === "animateLottieCompositionAsState" && topCall.hasParens && !topCall.trailingLambda && isUnqualifiedOrLottieQualifiedCall(tokens, topCall)) {
+      return { call: topCall, valueKind: "state" };
+    }
+    if (rhsToks.length >= 4 && rhsToks[rhsToks.length - 2].type === "Punct" && rhsToks[rhsToks.length - 2].value === "." && rhsToks[rhsToks.length - 1].type === "Identifier" && (rhsToks[rhsToks.length - 1].value === "progress" || rhsToks[rhsToks.length - 1].value === "value")) {
+      const prefixCall = findDirectTopLevelCall(tokens, calls, rhsToks.slice(0, -2));
+      if (prefixCall && prefixCall.name === "animateLottieCompositionAsState" && prefixCall.hasParens && !prefixCall.trailingLambda && isUnqualifiedOrLottieQualifiedCall(tokens, prefixCall)) {
+        return { call: prefixCall, valueKind: "float" };
+      }
+    }
+  }
+  return null;
+}
 function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scopedBindings) {
-  const inner = unwrapZeroArgLambdaTokens(progressTokens);
+  const strippedOuter = stripOuterParensTokens(progressTokens);
+  const inner = stripOuterParensTokens(unwrapZeroArgLambdaTokens(strippedOuter));
   let varName = null;
   const isBareVar = inner.length === 1 && inner[0].type === "Identifier";
   const isStateMember = inner.length === 3 && inner[0].type === "Identifier" && inner[1].type === "Punct" && (inner[1].value === "." || inner[1].value === "::") && inner[2].type === "Identifier" && (inner[2].value === "progress" || inner[2].value === "value");
@@ -5021,11 +5058,21 @@ function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scope
   if (varName) {
     const binding = resolveScopedBinding(varName, atTokIdx, scopedBindings);
     if (binding?.kind === "lottie-anim-state" && binding.animStateMeta) {
+      const vk = binding.animStateMeta.valueKind;
+      const matchesShape = vk === "float" && isBareVar || vk === "state" && isStateMember;
+      if (matchesShape) {
+        return {
+          progressKind: binding.animStateMeta.hasUnknownPlayback ? "custom-progress" : "animated-state",
+          hasClipSpec: binding.animStateMeta.hasClipSpec,
+          isNegativeSpeed: binding.animStateMeta.isNegativeSpeed,
+          hasUnknownPlayback: Boolean(binding.animStateMeta.hasUnknownPlayback)
+        };
+      }
       return {
-        progressKind: binding.animStateMeta.hasUnknownPlayback ? "custom-progress" : "animated-state",
-        hasClipSpec: binding.animStateMeta.hasClipSpec,
-        isNegativeSpeed: binding.animStateMeta.isNegativeSpeed,
-        hasUnknownPlayback: Boolean(binding.animStateMeta.hasUnknownPlayback)
+        progressKind: "custom-progress",
+        hasClipSpec: false,
+        isNegativeSpeed: false,
+        hasUnknownPlayback: false
       };
     }
     if (isBareVar && binding?.kind === "local-val" && typeof binding.rhsText === "string") {
@@ -5173,9 +5220,7 @@ function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
       const exprToks = exprStart >= 0 && exprStart <= ld.endTokIdx ? tokens.slice(exprStart, ld.endTokIdx + 1) : null;
       const rawSelection = exprToks ? extractLottieAssetSelectionForExpr(tokens, calls, exprToks, scopedBindings, ld.startTokIdx) : null;
       const assetSelection = rawSelection ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || ld.kind === "var" } : null;
-      const animStateCall = calls.find(
-        (c) => c.name === "animateLottieCompositionAsState" && c.nameTokIdx >= ld.startTokIdx && c.endTokIdx <= ld.endTokIdx
-      );
+      const animStateInit = extractDirectLottieAnimStateInit(tokens, calls, ld, fn);
       let explicitTypeToks = null;
       if (tokens[ld.nameIdx + 1]?.type === "Punct" && tokens[ld.nameIdx + 1].value === ":") {
         const typeEnd = ld.rhsStartIdx >= 0 ? ld.rhsStartIdx - 1 : ld.delegateIdx >= 0 ? ld.delegateIdx - 1 : ld.endTokIdx + 1;
@@ -5187,10 +5232,12 @@ function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
       let animStateMeta = null;
       let rhsTokens = null;
       let rhsText = null;
-      if (animStateCall) {
+      if (animStateInit) {
+        const animStateCall = animStateInit.call;
         const compArg = getCallArg(animStateCall, "composition", 0);
-        const isSimpleCompIdent = Boolean(compArg) && compArg.tokens.length === 1 && compArg.tokens[0].type === "Identifier";
-        const compIdent = isSimpleCompIdent ? compArg.tokens[0].value : null;
+        const strippedComp = compArg ? stripOuterParensTokens(compArg.tokens) : [];
+        const isSimpleCompIdent = strippedComp.length === 1 && strippedComp[0].type === "Identifier";
+        const compIdent = isSimpleCompIdent ? strippedComp[0].value : null;
         const clipArg = getLottieOverloadArg(animStateCall, "clipSpec", 4, true);
         const hasClipSpec = Boolean(clipArg && clipArg.text.trim() !== "null");
         const speedArg = getLottieOverloadArg(animStateCall, "speed", 5, true);
@@ -5201,6 +5248,7 @@ function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
         kind = "lottie-anim-state";
         animStateMeta = {
           compIdent,
+          valueKind: animStateInit.valueKind,
           hasClipSpec,
           isNegativeSpeed: speedClass === "negative",
           hasUnknownPlayback
