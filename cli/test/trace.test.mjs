@@ -141,11 +141,13 @@ test('trace: <=2 SQL passes, BigInt ns bounds, and FrameTimeline unavailable vs 
   assert.equal(cmp[0].delta.appJank, 'unavailable');
 });
 
-test('trace: Python Perfetto wrapper shebang guard stays 100% offline', async () => {
+test('trace: Python Perfetto wrapper shebang guard stays 100% offline + multi-directory POSIX/Windows PATH splitting', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aux-tp-wrap-'));
   try {
+    const emptyFirst = path.join(tmpDir, 'empty');
     const fakeBinDir = path.join(tmpDir, 'bin');
     const fakeHome = path.join(tmpDir, 'home');
+    fs.mkdirSync(emptyFirst, { recursive: true });
     fs.mkdirSync(fakeBinDir, { recursive: true });
     fs.mkdirSync(fakeHome, { recursive: true });
 
@@ -157,12 +159,31 @@ test('trace: Python Perfetto wrapper shebang guard stays 100% offline', async ()
     );
     assert.equal(isPythonPerfettoWrapper(pyWrapper), true);
 
+    const multiRealPath = [emptyFirst, fakeBinDir].join(path.delimiter);
     const resolved = resolveTraceProcessor({
-      env: { PATH: fakeBinDir, HOME: fakeHome },
-      platform: 'linux',
+      env: { PATH: multiRealPath, HOME: fakeHome, USERPROFILE: fakeHome },
+      platform: process.platform,
     });
     assert.equal(resolved.binaryPath, null);
     assert.equal(resolved.wrapperPath, pyWrapper);
+
+    // Explicit multi-directory POSIX PATH (`/opt/empty:/opt/perfetto/bin:/usr/bin`)
+    const posixResolved = resolveTraceProcessor({
+      env: { PATH: '/opt/empty:/opt/perfetto/bin:/usr/bin', HOME: fakeHome },
+      platform: 'linux',
+      existsFile: (p) => p === '/opt/perfetto/bin/trace_processor_shell',
+      isWrapper: () => false,
+    });
+    assert.equal(posixResolved.binaryPath, '/opt/perfetto/bin/trace_processor_shell');
+
+    // Explicit multi-directory Windows PATH (`C:\Empty;D:\Perfetto\bin;C:\Windows\System32`)
+    const winResolved = resolveTraceProcessor({
+      env: { PATH: 'C:\\Empty;D:\\Perfetto\\bin;C:\\Windows\\System32', USERPROFILE: fakeHome },
+      platform: 'win32',
+      existsFile: (p) => p === 'D:\\Perfetto\\bin\\trace_processor_shell.exe',
+      isWrapper: () => false,
+    });
+    assert.equal(winResolved.binaryPath, 'D:\\Perfetto\\bin\\trace_processor_shell.exe');
 
     // `android-ux trace` must refuse to execute the Python wrapper and return AUX-TRACE-003
     const dummyTrace = path.join(tmpDir, 'sample.perfetto-trace');
@@ -170,8 +191,8 @@ test('trace: Python Perfetto wrapper shebang guard stays 100% offline', async ()
     let out = '';
     const code = await runCli(['trace', '--json', dummyTrace], {
       cwd: tmpDir,
-      env: { PATH: fakeBinDir, HOME: fakeHome },
-      platform: 'linux',
+      env: { PATH: multiRealPath, HOME: fakeHome, USERPROFILE: fakeHome },
+      platform: process.platform,
       stdout: { write: (s) => { out += s; } },
       stderr: { write: () => {} },
     });

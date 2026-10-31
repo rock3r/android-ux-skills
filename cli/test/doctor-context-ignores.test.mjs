@@ -8,6 +8,7 @@ import {
   gatherProjectContext,
   runCli,
 } from '../src/index.mjs';
+import { findBinaryOnPath } from '../src/commands/doctor.mjs';
 
 test('doctor: OS/pkg-manager matrix, legacy 2016 tools/android rejection, Windows convert.exe avoidance, and offline Python wrapper safety', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aux-doc-'));
@@ -55,29 +56,50 @@ test('doctor: OS/pkg-manager matrix, legacy 2016 tools/android rejection, Window
     assert.equal(imCheck.code, 'AUX-MEDIA-001');
     assert.match(String(imCheck.remediation), /winget install ImageMagick\.ImageMagick/);
 
-    // 2. Perfetto Python wrapper on PATH: `doctor` must NOT run `--version` on it (stays 100% offline!)
+    // 2. Perfetto Python wrapper on multi-directory PATH: `doctor` must split PATH cleanly and NOT run `--version` on it (stays 100% offline!)
+    const emptyFirstDir = path.join(tmpDir, 'empty-first');
     const binDir = path.join(tmpDir, 'bin');
     const emptyHome = path.join(tmpDir, 'home');
+    fs.mkdirSync(path.join(emptyFirstDir, 'adb'), { recursive: true }); // directory named `adb` must NOT be treated as a binary!
     fs.mkdirSync(binDir, { recursive: true });
     fs.mkdirSync(emptyHome, { recursive: true });
     const pyWrapper = path.join(binDir, 'trace_processor');
     fs.writeFileSync(pyWrapper, '#!/usr/bin/env python3\nraise SystemExit("NO_NETWORK")\n', { mode: 0o755 });
+    const realAdb = path.join(binDir, process.platform === 'win32' ? 'adb.exe' : 'adb');
+    fs.writeFileSync(realAdb, 'stub', { mode: 0o755 });
 
-    const linuxProbes = [];
+    const multiRealPath = [emptyFirstDir, binDir].join(path.delimiter);
+    assert.equal(
+      findBinaryOnPath('adb', { PATH: multiRealPath }, process.platform),
+      realAdb,
+      'findBinaryOnPath must skip directories named adb and discover executable in later PATH entry'
+    );
+    assert.equal(
+      findBinaryOnPath('adb', { PATH: '/opt/empty:/opt/android/platform-tools:/usr/bin' }, 'linux', (p) => p === '/opt/android/platform-tools/adb'),
+      '/opt/android/platform-tools/adb',
+      'POSIX multi-directory PATH with leading slashes must split cleanly at colons'
+    );
+    assert.equal(
+      findBinaryOnPath('adb', { PATH: 'C:\\Empty;D:\\Android\\Sdk\\platform-tools;C:\\Windows\\System32' }, 'win32', (p) => p === 'D:\\Android\\Sdk\\platform-tools\\adb.exe'),
+      'D:\\Android\\Sdk\\platform-tools\\adb.exe',
+      'Windows multi-directory PATH with drive letters must split cleanly at semicolons'
+    );
+
+    const hostProbes = [];
     const traceReqRes = runDoctorChecks({
       cwd: tmpDir,
-      platform: 'linux',
+      platform: process.platform,
       arch: 'arm64',
       nodeVersion: '22.12.0',
       requiredFeatures: new Set(['trace']),
-      env: { PATH: binDir, HOME: emptyHome },
+      env: { PATH: multiRealPath, HOME: emptyHome, USERPROFILE: emptyHome },
       execProbe: (cmd, args) => {
-        linuxProbes.push(`${cmd} ${args.join(' ')}`);
+        hostProbes.push(`${cmd} ${args.join(' ')}`);
         return { status: 0, stdout: '22', stderr: '' };
       },
     });
     assert.equal(
-      linuxProbes.some((p) => p.includes('trace_processor')),
+      hostProbes.some((p) => p.includes('trace_processor')),
       false,
       'Doctor must never execute Python Perfetto wrapper'
     );

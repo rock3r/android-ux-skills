@@ -178,12 +178,19 @@ export function isPythonPerfettoWrapper(binPath) {
   }
 }
 
-export function resolveTraceProcessor({ explicitPath = null, env = process.env, platform = process.platform } = {}) {
+export function resolveTraceProcessor({
+  explicitPath = null,
+  env = process.env,
+  platform = process.platform,
+  existsFile = null,
+  isWrapper = isPythonPerfettoWrapper,
+} = {}) {
   let wrapperPath = null;
+  const fileCheck = existsFile || ((p) => fs.existsSync(p) && fs.statSync(p).isFile());
   const checkCandidate = (candidatePath) => {
     try {
-      if (!fs.existsSync(candidatePath) || !fs.statSync(candidatePath).isFile()) return null;
-      if (isPythonPerfettoWrapper(candidatePath)) {
+      if (!fileCheck(candidatePath)) return null;
+      if (isWrapper(candidatePath)) {
         if (!wrapperPath) wrapperPath = candidatePath;
         return null;
       }
@@ -238,18 +245,14 @@ export function resolveTraceProcessor({ explicitPath = null, env = process.env, 
   }
 
   const rawPath = String(env.PATH ?? env.Path ?? '');
-  const pathDirs = (platform === 'win32' || rawPath.includes(';'))
-    ? rawPath.split(';').filter(Boolean)
-    : rawPath.split(/:(?![\\/])/).filter(Boolean);
+  const pathSep = platform === 'win32' ? ';' : ':';
+  const pathDirs = rawPath.split(pathSep).filter(Boolean);
   const binNames = platform === 'win32'
     ? ['trace_processor_shell.exe', 'trace_processor.exe', 'trace_processor_shell', 'trace_processor']
     : ['trace_processor_shell', 'trace_processor'];
+  const joiner = platform === 'win32' ? path.win32.join : path.posix.join;
 
   for (const dir of pathDirs) {
-    const joiner =
-      platform === 'win32' || dir.includes('\\') || /^[A-Za-z]:[\\/]/.test(dir)
-        ? path.win32.join
-        : path.posix.join;
     for (const bin of binNames) {
       const full = joiner(dir, bin);
       const nativeBin = checkCandidate(full);

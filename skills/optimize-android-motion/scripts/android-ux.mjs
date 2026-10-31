@@ -6140,12 +6140,19 @@ function isPythonPerfettoWrapper(binPath) {
     }
   }
 }
-function resolveTraceProcessor({ explicitPath = null, env = process.env, platform = process.platform } = {}) {
+function resolveTraceProcessor({
+  explicitPath = null,
+  env = process.env,
+  platform = process.platform,
+  existsFile = null,
+  isWrapper = isPythonPerfettoWrapper
+} = {}) {
   let wrapperPath = null;
+  const fileCheck = existsFile || ((p) => fs6.existsSync(p) && fs6.statSync(p).isFile());
   const checkCandidate = (candidatePath) => {
     try {
-      if (!fs6.existsSync(candidatePath) || !fs6.statSync(candidatePath).isFile()) return null;
-      if (isPythonPerfettoWrapper(candidatePath)) {
+      if (!fileCheck(candidatePath)) return null;
+      if (isWrapper(candidatePath)) {
         if (!wrapperPath) wrapperPath = candidatePath;
         return null;
       }
@@ -6189,10 +6196,11 @@ function resolveTraceProcessor({ explicitPath = null, env = process.env, platfor
     }
   }
   const rawPath = String(env.PATH ?? env.Path ?? "");
-  const pathDirs = platform === "win32" || rawPath.includes(";") ? rawPath.split(";").filter(Boolean) : rawPath.split(/:(?![\\/])/).filter(Boolean);
+  const pathSep = platform === "win32" ? ";" : ":";
+  const pathDirs = rawPath.split(pathSep).filter(Boolean);
   const binNames = platform === "win32" ? ["trace_processor_shell.exe", "trace_processor.exe", "trace_processor_shell", "trace_processor"] : ["trace_processor_shell", "trace_processor"];
+  const joiner = platform === "win32" ? path7.win32.join : path7.posix.join;
   for (const dir of pathDirs) {
-    const joiner = platform === "win32" || dir.includes("\\") || /^[A-Za-z]:[\\/]/.test(dir) ? path7.win32.join : path7.posix.join;
     for (const bin of binNames) {
       const full = joiner(dir, bin);
       const nativeBin = checkCandidate(full);
@@ -7200,12 +7208,14 @@ function detectHostProfile({
   arch = process.arch,
   env = process.env,
   readFile = (p) => fs8.readFileSync(p, "utf8"),
-  exists = (p) => fs8.existsSync(p),
+  exists = null,
   which = null
 } = {}) {
-  const resolveBin = which || ((bin) => findBinaryOnPath(bin, env, platform, exists));
+  const pathExists = exists || ((p) => fs8.existsSync(p));
+  const fileExists = exists || isExistingFile;
+  const resolveBin = which || ((bin) => findBinaryOnPath(bin, env, platform, fileExists));
   let linuxDistro = null;
-  if (platform === "linux" && exists("/etc/os-release")) {
+  if (platform === "linux" && pathExists("/etc/os-release")) {
     try {
       const osRel = readFile("/etc/os-release");
       const idMatch = osRel.match(/^ID=["']?([a-zA-Z0-9._-]+)["']?/m);
@@ -7231,9 +7241,17 @@ function detectHostProfile({
     packageManagers
   };
 }
-function findBinaryOnPath(binName, env = process.env, platform = process.platform, exists = (p) => fs8.existsSync(p)) {
+function isExistingFile(filePath) {
+  try {
+    return fs8.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+function findBinaryOnPath(binName, env = process.env, platform = process.platform, exists = isExistingFile) {
   const rawPath = String(env.PATH ?? env.Path ?? "");
-  const dirs = platform === "win32" || rawPath.includes(";") ? rawPath.split(";").filter(Boolean) : rawPath.split(/:(?![\\/])/).filter(Boolean);
+  const pathSep = platform === "win32" ? ";" : ":";
+  const dirs = rawPath.split(pathSep).filter(Boolean);
   if (platform === "win32") {
     const home = env.USERPROFILE || env.HOME || "";
     const localAppData = env.LOCALAPPDATA || "";
@@ -7241,8 +7259,8 @@ function findBinaryOnPath(binName, env = process.env, platform = process.platfor
     if (localAppData) dirs.push(path9.win32.join(localAppData, "Microsoft", "WinGet", "Links"));
   }
   const exts = platform === "win32" ? /\.(exe|cmd|bat)$/i.test(binName) ? [""] : [".exe", ".cmd", ".bat", ""] : [""];
+  const joiner = platform === "win32" ? path9.win32.join : path9.posix.join;
   for (const dir of dirs) {
-    const joiner = platform === "win32" || dir.includes("\\") || /^[A-Za-z]:[\\/]/.test(dir) ? path9.win32.join : path9.posix.join;
     for (const ext of exts) {
       const candidate = joiner(dir, `${binName}${ext}`);
       try {
@@ -7297,11 +7315,14 @@ function runDoctorChecks({
   fix = false,
   traceProcessorPath = null,
   execProbe = defaultExecProbe,
-  exists = (p) => fs8.existsSync(p),
+  exists = null,
   readFile = (p) => fs8.readFileSync(p, "utf8")
 } = {}) {
+  const customExists = exists;
+  const existsFile = customExists || isExistingFile;
+  exists = customExists || ((p) => fs8.existsSync(p));
   const resolvedCwd = path9.resolve(cwd);
-  const host = detectHostProfile({ platform, arch, env, readFile, exists });
+  const host = detectHostProfile({ platform, arch, env, readFile, exists: customExists });
   const requireAll = requiredFeatures.has("all");
   const needTrace = requireAll || requiredFeatures.has("trace");
   const needHooks = requireAll || requiredFeatures.has("hooks");
@@ -7370,7 +7391,7 @@ function runDoctorChecks({
   }
   {
     const androidInstallCmd = host.platform === "darwin" ? `curl -fsSL https://dl.google.com/android/cli/latest/darwin_${host.normalizedArch}/install.sh | bash` : host.platform === "win32" ? 'curl -fsSL https://dl.google.com/android/cli/latest/windows_x86_64/install.cmd -o "%TEMP%\\android-cli-install.cmd" && "%TEMP%\\android-cli-install.cmd"' : `curl -fsSL https://dl.google.com/android/cli/latest/linux_${host.normalizedArch}/install.sh | bash`;
-    const androidBin = findBinaryOnPath("android", env, platform, exists);
+    const androidBin = findBinaryOnPath("android", env, platform, existsFile);
     if (!androidBin) {
       checks.push(createDiagnostic({
         code: "AUX-ANDROID-001",
@@ -7432,7 +7453,7 @@ ${verRes.stderr}`;
     const androidSdkRoot = env.ANDROID_SDK_ROOT ? String(env.ANDROID_SDK_ROOT).trim() : "";
     const conflictingEnv = Boolean(androidHome && androidSdkRoot && path9.resolve(androidHome) !== path9.resolve(androidSdkRoot));
     const discoveredSdk = [androidHome, androidSdkRoot, ...defaultSdkCandidates].filter(Boolean).find((dir) => exists(dir));
-    const adbBin = findBinaryOnPath("adb", env, platform, exists) || (discoveredSdk ? [path9.join(discoveredSdk, "platform-tools", platform === "win32" ? "adb.exe" : "adb")].find((p) => exists(p)) : null);
+    const adbBin = findBinaryOnPath("adb", env, platform, existsFile) || (discoveredSdk ? [path9.join(discoveredSdk, "platform-tools", platform === "win32" ? "adb.exe" : "adb")].find((p) => existsFile(p)) : null);
     if (!adbBin) {
       const sdkRemediation = discoveredSdk ? `export ANDROID_HOME="${discoveredSdk}" && export PATH="$ANDROID_HOME/platform-tools:$PATH"` : pickPkgInstallCommand(host, {
         brew: "brew install --cask android-platform-tools",
@@ -7568,7 +7589,7 @@ ${verRes.stderr}`.trim();
   }
   {
     let imFound = null;
-    const magickBin = findBinaryOnPath("magick", env, platform, exists);
+    const magickBin = findBinaryOnPath("magick", env, platform, existsFile);
     if (magickBin) {
       const res = execProbe(magickBin, ["-version"], { env, cwd: resolvedCwd });
       if (/ImageMagick/i.test(`${res.stdout}
@@ -7577,8 +7598,8 @@ ${res.stderr}`)) {
       }
     }
     if (!imFound && platform !== "win32") {
-      const compareBin = findBinaryOnPath("compare", env, platform, exists);
-      const montageBin = findBinaryOnPath("montage", env, platform, exists);
+      const compareBin = findBinaryOnPath("compare", env, platform, existsFile);
+      const montageBin = findBinaryOnPath("montage", env, platform, existsFile);
       if (compareBin && montageBin) {
         const res = execProbe(compareBin, ["-version"], { env, cwd: resolvedCwd });
         if (/ImageMagick/i.test(`${res.stdout}
@@ -7618,8 +7639,8 @@ ${res.stderr}`)) {
     }
   }
   {
-    const ffmpegBin = findBinaryOnPath("ffmpeg", env, platform, exists);
-    const ffprobeBin = findBinaryOnPath("ffprobe", env, platform, exists);
+    const ffmpegBin = findBinaryOnPath("ffmpeg", env, platform, existsFile);
+    const ffprobeBin = findBinaryOnPath("ffprobe", env, platform, existsFile);
     const ffmpegOk = Boolean(ffmpegBin && execProbe(ffmpegBin, ["-nostdin", "-version"], { env, cwd: resolvedCwd }).status === 0);
     const ffprobeOk = Boolean(ffprobeBin && execProbe(ffprobeBin, ["-nostdin", "-version"], { env, cwd: resolvedCwd }).status === 0);
     if (!ffmpegOk || !ffprobeOk) {
