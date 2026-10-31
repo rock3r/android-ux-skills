@@ -801,6 +801,158 @@ fun DynamicAnimStateSpeedBadge(speed: Float) {
       2,
       `Expected 2 O-002 candidates (for the 2 unresolved speed params) and 0 for proven reverse speed onto visible start frame, got: ${JSON.stringify(speedO002Cands)}`
     );
+
+    // 9. F-001 deferred callbacks / cached Modifier factories vs synchronous composition blocks:
+    const f001DeferredDir = path.join(tmpDir, 'f001-deferred');
+    fs.mkdirSync(f001DeferredDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(f001DeferredDir, 'DeferredVsSync.kt'),
+      `package demo
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+
+data class RowData(val id: String)
+
+@Composable
+fun DeferredCallbacksClean(flag: Boolean) {
+    val alpha by animateFloatAsState(if (flag) 1f else 0.4f)
+    val factory = remember { { Modifier.alpha(alpha) } }
+    val modLambda: () -> Modifier = { Modifier.alpha(alpha) }
+    fun localHelper(): Modifier = Modifier.alpha(alpha)
+    Box(factory().then(modLambda()).then(localHelper()))
+}
+
+@Composable
+fun SynchronousBlocksFlagged(visible: Boolean, rows: List<RowData>) {
+    val alpha by animateFloatAsState(if (visible) 1f else 0.4f)
+    Column {
+        if (visible) {
+            Box(Modifier.alpha(alpha))
+        }
+    }
+    LazyColumn {
+        items(rows, key = { it.id }) {
+            Box(Modifier.alpha(alpha))
+        }
+    }
+}
+`,
+      'utf8'
+    );
+    const f001DeferredRes = runStaticScan({ targets: [f001DeferredDir], cwd: tmpDir });
+    const f001DeferredFindings = f001DeferredRes.findings.filter((f) => f.rule === 'F-001');
+    assert.equal(
+      f001DeferredFindings.length,
+      2,
+      `Expected exactly 2 proven F-001 findings (Column/if and LazyColumn/items) and 0 for deferred lambdas/local fun, got: ${JSON.stringify(f001DeferredFindings)}`
+    );
+    assert.ok(
+      f001DeferredFindings.every((f) => f.lines[0] >= 24),
+      `DeferredCallbacksClean (lines 14-21) must emit 0 proven F-001 findings, got: ${JSON.stringify(f001DeferredFindings)}`
+    );
+    const f001DeferredCands = f001DeferredRes.candidates.filter((c) => c.rule === 'F-001');
+    assert.equal(
+      f001DeferredCands.length,
+      3,
+      `Deferred callbacks/local fun reading animated state should emit 3 F-001 candidates, got: ${JSON.stringify(f001DeferredCands)}`
+    );
+
+    // 10. T-021 strict positional index whitelist (`keyFor(index)` -> candidate vs `index` / `"row_$index"` -> proven),
+    //     T-001 delegated subgraph builder (`NavHost { featureSubgraph() }` -> candidate),
+    //     and T-002 block-body non-@Composable spec helper (`return if (fast) tween(150) else tween(300)` -> clean):
+    const abstentionDir = path.join(tmpDir, 'abstention-boundaries');
+    fs.mkdirSync(abstentionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(abstentionDir, 'AbstentionBoundaries.kt'),
+      `package demo
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavController
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.compose.NavHost
+
+data class FeedRow(val id: String, val title: String)
+
+fun NavGraphBuilder.featureSubgraph() {}
+
+fun pickSpec(fast: Boolean): FiniteAnimationSpec<Float> {
+    return if (fast) tween(150) else tween(300)
+}
+
+@Composable
+fun HelperKeyList(rows: List<FeedRow>) {
+    fun keyFor(i: Int): String = rows[i].id
+    LazyColumn {
+        itemsIndexed(rows, key = { index, _ -> keyFor(index) }) { _, item ->
+            Text(item.title, Modifier.animateItem())
+        }
+    }
+}
+
+@Composable
+fun PositionalKeyLists(rows: List<FeedRow>) {
+    LazyColumn {
+        itemsIndexed(rows, key = { index, _ -> index }) { _, item ->
+            Text(item.title, Modifier.animateItem())
+        }
+        itemsIndexed(rows, key = { index, _ -> "row_\$index" }) { _, item ->
+            Text(item.title, Modifier.animateItem())
+        }
+    }
+}
+
+@Composable
+fun DelegatedNav(navController: NavController) {
+    NavHost(navController = navController, startDestination = "home") {
+        featureSubgraph()
+    }
+}
+`,
+      'utf8'
+    );
+    const abstentionRes = runStaticScan({ targets: [abstentionDir], cwd: tmpDir });
+    const t021Proven = abstentionRes.findings.filter((f) => f.rule === 'T-021');
+    assert.equal(
+      t021Proven.length,
+      2,
+      `Expected 2 proven T-021 findings (bare index and "row_$index") and 0 for keyFor(index), got: ${JSON.stringify(t021Proven)}`
+    );
+    assert.ok(
+      t021Proven.every((f) => f.lines[0] >= 32),
+      `HelperKeyList (keyFor(index)) must emit 0 proven T-021 findings, got: ${JSON.stringify(t021Proven)}`
+    );
+    const t021Cands = abstentionRes.candidates.filter((c) => c.rule === 'T-021');
+    assert.equal(
+      t021Cands.length,
+      1,
+      `Expected 1 T-021 candidate for unresolved keyFor(index), got: ${JSON.stringify(t021Cands)}`
+    );
+    assert.equal(
+      abstentionRes.findings.filter((f) => f.rule === 'T-001').length,
+      0,
+      `Delegated NavHost { featureSubgraph() } must emit 0 proven T-001 findings, got: ${JSON.stringify(abstentionRes.findings)}`
+    );
+    assert.equal(
+      abstentionRes.candidates.filter((c) => c.rule === 'T-001').length,
+      1,
+      `Delegated NavHost { featureSubgraph() } must emit 1 T-001 candidate, got: ${JSON.stringify(abstentionRes.candidates)}`
+    );
+    assert.equal(
+      abstentionRes.findings.filter((f) => f.rule === 'T-002').length,
+      0,
+      `Block-body non-@Composable spec helper pickSpec() must emit 0 T-002 findings, got: ${JSON.stringify(abstentionRes.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

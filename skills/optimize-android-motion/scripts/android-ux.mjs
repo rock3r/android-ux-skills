@@ -848,13 +848,31 @@ function scanKotlinSource(source, filePath = "<memory>") {
           afterSigIdx += 1;
         }
       }
+      if (tokens[afterSigIdx]?.type === "Keyword" && tokens[afterSigIdx].value === "where" && (kind === "fun" || kind === "class" || kind === "interface")) {
+        afterSigIdx += 1;
+        let wtd = 0;
+        let wpd = 0;
+        while (afterSigIdx < tokens.length) {
+          const wt = tokens[afterSigIdx];
+          if (wt.type === "Punct") {
+            if (wt.value === "<") wtd += 1;
+            else if (wt.value === ">") wtd = Math.max(0, wtd - 1);
+            else if (wt.value === "(") wpd += 1;
+            else if (wt.value === ")") wpd = Math.max(0, wpd - 1);
+            else if (wtd === 0 && wpd === 0 && (wt.value === "=" || wt.value === "{")) break;
+          }
+          afterSigIdx += 1;
+        }
+      }
       let isExpressionBody = false;
       let delegateIdx = -1;
       let rhsStartIdx = -1;
+      let bodyOpenIdx = -1;
       let endTokIdx = Math.max(startTokIdx, afterSigIdx - 1);
       if (tokens[afterSigIdx]?.type === "Punct" && tokens[afterSigIdx].value === "{" && (kind === "fun" || kind === "class" || kind === "object" || kind === "companion" || kind === "interface")) {
         const closeB = findMatchingDelimiter(tokens, afterSigIdx, "{", "}");
         if (closeB !== -1) {
+          bodyOpenIdx = afterSigIdx;
           endTokIdx = closeB;
         }
       } else if (tokens[afterSigIdx]?.type === "Punct" && tokens[afterSigIdx].value === "=") {
@@ -877,6 +895,7 @@ function scanKotlinSource(source, filePath = "<memory>") {
         paramRange,
         rhsStartIdx,
         delegateIdx,
+        bodyOpenIdx,
         startTokIdx,
         endTokIdx,
         startLine: tokens[startTokIdx].line,
@@ -912,10 +931,10 @@ function scanKotlinSource(source, filePath = "<memory>") {
       continue;
     }
     if (nextTok.value === "{") {
-      const isTypeBody = declarations.some(
-        (d) => (d.kind === "class" || d.kind === "object" || d.kind === "companion" || d.kind === "interface") && d.startTokIdx < i && d.endTokIdx >= cursor && findTypeBodyOpenIdx(tokens, d) === cursor
+      const isDeclBody = declarations.some(
+        (d) => d.bodyOpenIdx === cursor || (d.kind === "class" || d.kind === "object" || d.kind === "companion" || d.kind === "interface") && d.startTokIdx < i && d.endTokIdx >= cursor && findTypeBodyOpenIdx(tokens, d) === cursor
       );
-      if (isTypeBody) continue;
+      if (isDeclBody) continue;
     }
     let hasParens = false;
     let openParenIdx = -1;
@@ -932,7 +951,7 @@ function scanKotlinSource(source, filePath = "<memory>") {
     }
     let trailingLambda = null;
     let endTokIdx = hasParens ? closeParenIdx : cursor;
-    if (tokens[afterArgsIdx]?.type === "Punct" && tokens[afterArgsIdx].value === "{") {
+    if (tokens[afterArgsIdx]?.type === "Punct" && tokens[afterArgsIdx].value === "{" && !declarations.some((d) => d.bodyOpenIdx === afterArgsIdx)) {
       const prevLine = tokens[afterArgsIdx - 1].endLine;
       if (tokens[afterArgsIdx].line <= prevLine + 1) {
         const closeBraceIdx = findMatchingDelimiter(tokens, afterArgsIdx, "{", "}");
@@ -2850,34 +2869,57 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
       if (!c.hasParens || c.args.length === 0) continue;
       if (!c.receiver) continue;
       if (isInsidePhaseLambda(c, tokens)) continue;
+      const guaranteedInComposition = isGuaranteedCompositionExecution(tokens, declarations, calls, fn, c);
       if (VALUE_MODIFIER_NAMES.has(c.name)) {
         const hitVar = findScopedReferencedAnimatedVar(c.args, c.nameTokIdx, scopedBindings);
         if (hitVar) {
           const fixHint = c.name === "offset" || c.name === "absoluteOffset" ? `Use the layout-phase lambda overload \`Modifier.${c.name} { IntOffset(...) }\` so \`${hitVar}\` is read during placement instead of composition.` : `Use \`Modifier.graphicsLayer { ... }\` so \`${hitVar}\` is read in the draw phase instead of recomposing every frame.`;
-          rawFindings.push(
-            makeRuleFinding("F-001", {
-              file: kf.filePath,
-              lines: [c.startLine, c.headerEndLine],
-              evidence: `\`${c.snippet}\` reads animated state \`${hitVar}\` in composition.`,
-              remediation: fixHint,
-              symbolContext: [fn.name]
-            })
-          );
+          if (guaranteedInComposition) {
+            rawFindings.push(
+              makeRuleFinding("F-001", {
+                file: kf.filePath,
+                lines: [c.startLine, c.headerEndLine],
+                evidence: `\`${c.snippet}\` reads animated state \`${hitVar}\` in composition.`,
+                remediation: fixHint,
+                symbolContext: [fn.name]
+              })
+            );
+          } else if (rawCandidates) {
+            rawCandidates.push(
+              makeRuleCandidate("F-001", {
+                file: kf.filePath,
+                lines: [c.startLine, c.headerEndLine],
+                evidence: `\`${c.snippet}\` references animated state \`${hitVar}\` inside a deferred lambda or cached block.`,
+                verificationHint: `Check whether this callback or cached block executes during composition on every frame; if so, ${fixHint.charAt(0).toLowerCase()}${fixHint.slice(1)}`
+              })
+            );
+          }
         }
       } else if (c.name === "background") {
         const firstArg = c.args[0];
         if (firstArg) {
           const hitColor = findScopedSimpleVarRef(firstArg.tokens, c.nameTokIdx, scopedBindings, "color") || findScopedSimpleVarRef(firstArg.tokens, c.nameTokIdx, scopedBindings, "derivedColor");
           if (hitColor) {
-            rawFindings.push(
-              makeRuleFinding("F-001", {
-                file: kf.filePath,
-                lines: [c.startLine, c.headerEndLine],
-                evidence: `\`${c.snippet}\` reads per-frame animated color \`${hitColor}\` in composition.`,
-                remediation: `Draw the animated color in the draw phase via \`Modifier.drawBehind { drawRect(${hitColor}) }\` (clipping first if needed) instead of \`Modifier.background(${hitColor})\`.`,
-                symbolContext: [fn.name]
-              })
-            );
+            if (guaranteedInComposition) {
+              rawFindings.push(
+                makeRuleFinding("F-001", {
+                  file: kf.filePath,
+                  lines: [c.startLine, c.headerEndLine],
+                  evidence: `\`${c.snippet}\` reads per-frame animated color \`${hitColor}\` in composition.`,
+                  remediation: `Draw the animated color in the draw phase via \`Modifier.drawBehind { drawRect(${hitColor}) }\` (clipping first if needed) instead of \`Modifier.background(${hitColor})\`.`,
+                  symbolContext: [fn.name]
+                })
+              );
+            } else if (rawCandidates) {
+              rawCandidates.push(
+                makeRuleCandidate("F-001", {
+                  file: kf.filePath,
+                  lines: [c.startLine, c.headerEndLine],
+                  evidence: `\`${c.snippet}\` references animated color \`${hitColor}\` inside a deferred lambda or cached block.`,
+                  verificationHint: "Check whether this callback or cached block executes during composition on every frame; if so, draw the animated color via `Modifier.drawBehind { drawRect(...) }`."
+                })
+              );
+            }
           }
         }
       } else if (LAYOUT_SIZE_MODIFIER_NAMES.has(c.name)) {
@@ -2895,6 +2937,174 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
       }
     }
   }
+}
+var NON_COMPOSITION_CALL_NAMES = /* @__PURE__ */ new Set([
+  "remember",
+  "rememberSaveable",
+  "rememberUpdatedState",
+  "derivedStateOf",
+  "produceState",
+  "LaunchedEffect",
+  "DisposableEffect",
+  "SideEffect",
+  "clickable",
+  "combinedClickable",
+  "selectable",
+  "toggleable",
+  "triStateToggleable",
+  "pointerInput",
+  "draggable",
+  "scrollable",
+  "AnchoredDraggable",
+  "detectTapGestures",
+  "detectDragGestures",
+  "onGloballyPositioned",
+  "onSizeChanged",
+  "onPlaced",
+  "onFocusChanged",
+  "onKeyEvent",
+  "onPreviewKeyEvent",
+  "semantics",
+  "clearAndSetSemantics",
+  "drawBehind",
+  "drawWithContent",
+  "drawWithCache",
+  "onDrawBehind",
+  "onDrawWithContent",
+  "Canvas",
+  "layout",
+  "graphicsLayer",
+  "offset",
+  "absoluteOffset",
+  "launch",
+  "async",
+  "withContext"
+]);
+var INLINE_OR_COMPOSABLE_DSL_SCOPES = /* @__PURE__ */ new Set([
+  "item",
+  "items",
+  "itemsIndexed",
+  "stickyHeader",
+  "composable",
+  "navigation",
+  "key",
+  "composed",
+  "CompositionLocalProvider",
+  "SelectionContainer",
+  "DisableSelection",
+  "with",
+  "run",
+  "let",
+  "also",
+  "apply",
+  "repeat",
+  "forEach",
+  "forEachIndexed"
+]);
+var COMPOSABLE_SLOT_ARG_NAMES = /* @__PURE__ */ new Set([
+  "content",
+  "title",
+  "text",
+  "icon",
+  "leadingIcon",
+  "trailingIcon",
+  "label",
+  "placeholder",
+  "prefix",
+  "suffix",
+  "supportingText",
+  "headlineContent",
+  "supportingContent",
+  "overlineContent",
+  "leadingContent",
+  "trailingContent",
+  "topBar",
+  "bottomBar",
+  "floatingActionButton",
+  "snackbarHost",
+  "sheetContent",
+  "drawerContent",
+  "navigationIcon",
+  "actions",
+  "badge",
+  "confirmButton",
+  "dismissButton",
+  "divider",
+  "indicator",
+  "tabs",
+  "thumb",
+  "track"
+]);
+function isWhenBlockOpenBrace(tokens, openBraceIdx) {
+  const prev = tokens[openBraceIdx - 1];
+  if (prev?.type === "Keyword" && prev.value === "when") return true;
+  if (prev?.type === "Punct" && prev.value === ")") {
+    const openP = findMatchingBackward2(tokens, openBraceIdx - 1, "(", ")");
+    if (openP > 0 && tokens[openP - 1]?.type === "Keyword" && tokens[openP - 1].value === "when") {
+      return true;
+    }
+  }
+  return false;
+}
+function isControlFlowBraceBlock(tokens, openBraceIdx, fnStartIdx, fnEndIdx) {
+  const prev = tokens[openBraceIdx - 1];
+  if (!prev) return false;
+  if (prev.type === "Keyword" && (prev.value === "else" || prev.value === "try" || prev.value === "finally" || prev.value === "do" || prev.value === "when")) {
+    return true;
+  }
+  if (prev.type === "Punct" && prev.value === ")") {
+    const openP = findMatchingBackward2(tokens, openBraceIdx - 1, "(", ")");
+    const kw = openP > 0 ? tokens[openP - 1] : null;
+    if (kw?.type === "Keyword" && (kw.value === "if" || kw.value === "when" || kw.value === "for" || kw.value === "while" || kw.value === "catch")) {
+      return true;
+    }
+  }
+  if (prev.type === "Punct" && prev.value === "->") {
+    const [parentOpen] = findEnclosingBraceScope(tokens, openBraceIdx, fnStartIdx, fnEndIdx);
+    if (parentOpen >= fnStartIdx && isWhenBlockOpenBrace(tokens, parentOpen)) {
+      return true;
+    }
+  }
+  return false;
+}
+function isGuaranteedCompositionExecution(tokens, declarations, calls, fn, targetCall) {
+  if (targetCall.enclosingDeclarations.some((d) => d.kind === "fun" && d !== fn)) {
+    return false;
+  }
+  let fnBodyOpenBraceIdx = -1;
+  if (!fn.isExpressionBody && tokens[fn.endTokIdx]?.value === "}") {
+    fnBodyOpenBraceIdx = findMatchingBackward2(tokens, fn.endTokIdx, "{", "}");
+  }
+  const scanFrom = fnBodyOpenBraceIdx !== -1 ? fnBodyOpenBraceIdx + 1 : fn.startTokIdx + 1;
+  for (let i = scanFrom; i < targetCall.nameTokIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type !== "Punct" || t.value !== "{") continue;
+    const closeB = findMatchingForward(tokens, i, "{", "}");
+    if (closeB === -1 || closeB <= targetCall.nameTokIdx) continue;
+    if (isControlFlowBraceBlock(tokens, i, fn.startTokIdx, fn.endTokIdx)) {
+      continue;
+    }
+    const trailingOwner = calls.find((c) => c.trailingLambda && c.trailingLambda.openBraceIdx === i);
+    if (trailingOwner) {
+      if (NON_COMPOSITION_CALL_NAMES.has(trailingOwner.name)) {
+        return false;
+      }
+      if (/^[A-Z]/.test(trailingOwner.name) || INLINE_OR_COMPOSABLE_DSL_SCOPES.has(trailingOwner.name)) {
+        continue;
+      }
+      return false;
+    }
+    const slotOwner = calls.find(
+      (c) => /^[A-Z]/.test(c.name) && !NON_COMPOSITION_CALL_NAMES.has(c.name) && Array.isArray(c.args) && c.args.some(
+        (a) => a.name && COMPOSABLE_SLOT_ARG_NAMES.has(a.name) && a.tokens.length >= 2 && a.tokens[0] === tokens[i] && a.tokens[a.tokens.length - 1] === tokens[closeB]
+      )
+    );
+    if (slotOwner) {
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 function findScopedReferencedAnimatedVar(args, atTokIdx, scopedBindings) {
   for (const arg of args) {
@@ -2960,6 +3170,14 @@ function findScopedAnimatableRead(toks, atTokIdx, scopedBindings) {
   }
   return null;
 }
+function getItemsKeyArg(call) {
+  const named = call.args.find((a) => a.name === "key");
+  if (named) return named;
+  if (call.args.length >= 2 && call.args[1].name === null && (call.args[0].name === null || call.args[0].name === "items" || call.args[0].name === "count")) {
+    return call.args[1];
+  }
+  return null;
+}
 function checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates) {
   const { calls } = kf;
   for (const c of calls) {
@@ -2972,7 +3190,7 @@ function checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates) {
     });
     if (!animateItemCall) continue;
     const symNames = c.enclosingDeclarations.map((d) => d.name);
-    const keyArg = getCallArg(c, "key", 1);
+    const keyArg = getItemsKeyArg(c);
     if (!keyArg || keyArg.text === "null") {
       rawFindings.push(
         makeRuleFinding("F-003", {
@@ -3002,14 +3220,14 @@ function checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates) {
             symbolContext: symNames
           })
         );
-      } else if (idxKeyClass === "subscript-lookup" && rawCandidates) {
+      } else if (idxKeyClass === "unresolved-index-lookup" && rawCandidates) {
         rawCandidates.push(
           makeRuleCandidate("T-021", {
             file: kf.filePath,
             lines: [c.startLine, c.endLine],
             severity: keySeverity,
-            evidence: `\`itemsIndexed(..., key = ${keyArg.text})\` looks up a key by index subscript rather than reading the \`item\` lambda parameter directly.`,
-            verificationHint: "Confirm the subscript expression resolves a stable item identity (prefer `key = { _, item -> item.id }` for clarity) rather than a positional row index."
+            evidence: `\`itemsIndexed(..., key = ${keyArg.text})\` derives its key from the index parameter rather than reading the \`item\` lambda parameter directly.`,
+            verificationHint: "Confirm the expression resolves a stable item identity (prefer `key = { _, item -> item.id }` for clarity) rather than a positional row index."
           })
         );
       }
@@ -3043,9 +3261,59 @@ function checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates) {
     }
   }
 }
+var POSITIONAL_PRIMITIVE_METHODS = /* @__PURE__ */ new Set([
+  "toString",
+  "toLong",
+  "toInt",
+  "toShort",
+  "toByte",
+  "toUInt",
+  "toULong",
+  "toFloat",
+  "toDouble",
+  "hashCode"
+]);
+var POSITIONAL_ARITH_PUNCT = /* @__PURE__ */ new Set(["+", "-", "*", "/", "%", "(", ")"]);
+var POSITIONAL_INFIX_OPS = /* @__PURE__ */ new Set(["shl", "shr", "ushr", "xor", "or", "and"]);
+function isDemonstrablyPositionalIndexExpr(bodyToks, idxName) {
+  if (!Array.isArray(bodyToks) || bodyToks.length === 0) return false;
+  for (let i = 0; i < bodyToks.length; i += 1) {
+    const t = bodyToks[i];
+    if (t.type === "NumberLiteral" || t.type === "StringLiteral") {
+      continue;
+    }
+    if (t.type === "Punct") {
+      if (POSITIONAL_ARITH_PUNCT.has(t.value)) {
+        if (t.value === "(" && bodyToks[i - 1]?.type === "Identifier" && !POSITIONAL_INFIX_OPS.has(bodyToks[i - 1].value)) {
+          return false;
+        }
+        continue;
+      }
+      if (t.value === "." && bodyToks[i - 1]?.type === "Identifier" && bodyToks[i - 1].value === idxName && bodyToks[i + 1]?.type === "Identifier" && POSITIONAL_PRIMITIVE_METHODS.has(bodyToks[i + 1].value) && bodyToks[i + 2]?.type === "Punct" && bodyToks[i + 2].value === "(" && bodyToks[i + 3]?.type === "Punct" && bodyToks[i + 3].value === ")") {
+        i += 3;
+        continue;
+      }
+      return false;
+    }
+    if (t.type === "Identifier") {
+      if (t.value === idxName && isUnqualifiedLocalIdent(bodyToks, i)) {
+        if (bodyToks[i + 1]?.type === "Punct" && (bodyToks[i + 1].value === "(" || bodyToks[i + 1].value === "[")) {
+          return false;
+        }
+        continue;
+      }
+      if (POSITIONAL_INFIX_OPS.has(t.value)) continue;
+      return false;
+    }
+    return false;
+  }
+  return true;
+}
 function classifyItemsIndexedKey(kf, keyArg) {
   const toks = keyArg.tokens;
-  if (!toks.length || toks[0].value !== "{" || toks[toks.length - 1].value !== "}") return null;
+  if (!toks.length || toks[0].value !== "{" || toks[toks.length - 1].value !== "}" || findMatchingForward(toks, 0, "{", "}") !== toks.length - 1) {
+    return null;
+  }
   let arrowPos = -1;
   let depth = 0;
   for (let i = 1; i < toks.length - 1; i += 1) {
@@ -3074,20 +3342,10 @@ function classifyItemsIndexedKey(kf, keyArg) {
   const usesItem = itemName !== "_" && bodyToks.some((t, idx) => t.type === "Identifier" && t.value === itemName && isUnqualifiedLocalIdent(bodyToks, idx));
   void kf;
   if (!usesIdx || usesItem) return null;
-  for (let i = 0; i < bodyToks.length; i += 1) {
-    const t = bodyToks[i];
-    if (t.type === "Identifier" && t.value === idxName && isUnqualifiedLocalIdent(bodyToks, i)) {
-      const prev = bodyToks[i - 1];
-      const next = bodyToks[i + 1];
-      if (prev?.value === "[" && next?.value === "]") {
-        return "subscript-lookup";
-      }
-      if (prev?.value === "(" && bodyToks[i - 2]?.type === "Identifier" && (bodyToks[i - 2].value === "get" || bodyToks[i - 2].value === "getOrNull" || bodyToks[i - 2].value === "elementAt" || bodyToks[i - 2].value === "elementAtOrNull")) {
-        return "subscript-lookup";
-      }
-    }
+  if (isDemonstrablyPositionalIndexExpr(bodyToks, idxName)) {
+    return "positional";
   }
-  return "positional";
+  return "unresolved-index-lookup";
 }
 function isProvableIntCountArg(kf, call, firstArg) {
   if (firstArg.name === "count") return true;
@@ -3797,23 +4055,32 @@ function checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidat
   for (const c of kf.calls) {
     if (c.name === "NavHost" && c.hasParens && c.trailingLambda && c.args.length >= 2) {
       if (isNonAndroidxNavSymbol(kf, "NavHost")) continue;
-      const hasEnter = c.args.some((a) => a.name === "enterTransition" && a.text !== "null");
-      const hasExit = c.args.some((a) => a.name === "exitTransition" && a.text !== "null");
+      const enterArg = getCallArg(c, "enterTransition", 5);
+      const exitArg = getCallArg(c, "exitTransition", 6);
+      const hasEnter = Boolean(enterArg && enterArg.text !== "null");
+      const hasExit = Boolean(exitArg && exitArg.text !== "null");
       if (!hasEnter || !hasExit) {
         const hasEstablishedConvention = conventionContext.hasMotionTokens || Boolean(fileMotionMd && (fileMotionMd.definesNavigationTransitions || fileMotionMd.specs.length > 0));
         const severity = hasEstablishedConvention ? "major" : "minor";
         const severityBasis = hasEstablishedConvention ? "motion-tokens-or-contract-present" : "no-established-convention-in-scanned-set";
         const missing = !hasEnter && !hasExit ? "`enterTransition` and `exitTransition`" : !hasEnter ? "`enterTransition`" : "`exitTransition`";
-        const hasPerDestinationOverride = kf.calls.some(
-          (inner) => inner.name === "composable" && inner.hasParens && inner.nameTokIdx > c.trailingLambda.openBraceIdx && inner.endTokIdx < c.trailingLambda.closeBraceIdx && inner.args.some((a) => (a.name === "enterTransition" || a.name === "exitTransition") && a.text !== "null")
+        const inlineComposables = kf.calls.filter(
+          (inner) => inner.name === "composable" && (inner.hasParens || Boolean(inner.trailingLambda)) && inner.nameTokIdx > c.trailingLambda.openBraceIdx && inner.endTokIdx < c.trailingLambda.closeBraceIdx
         );
-        if (hasPerDestinationOverride && rawCandidates) {
+        const hasPerDestinationOverride = inlineComposables.some(
+          (inner) => inner.hasParens && inner.args.some((a) => (a.name === "enterTransition" || a.name === "exitTransition") && a.text !== "null")
+        );
+        const directBuilderCalls = kf.calls.filter(
+          (inner) => inner !== c && inner.nameTokIdx > c.trailingLambda.openBraceIdx && inner.endTokIdx < c.trailingLambda.closeBraceIdx && inner.enclosingCalls[inner.enclosingCalls.length - 1] === c
+        );
+        const delegatesOnlyToSubgraphBuilders = inlineComposables.length === 0 && directBuilderCalls.length > 0;
+        if ((hasPerDestinationOverride || delegatesOnlyToSubgraphBuilders) && rawCandidates) {
           rawCandidates.push(
             makeRuleCandidate("T-001", {
               file: kf.filePath,
               lines: [c.startLine, c.endLine],
               severity,
-              evidence: `\`NavHost\` omits host-level ${missing}; one or more inner \`composable(...)\` destinations supply per-route transitions.`,
+              evidence: hasPerDestinationOverride ? `\`NavHost\` omits host-level ${missing}; one or more inner \`composable(...)\` destinations supply per-route transitions.` : `\`NavHost\` omits host-level ${missing} and delegates route registration to subgraph builder call(s) (${directBuilderCalls.map((dc) => dc.name).join(", ")}).`,
               verificationHint: "Check whether every destination in this `NavHost` supplies explicit transitions or whether unconfigured routes still inherit the 700ms default crossfade."
             })
           );
@@ -3833,7 +4100,8 @@ function checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidat
       }
     } else if (c.name === "NavDisplay" && c.hasParens) {
       if (isNonAndroidxNavSymbol(kf, "NavDisplay")) continue;
-      const hasSpec = c.args.some((a) => a.name === "transitionSpec" && a.text !== "null");
+      const specArg = getCallArg(c, "transitionSpec", 7);
+      const hasSpec = Boolean(specArg && specArg.text !== "null");
       if (!hasSpec) {
         const hasEstablishedConvention = conventionContext.hasMotionTokens || Boolean(fileMotionMd && (fileMotionMd.definesNavigationTransitions || fileMotionMd.specs.length > 0));
         const severity = hasEstablishedConvention ? "major" : "minor";
@@ -3841,13 +4109,15 @@ function checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidat
         const hasPerEntryTransitionSpec = kf.calls.some(
           (inner) => inner !== c && (inner.name === "transitionSpec" || inner.name === "popTransitionSpec" || inner.name === "predictivePopTransitionSpec") && inner.nameTokIdx > c.nameTokIdx && inner.endTokIdx <= c.endTokIdx
         );
-        if (hasPerEntryTransitionSpec && rawCandidates) {
+        const entryProviderArg = c.args.find((a) => a.name === "entryProvider");
+        const hasExternalEntryProvider = !c.trailingLambda && Boolean(entryProviderArg && !entryProviderArg.tokens.some((t) => t.value === "{"));
+        if ((hasPerEntryTransitionSpec || hasExternalEntryProvider) && rawCandidates) {
           rawCandidates.push(
             makeRuleCandidate("T-001", {
               file: kf.filePath,
               lines: [c.startLine, c.endLine],
               severity,
-              evidence: "Navigation 3 `NavDisplay` omits top-level `transitionSpec`, while inner entry metadata defines per-entry `transitionSpec`.",
+              evidence: hasPerEntryTransitionSpec ? "Navigation 3 `NavDisplay` omits top-level `transitionSpec`, while inner entry metadata defines per-entry `transitionSpec`." : "Navigation 3 `NavDisplay` omits top-level `transitionSpec` and delegates entries to an external `entryProvider`.",
               verificationHint: "Check whether every destination entry overrides `NavDisplay.transitionSpec` or whether unconfigured entries still inherit the library default transition."
             })
           );
@@ -3930,11 +4200,13 @@ function isExemptSpecDefinitionSite(kf, specCall) {
     return specCall.nameTokIdx >= innermostDecl.rhsStartIdx && specCall.endTokIdx <= innermostDecl.endTokIdx;
   }
   if (innermostDecl.kind === "fun" && !innermostDecl.isExpressionBody) {
-    const prevTok = kf.tokens[specCall.nameTokIdx - 1];
-    if (prevTok && prevTok.type === "Keyword" && prevTok.value === "return") {
+    if (innermostDecl.paramRange && specCall.nameTokIdx > innermostDecl.paramRange[0] && specCall.endTokIdx < innermostDecl.paramRange[1]) {
       return true;
     }
-    if (innermostDecl.paramRange && specCall.nameTokIdx > innermostDecl.paramRange[0] && specCall.endTokIdx < innermostDecl.paramRange[1]) {
+    const enclosingInFun = specCall.enclosingCalls.filter(
+      (ec) => ec.nameTokIdx > innermostDecl.startTokIdx
+    );
+    if (enclosingInFun.every((ec) => SPEC_BUILDER_WRAPPERS.has(ec.name) || ec.name === "lazy")) {
       return true;
     }
   }

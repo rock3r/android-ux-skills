@@ -843,14 +843,38 @@ export function scanKotlinSource(source, filePath = '<memory>') {
         }
       }
 
+      // Optional `where T : Bound` clause on `fun` / `class` / `interface`
+      if (
+        tokens[afterSigIdx]?.type === 'Keyword' &&
+        tokens[afterSigIdx].value === 'where' &&
+        (kind === 'fun' || kind === 'class' || kind === 'interface')
+      ) {
+        afterSigIdx += 1;
+        let wtd = 0;
+        let wpd = 0;
+        while (afterSigIdx < tokens.length) {
+          const wt = tokens[afterSigIdx];
+          if (wt.type === 'Punct') {
+            if (wt.value === '<') wtd += 1;
+            else if (wt.value === '>') wtd = Math.max(0, wtd - 1);
+            else if (wt.value === '(') wpd += 1;
+            else if (wt.value === ')') wpd = Math.max(0, wpd - 1);
+            else if (wtd === 0 && wpd === 0 && (wt.value === '=' || wt.value === '{')) break;
+          }
+          afterSigIdx += 1;
+        }
+      }
+
       let isExpressionBody = false;
       let delegateIdx = -1;
       let rhsStartIdx = -1;
+      let bodyOpenIdx = -1;
       let endTokIdx = Math.max(startTokIdx, afterSigIdx - 1);
 
       if (tokens[afterSigIdx]?.type === 'Punct' && tokens[afterSigIdx].value === '{' && (kind === 'fun' || kind === 'class' || kind === 'object' || kind === 'companion' || kind === 'interface')) {
         const closeB = findMatchingDelimiter(tokens, afterSigIdx, '{', '}');
         if (closeB !== -1) {
+          bodyOpenIdx = afterSigIdx;
           endTokIdx = closeB;
         }
       } else if (tokens[afterSigIdx]?.type === 'Punct' && tokens[afterSigIdx].value === '=') {
@@ -874,6 +898,7 @@ export function scanKotlinSource(source, filePath = '<memory>') {
         paramRange,
         rhsStartIdx,
         delegateIdx,
+        bodyOpenIdx,
         startTokIdx,
         endTokIdx,
         startLine: tokens[startTokIdx].line,
@@ -917,16 +942,17 @@ export function scanKotlinSource(source, filePath = '<memory>') {
       continue;
     }
 
-    // Avoid treating `if (...) {` / `when (...) {` / `val x = foo` before `{` on unrelated block as call:
-    // Here `t` is an `Identifier` (not a keyword like `if`/`when`/`while`/`for`/`try`/`catch`).
-    // One edge case: `class Foo : Bar {` — if `{` is the body of an enclosing `class`/`object`/`interface` declaration, skip!
+    // Avoid treating `fun foo(): ReturnType {` or `class Foo : Bar {` return/supertype before declaration body `{` as a call!
     if (nextTok.value === '{') {
-      const isTypeBody = declarations.some(
-        (d) => (d.kind === 'class' || d.kind === 'object' || d.kind === 'companion' || d.kind === 'interface') &&
-               d.startTokIdx < i && d.endTokIdx >= cursor &&
-               findTypeBodyOpenIdx(tokens, d) === cursor
+      const isDeclBody = declarations.some(
+        (d) =>
+          d.bodyOpenIdx === cursor ||
+          ((d.kind === 'class' || d.kind === 'object' || d.kind === 'companion' || d.kind === 'interface') &&
+            d.startTokIdx < i &&
+            d.endTokIdx >= cursor &&
+            findTypeBodyOpenIdx(tokens, d) === cursor)
       );
-      if (isTypeBody) continue;
+      if (isDeclBody) continue;
     }
 
     let hasParens = false;
@@ -946,7 +972,11 @@ export function scanKotlinSource(source, filePath = '<memory>') {
 
     let trailingLambda = null;
     let endTokIdx = hasParens ? closeParenIdx : cursor;
-    if (tokens[afterArgsIdx]?.type === 'Punct' && tokens[afterArgsIdx].value === '{') {
+    if (
+      tokens[afterArgsIdx]?.type === 'Punct' &&
+      tokens[afterArgsIdx].value === '{' &&
+      !declarations.some((d) => d.bodyOpenIdx === afterArgsIdx)
+    ) {
       // Only attach `{` as trailing lambda when on the same line or immediately next line (standard Kotlin trailing lambda)
       const prevLine = tokens[afterArgsIdx - 1].endLine;
       if (tokens[afterArgsIdx].line <= prevLine + 1) {
