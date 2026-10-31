@@ -1145,6 +1145,53 @@ fun NonZeroDefaultCardElevation() {
       2,
       `Expected 2 F-006 candidates (ConditionalShadow + PressedOnlyCardElevation; 0 for 8.dp * 0 and 0.dp), got: ${JSON.stringify(f006ElevCands)}`
     );
+
+    // 13. Named-argument labels (`fixedAlpha(alpha = 1f)`) and helper callees (`alpha(1f)`) must NOT be treated as animated state reads!
+    const f001NamedArgFile = path.join(tmpDir, 'F001NamedArgs.kt');
+    fs.writeFileSync(
+      f001NamedArgFile,
+      `package demo
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+
+fun fixedAlpha(alpha: Float): Float = alpha
+fun blend(base: Float, alpha: Float): Float = base + alpha
+fun alpha(v: Float): Float = v
+fun <T> genericAlpha(v: T): Float = 1f
+
+@Composable
+fun CleanNamedLabelsAndCallee(visible: Boolean) {
+    val alpha by animateFloatAsState(if (visible) 1f else 0f)
+    Box(Modifier.alpha(fixedAlpha(alpha = 1f)))
+    Box(Modifier.alpha(blend(base = 0f, alpha = 1f)))
+    Box(Modifier.alpha(alpha(1f)))
+}
+
+@Composable
+fun RealRhsNamedArgRead(visible: Boolean) {
+    val alpha by animateFloatAsState(if (visible) 1f else 0f)
+    Box(Modifier.alpha(fixedAlpha(alpha = alpha)))
+}
+`,
+      'utf8'
+    );
+    const f001NamedArgRes = runStaticScan({ targets: [f001NamedArgFile], cwd: tmpDir });
+    const f001NamedArgFindings = f001NamedArgRes.findings.filter((f) => f.rule === 'F-001');
+    assert.equal(
+      f001NamedArgFindings.length,
+      1,
+      `Expected only RealRhsNamedArgRead to emit proven F-001, got: ${JSON.stringify(f001NamedArgFindings)}`
+    );
+    assert.equal(f001NamedArgFindings[0].lines[0] >= 22, true, 'Proven F-001 must point to RealRhsNamedArgRead');
+    assert.equal(
+      f001NamedArgRes.candidates.filter((c) => c.rule === 'F-001').length,
+      0,
+      'CleanNamedLabelsAndCallee must emit 0 F-001 candidates'
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

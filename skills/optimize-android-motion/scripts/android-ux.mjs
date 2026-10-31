@@ -3282,14 +3282,48 @@ function findScopedReferencedAnimatedVar(args, atTokIdx, scopedBindings) {
 }
 function isUnqualifiedLocalIdent(toks, idx) {
   const prev = toks[idx - 1];
-  if (prev && prev.type === "Punct" && (prev.value === "." || prev.value === "?." || prev.value === "::")) {
+  if (prev && prev.type === "Punct" && (prev.value === "." || prev.value === "?." || prev.value === "::" || prev.value === "@" || prev.value === ":")) {
+    return false;
+  }
+  if (prev && prev.type === "Keyword" && (prev.value === "as" || prev.value === "is")) {
+    return false;
+  }
+  if (prev && prev.type === "Punct" && prev.value === "?" && toks[idx - 2]?.type === "Keyword" && toks[idx - 2].value === "as") {
     return false;
   }
   const next = toks[idx + 1];
-  if (next && next.type === "Punct" && next.value === "::") {
+  if (next && next.type === "Punct" && (next.value === "::" || next.value === "@")) {
+    return false;
+  }
+  if (prev && prev.type === "Punct" && (prev.value === "(" || prev.value === ",") && next && next.type === "Punct" && next.value === "=") {
     return false;
   }
   return true;
+}
+function isCalleeIdentAt(toks, idx) {
+  const next = toks[idx + 1];
+  if (!next || next.type !== "Punct") return false;
+  if (next.value === "(" || next.value === "{") return true;
+  if (next.value === "<") {
+    let depth = 0;
+    for (let k = idx + 1; k < toks.length; k += 1) {
+      const tk = toks[k];
+      if (tk.type === "Punct" && tk.value === "<") {
+        depth += 1;
+      } else if (tk.type === "Punct" && tk.value === ">") {
+        depth -= 1;
+        if (depth === 0) {
+          const after = toks[k + 1];
+          return Boolean(after && after.type === "Punct" && (after.value === "(" || after.value === "{"));
+        }
+      } else if (tk.type === "Identifier" || tk.type === "Punct" && (tk.value === "," || tk.value === "." || tk.value === "?" || tk.value === "*") || tk.type === "Keyword" && (tk.value === "in" || tk.value === "out")) {
+        continue;
+      } else {
+        return false;
+      }
+    }
+  }
+  return false;
 }
 function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
   let bDepth = 0;
@@ -3306,7 +3340,7 @@ function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
       }
     }
     if (bDepth > 0) continue;
-    if (t.type === "Identifier" && isUnqualifiedLocalIdent(toks, i)) {
+    if (t.type === "Identifier" && isUnqualifiedLocalIdent(toks, i) && !isCalleeIdentAt(toks, i)) {
       if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
         return t.value;
       }
@@ -3329,7 +3363,7 @@ function findScopedAnimatableRead(toks, atTokIdx, scopedBindings) {
       }
     }
     if (bDepth > 0 || i + 2 >= toks.length) continue;
-    if (toks[i].type === "Identifier" && isUnqualifiedLocalIdent(toks, i) && toks[i + 1].type === "Punct" && (toks[i + 1].value === "." || toks[i + 1].value === "?.") && toks[i + 2].type === "Identifier" && toks[i + 2].value === "value" && resolveScopedLocalKind(toks[i].value, atTokIdx, scopedBindings) === "animatable") {
+    if (toks[i].type === "Identifier" && isUnqualifiedLocalIdent(toks, i) && toks[i + 1].type === "Punct" && (toks[i + 1].value === "." || toks[i + 1].value === "?.") && toks[i + 2].type === "Identifier" && toks[i + 2].value === "value" && !isCalleeIdentAt(toks, i + 2) && resolveScopedLocalKind(toks[i].value, atTokIdx, scopedBindings) === "animatable") {
       return toks[i].value;
     }
   }
