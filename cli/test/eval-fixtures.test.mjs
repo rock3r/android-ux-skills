@@ -655,6 +655,152 @@ fun PositionalModifierParamBadge(modifier: Modifier = Modifier) {
       2,
       `Positional Modifier.size(48.dp) and modifier: Modifier param must still emit 2 proven O-002 findings, got: ${JSON.stringify(posBrokenO002)}`
     );
+
+    // 7. F-005 enclosing guards (`if (animationsEnabled) { LaunchedEffect ... }`, early-return `if (!enabled) return`,
+    //    and enclosing `ANIMATOR_DURATION_SCALE` / `MotionDurationScale` guards):
+    const f005GuardsDir = path.join(tmpDir, 'f005-guards');
+    fs.mkdirSync(f005GuardsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(f005GuardsDir, 'EnclosingGuards.kt'),
+      `package demo
+import android.provider.Settings
+import androidx.compose.runtime.*
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.platform.LocalContext
+
+class MotionPrefs(val animationsEnabled: Boolean)
+
+@Composable
+fun EnclosingBoolGuardSpinner(animationsEnabled: Boolean) {
+    if (animationsEnabled) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                withFrameNanos { _ -> }
+            }
+        }
+    }
+}
+
+@Composable
+fun EarlyReturnModelGuardSpinner(prefs: MotionPrefs) {
+    if (!prefs.animationsEnabled) return
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { _ -> }
+        }
+    }
+}
+
+@Composable
+fun EnclosingSystemScaleGuardSpinner() {
+    val context = LocalContext.current
+    val scale = Settings.Global.getFloat(
+        context.contentResolver,
+        Settings.Global.ANIMATOR_DURATION_SCALE,
+        1f,
+    )
+    if (scale > 0f) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                withFrameNanos { _ -> }
+            }
+        }
+    }
+}
+
+@Composable
+fun EffectIfBlockScaleGuardSpinner() {
+    val externalScale = remember { object : MotionDurationScale { override val scaleFactor: Float = 0f } }
+    if (externalScale.scaleFactor > 0f) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                withFrameNanos { _ -> }
+            }
+        }
+    }
+}
+`,
+      'utf8'
+    );
+    const f005GuardsRes = runStaticScan({ targets: [f005GuardsDir], cwd: tmpDir });
+    assert.equal(
+      f005GuardsRes.findings.filter((f) => f.rule === 'F-005').length,
+      0,
+      `Enclosing external or duration-scale guards must emit 0 proven F-005 findings, got: ${JSON.stringify(f005GuardsRes.findings)}`
+    );
+    const f005GuardCands = f005GuardsRes.candidates.filter((c) => c.rule === 'F-005');
+    assert.equal(
+      f005GuardCands.length,
+      2,
+      `Expected 2 F-005 candidates (for unresolved Boolean/model guards) and 0 for direct scale guards, got: ${JSON.stringify(f005GuardCands)}`
+    );
+
+    // 8. O-002 Lottie `speed` bindings & unresolved speed direction (`LottieAnimation` and `animateLottieCompositionAsState`):
+    const speedLottieDir = path.join(tmpDir, 'speed-lottie');
+    const speedRawDir = path.join(speedLottieDir, 'src', 'main', 'res', 'raw');
+    const speedUiDir = path.join(speedLottieDir, 'src', 'main', 'java', 'demo');
+    fs.mkdirSync(speedRawDir, { recursive: true });
+    fs.mkdirSync(speedUiDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(speedRawDir, 'fade_out.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        // Visible at start frame ip=0 ([0, 30)), transparent at final frame op=60!
+        layers: [{ ty: 4, ip: 0, op: 30, ks: { o: { a: 0, k: 100 } } }],
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(speedUiDir, 'SpeedCases.kt'),
+      `package demo
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+@Composable
+fun ReverseLocalValBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.fade_out))
+    val backwards = -1f
+    LottieAnimation(comp, speed = backwards)
+}
+
+@Composable
+fun ReverseAnimStateBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.fade_out))
+    val backwards = -1f
+    val p by animateLottieCompositionAsState(comp, speed = backwards)
+    LottieAnimation(comp, { p })
+}
+
+@Composable
+fun DynamicSpeedParamBadge(speed: Float) {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.fade_out))
+    LottieAnimation(comp, speed = speed)
+}
+
+@Composable
+fun DynamicAnimStateSpeedBadge(speed: Float) {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.fade_out))
+    val p by animateLottieCompositionAsState(comp, speed = speed)
+    LottieAnimation(comp, { p })
+}
+`,
+      'utf8'
+    );
+    const speedRes = runStaticScan({ targets: [speedLottieDir], cwd: tmpDir });
+    assert.equal(
+      speedRes.findings.filter((f) => f.rule === 'O-002').length,
+      0,
+      `Reverse local val speed onto visible start frame + unresolved speed param must emit 0 proven O-002 findings, got: ${JSON.stringify(speedRes.findings)}`
+    );
+    const speedO002Cands = speedRes.candidates.filter((c) => c.rule === 'O-002');
+    assert.equal(
+      speedO002Cands.length,
+      2,
+      `Expected 2 O-002 candidates (for the 2 unresolved speed params) and 0 for proven reverse speed onto visible start frame, got: ${JSON.stringify(speedO002Cands)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

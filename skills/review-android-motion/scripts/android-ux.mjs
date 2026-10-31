@@ -2139,7 +2139,8 @@ var VIEW_BACKED_CONTAINERS = /* @__PURE__ */ new Set([
 var DURATION_SCALE_IDENTIFIERS = /* @__PURE__ */ new Set([
   "MotionDurationScale",
   "ANIMATOR_DURATION_SCALE",
-  "areAnimatorsEnabled"
+  "areAnimatorsEnabled",
+  "getDurationScale"
 ]);
 var ELEVATED_CONTAINERS = /* @__PURE__ */ new Set(["Card", "ElevatedCard", "OutlinedCard", "Surface"]);
 function runMotionDomainChecks({
@@ -3137,8 +3138,10 @@ function tokensReadDurationScale(toks, allCalls) {
   const logSpans = allCalls.filter(
     (c) => (c.receiver === "Log" || c.name === "println" || c.name === "print") && c.hasParens && kfTokenOffsetOverlap(c, startOff, endOff)
   );
-  for (const t of toks) {
-    if (t.type === "Identifier" && DURATION_SCALE_IDENTIFIERS.has(t.value)) {
+  for (let i = 0; i < toks.length; i += 1) {
+    const t = toks[i];
+    const isScaleIdent = t.type === "Identifier" && DURATION_SCALE_IDENTIFIERS.has(t.value) || t.type === "Identifier" && t.value === "ValueAnimator" && toks[i + 1]?.value === "." && toks[i + 2]?.value === "durationScale";
+    if (isScaleIdent) {
       const insideLogOnly = logSpans.some(
         (lc) => t.start >= kfCallStartOffset(lc) && t.end <= kfCallEndOffset(lc)
       );
@@ -3160,8 +3163,40 @@ function kfCallEndOffset(call) {
   const lastTok = lastArg?.allTokens?.[lastArg.allTokens.length - 1];
   return lastTok ? lastTok.end : -1;
 }
+var BENIGN_STATE_WRAPPER_IDENTS = /* @__PURE__ */ new Set([
+  "remember",
+  "rememberSaveable",
+  "mutableStateOf",
+  "mutableFloatStateOf",
+  "mutableIntStateOf",
+  "mutableLongStateOf",
+  "mutableDoubleStateOf",
+  "derivedStateOf"
+]);
+function isProvablyNonScaleParamType(typeText) {
+  const clean = String(typeText || "").replace(/\s+/g, "");
+  if (!clean) return false;
+  return /^(?:Int|Long|Short|Byte|Char|Dp|TextUnit|String|CharSequence|AnnotatedString|Color|Brush|Shape|TextStyle|Modifier|androidx\.compose\.ui\.Modifier|PaddingValues|Arrangement(?:\.[A-Za-z0-9_]+)?|Alignment(?:\.[A-Za-z0-9_]+)?|(?:kotlin\.collections\.)?(?:List|MutableList|Set|Map|Collection|Iterable|Sequence)<.*>|kotlinx\.collections\.immutable\.(?:Immutable|Persistent)(?:List|Set|Map)<.*>|\([^)]*\)->Unit)\??$/.test(
+    clean
+  );
+}
 function checkF005(kf, scaleHelpers, rawFindings, rawCandidates) {
   const { tokens, declarations, calls } = kf;
+  const fileLevelNonScaleConsts = /* @__PURE__ */ new Set();
+  for (const d of declarations) {
+    if (d.kind === "val" && d.delegateIdx === -1 && d.rhsStartIdx >= 0 && d.rhsStartIdx <= d.endTokIdx) {
+      const isTopLevel = !declarations.some(
+        (other) => other !== d && other.kind === "fun" && other.startTokIdx < d.startTokIdx && other.endTokIdx >= d.endTokIdx
+      );
+      if (isTopLevel) {
+        const rhsToks = tokens.slice(d.rhsStartIdx, d.endTokIdx + 1);
+        const hasAnyIdent = rhsToks.some((t) => t.type === "Identifier");
+        if (!hasAnyIdent) {
+          fileLevelNonScaleConsts.add(d.name);
+        }
+      }
+    }
+  }
   for (const c of calls) {
     if (c.name === "animate" && c.receiver && /lottie|animatable/i.test(c.receiver) && c.hasParens) {
       rawCandidates.push(
@@ -3181,54 +3216,132 @@ function checkF005(kf, scaleHelpers, rawFindings, rawCandidates) {
     const loopWithFrameNanos = findLoopCallingWithFrameNanos(tokens, calls, bodyStartIdx, bodyEndIdx, c);
     if (!loopWithFrameNanos) continue;
     if (tokensReadDurationScale(bodyToks, calls)) continue;
-    const enclosingFn = [...c.enclosingDeclarations].reverse().find((d) => d.kind === "fun");
+    const bodyCalls = calls.filter((ic) => ic.nameTokIdx >= bodyStartIdx && ic.endTokIdx < bodyEndIdx);
+    if (bodyCalls.some((ic) => scaleHelpers.has(ic.name))) continue;
+    const enclosingFns = c.enclosingDeclarations.filter((d) => d.kind === "fun");
+    const outerFn = enclosingFns[0] || null;
+    const scanStartIdx = outerFn ? outerFn.startTokIdx : bodyStartIdx;
+    const scanEndIdx = outerFn ? outerFn.endTokIdx : bodyEndIdx;
     const localScaleDerivedVars = /* @__PURE__ */ new Set();
-    const localKnownNonScaleVars = /* @__PURE__ */ new Set(["Unit", "true", "false", "isActive"]);
-    if (enclosingFn) {
-      const fnParamTypes = extractFunctionParamTypes(tokens, enclosingFn);
+    const localKnownNonScaleVars = /* @__PURE__ */ new Set(["Unit", "true", "false", "null", "isActive", ...fileLevelNonScaleConsts]);
+    for (const fnDecl of enclosingFns) {
+      const fnParamTypes = extractFunctionParamTypeMap(tokens, fnDecl);
       for (const [pName, pType] of fnParamTypes.entries()) {
-        if (/^(Int|Long|Dp|String|List|ImmutableList|Modifier)\b/.test(pType)) {
+        if (isProvablyNonScaleParamType(pType)) {
           localKnownNonScaleVars.add(pName);
         }
       }
-      const localVals = declarations.filter(
-        (d) => (d.kind === "val" || d.kind === "var") && d.startTokIdx > enclosingFn.startTokIdx && d.endTokIdx <= enclosingFn.endTokIdx
-      );
+    }
+    const localVals = declarations.filter(
+      (d) => (d.kind === "val" || d.kind === "var") && d.startTokIdx > scanStartIdx && d.endTokIdx <= scanEndIdx
+    );
+    const localAssignments = collectSimpleAssignmentsInRange(tokens, scanStartIdx, scanEndIdx);
+    for (let pass = 0; pass < 4; pass += 1) {
+      let changed = false;
       for (const lv of localVals) {
+        if (localScaleDerivedVars.has(lv.name)) continue;
         const lvToks = tokens.slice(lv.startTokIdx, lv.endTokIdx + 1);
         const lvCalls = calls.filter((ic) => ic.nameTokIdx >= lv.startTokIdx && ic.endTokIdx <= lv.endTokIdx);
-        if (tokensReadDurationScale(lvToks, calls) || lvCalls.some((ic) => scaleHelpers.has(ic.name))) {
+        const refsScaleVar = lvToks.some(
+          (t, idx) => idx !== lv.nameIdx - lv.startTokIdx && t.type === "Identifier" && isUnqualifiedLocalIdent(lvToks, idx) && localScaleDerivedVars.has(t.value)
+        );
+        if (tokensReadDurationScale(lvToks, calls) || lvCalls.some((ic) => scaleHelpers.has(ic.name)) || refsScaleVar) {
           localScaleDerivedVars.add(lv.name);
-        } else if (lvCalls.some(
-          (ic) => ic.name === "mutableStateOf" || ic.name === "mutableFloatStateOf" || ic.name === "mutableIntStateOf" || ic.name === "mutableLongStateOf"
-        )) {
-          localKnownNonScaleVars.add(lv.name);
+          localKnownNonScaleVars.delete(lv.name);
+          changed = true;
+        }
+      }
+      for (const asgn of localAssignments) {
+        if (localScaleDerivedVars.has(asgn.name)) continue;
+        const asgnCalls = calls.filter((ic) => ic.nameTokIdx >= asgn.rhsStartIdx && ic.endTokIdx <= asgn.rhsEndIdx);
+        const refsScaleVar = asgn.rhsToks.some(
+          (t, idx) => t.type === "Identifier" && isUnqualifiedLocalIdent(asgn.rhsToks, idx) && localScaleDerivedVars.has(t.value)
+        );
+        if (tokensReadDurationScale(asgn.rhsToks, calls) || asgnCalls.some((ic) => scaleHelpers.has(ic.name)) || refsScaleVar) {
+          localScaleDerivedVars.add(asgn.name);
+          localKnownNonScaleVars.delete(asgn.name);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    for (let pass = 0; pass < 4; pass += 1) {
+      let changed = false;
+      for (const lv of localVals) {
+        if (localScaleDerivedVars.has(lv.name) || localKnownNonScaleVars.has(lv.name)) continue;
+        const rhsStart = lv.rhsStartIdx >= 0 ? lv.rhsStartIdx : lv.delegateIdx;
+        if (rhsStart < 0 || rhsStart > lv.endTokIdx) continue;
+        const initToks = tokens.slice(rhsStart, lv.endTokIdx + 1);
+        const allInitIdentsBenign = initToks.every((t, idx) => {
+          if (t.type !== "Identifier") return true;
+          if (!isUnqualifiedLocalIdent(initToks, idx)) return true;
+          return BENIGN_STATE_WRAPPER_IDENTS.has(t.value) || localKnownNonScaleVars.has(t.value);
+        });
+        if (!allInitIdentsBenign) continue;
+        if (lv.kind === "var") {
+          const writes = localAssignments.filter((a) => a.name === lv.name);
+          const allWritesBenign = writes.every(
+            (w) => w.rhsToks.every((t, idx) => {
+              if (t.type !== "Identifier") return true;
+              if (!isUnqualifiedLocalIdent(w.rhsToks, idx)) return true;
+              return t.value === lv.name || BENIGN_STATE_WRAPPER_IDENTS.has(t.value) || localKnownNonScaleVars.has(t.value);
+            })
+          );
+          if (!allWritesBenign) continue;
+        }
+        localKnownNonScaleVars.add(lv.name);
+        changed = true;
+      }
+      if (!changed) break;
+    }
+    const gatingSlices = collectF005GatingConditions(
+      tokens,
+      calls,
+      scanStartIdx,
+      scanEndIdx,
+      c,
+      loopWithFrameNanos.frameTokIdx
+    );
+    const allConditionAndKeySlices = [...gatingSlices, ...c.args.map((a) => a.tokens)];
+    const respectsScaleViaGuardOrKey = allConditionAndKeySlices.some((slice) => {
+      if (slice.length === 0) return false;
+      if (tokensReadDurationScale(slice, calls)) return true;
+      const sStart = slice[0].start;
+      const sEnd = slice[slice.length - 1].end;
+      if (calls.some((ic) => scaleHelpers.has(ic.name) && kf.tokens[ic.nameTokIdx].start >= sStart && kf.tokens[ic.nameTokIdx].end <= sEnd)) {
+        return true;
+      }
+      return slice.some(
+        (t, idx) => t.type === "Identifier" && isUnqualifiedLocalIdent(slice, idx) && (localScaleDerivedVars.has(t.value) || scaleHelpers.has(t.value))
+      );
+    });
+    if (respectsScaleViaGuardOrKey) continue;
+    const unresolvedGuardSet = /* @__PURE__ */ new Set();
+    for (const slice of gatingSlices) {
+      for (let idx = 0; idx < slice.length; idx += 1) {
+        const t = slice[idx];
+        if (t.type === "Identifier" && isUnqualifiedLocalIdent(slice, idx) && !localKnownNonScaleVars.has(t.value) && !BENIGN_STATE_WRAPPER_IDENTS.has(t.value)) {
+          unresolvedGuardSet.add(t.value);
         }
       }
     }
-    const bodyCalls = calls.filter((ic) => ic.nameTokIdx >= bodyStartIdx && ic.endTokIdx < bodyEndIdx);
-    if (bodyCalls.some((ic) => scaleHelpers.has(ic.name))) continue;
-    const keyIdents = c.args.flatMap(
-      (a) => a.tokens.filter((t, idx) => t.type === "Identifier" && isUnqualifiedLocalIdent(a.tokens, idx)).map((t) => t.value)
-    );
-    if (keyIdents.some((id) => localScaleDerivedVars.has(id) || scaleHelpers.has(id))) {
-      continue;
+    for (const a of c.args) {
+      for (let idx = 0; idx < a.tokens.length; idx += 1) {
+        const t = a.tokens[idx];
+        if (t.type === "Identifier" && isUnqualifiedLocalIdent(a.tokens, idx) && !localKnownNonScaleVars.has(t.value) && !BENIGN_STATE_WRAPPER_IDENTS.has(t.value)) {
+          unresolvedGuardSet.add(t.value);
+        }
+      }
     }
-    const controlGuardSet = new Set(extractGuardIdentifiers(tokens, bodyStartIdx, bodyEndIdx));
-    const guardIdents = Array.from(/* @__PURE__ */ new Set([...keyIdents, ...controlGuardSet])).filter(
-      (id) => !localKnownNonScaleVars.has(id)
-    );
-    const hasPotentialExternalBooleanGuard = guardIdents.some(
-      (id) => isPotentiallyExternalScaleGuard(id, enclosingFn, tokens, calls, bodyStartIdx, bodyEndIdx, controlGuardSet)
-    );
+    const guardIdents = Array.from(unresolvedGuardSet);
     const symNames = c.enclosingDeclarations.map((d) => d.name);
-    if (hasPotentialExternalBooleanGuard) {
+    if (guardIdents.length > 0) {
       rawCandidates.push(
         makeRuleCandidate("F-005", {
           file: kf.filePath,
           lines: [c.startLine, c.endLine],
-          evidence: `\`LaunchedEffect\` frame loop calls \`withFrameNanos\` without a local \`MotionDurationScale\` read, but references external guard/key (${guardIdents.join(", ")}).`,
-          verificationHint: "Verify whether the external guard/key reads `MotionDurationScale` or `ANIMATOR_DURATION_SCALE` and stops the loop when duration scale is `0f`."
+          evidence: `\`LaunchedEffect\` frame loop calls \`withFrameNanos\` without a local \`MotionDurationScale\` read, but is gated by external condition/key (${guardIdents.join(", ")}).`,
+          verificationHint: "Verify whether the gating condition/key reads `MotionDurationScale` or `ANIMATOR_DURATION_SCALE` and stops the loop when duration scale is `0f`."
         })
       );
     } else {
@@ -3255,7 +3368,16 @@ function findLoopCallingWithFrameNanos(tokens, calls, startIdx, endIdx, launched
           const wfn = calls.find(
             (fc) => fc.name === "withFrameNanos" && fc.nameTokIdx > closeCond + 1 && fc.endTokIdx < closeBody && nearestLaunchedEffect(fc) === launchedEffectCall
           );
-          if (wfn) return { kind: "while", frameLine: wfn.startLine };
+          if (wfn) return { kind: "while", frameLine: wfn.startLine, frameTokIdx: wfn.nameTokIdx };
+        }
+      }
+      if (tokens[i - 1]?.value === "}") {
+        const openDo = findMatchingBackward2(tokens, i - 1, "{", "}");
+        if (openDo !== -1 && tokens[openDo - 1]?.type === "Keyword" && tokens[openDo - 1].value === "do") {
+          const wfn = calls.find(
+            (fc) => fc.name === "withFrameNanos" && fc.nameTokIdx > openDo && fc.endTokIdx < i - 1 && nearestLaunchedEffect(fc) === launchedEffectCall
+          );
+          if (wfn) return { kind: "do-while", frameLine: wfn.startLine, frameTokIdx: wfn.nameTokIdx };
         }
       }
     }
@@ -3265,7 +3387,7 @@ function findLoopCallingWithFrameNanos(tokens, calls, startIdx, endIdx, launched
       const wfn = calls.find(
         (fc) => fc.name === "withFrameNanos" && fc.nameTokIdx > rc.trailingLambda.openBraceIdx && fc.endTokIdx < rc.trailingLambda.closeBraceIdx && nearestLaunchedEffect(fc) === launchedEffectCall
       );
-      if (wfn) return { kind: "repeat", frameLine: wfn.startLine };
+      if (wfn) return { kind: "repeat", frameLine: wfn.startLine, frameTokIdx: wfn.nameTokIdx };
     }
   }
   return null;
@@ -3286,54 +3408,273 @@ function findMatchingForward(tokens, openIdx, openSym, closeSym) {
   }
   return -1;
 }
-function extractFunctionParamTypes(tokens, fnDecl) {
+function extractFunctionParamTypeMap(tokens, fnDecl) {
   const out = /* @__PURE__ */ new Map();
   if (!fnDecl.paramRange) return out;
-  const slice = tokens.slice(fnDecl.paramRange[0] + 1, fnDecl.paramRange[1]);
-  for (let i = 0; i + 2 < slice.length; i += 1) {
-    if (slice[i].type === "Identifier" && slice[i + 1].value === ":" && slice[i + 2].type === "Identifier") {
-      out.set(slice[i].value, slice[i + 2].value);
+  const [openP, closeP] = fnDecl.paramRange;
+  const slice = tokens.slice(openP + 1, closeP);
+  const paramSlices = [];
+  let curStart = 0;
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  let tDepth = 0;
+  let inType = false;
+  for (let i = 0; i < slice.length; i += 1) {
+    const t = slice[i];
+    if (t.type === "Punct") {
+      if (t.value === "(") pDepth += 1;
+      else if (t.value === ")") pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === "{") bDepth += 1;
+      else if (t.value === "}") bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === "[") kDepth += 1;
+      else if (t.value === "]") kDepth = Math.max(0, kDepth - 1);
+      else if (pDepth === 0 && bDepth === 0 && kDepth === 0) {
+        if (t.value === ":" && !inType) {
+          inType = true;
+          tDepth = 0;
+        } else if (t.value === "=" && inType && tDepth === 0) {
+          inType = false;
+        } else if (inType && t.value === "<") {
+          tDepth += 1;
+        } else if (inType && t.value === ">") {
+          tDepth = Math.max(0, tDepth - 1);
+        } else if (t.value === "," && !(inType && tDepth > 0)) {
+          paramSlices.push(slice.slice(curStart, i));
+          curStart = i + 1;
+          inType = false;
+          tDepth = 0;
+        }
+      }
+    }
+  }
+  if (curStart < slice.length) {
+    paramSlices.push(slice.slice(curStart));
+  }
+  for (const paramToks of paramSlices) {
+    let pd = 0;
+    let bd = 0;
+    let kd = 0;
+    let td = 0;
+    let colonIdx = -1;
+    let eqIdx = -1;
+    for (let i = 0; i < paramToks.length; i += 1) {
+      const t = paramToks[i];
+      if (t.type === "Punct") {
+        if (t.value === "(") pd += 1;
+        else if (t.value === ")") pd = Math.max(0, pd - 1);
+        else if (t.value === "{") bd += 1;
+        else if (t.value === "}") bd = Math.max(0, bd - 1);
+        else if (t.value === "[") kd += 1;
+        else if (t.value === "]") kd = Math.max(0, kd - 1);
+        else if (pd === 0 && bd === 0 && kd === 0) {
+          if (t.value === ":" && colonIdx === -1) colonIdx = i;
+          else if (colonIdx !== -1 && eqIdx === -1 && t.value === "<") td += 1;
+          else if (colonIdx !== -1 && eqIdx === -1 && t.value === ">") td = Math.max(0, td - 1);
+          else if (colonIdx !== -1 && eqIdx === -1 && td === 0 && t.value === "=") {
+            eqIdx = i;
+            break;
+          }
+        }
+      }
+    }
+    if (colonIdx > 0 && paramToks[colonIdx - 1]?.type === "Identifier") {
+      const paramName = paramToks[colonIdx - 1].value;
+      const typeToks = paramToks.slice(colonIdx + 1, eqIdx === -1 ? paramToks.length : eqIdx).filter((t) => t.type !== "Annotation");
+      out.set(paramName, typeToks.map((t) => t.raw).join(""));
     }
   }
   return out;
 }
-function extractGuardIdentifiers(tokens, startIdx, endIdx) {
-  const out = /* @__PURE__ */ new Set();
-  for (let i = startIdx; i < endIdx; i += 1) {
+function findSingleStatementOrBlockRange(tokens, startIdx, limitIdx) {
+  if (startIdx > limitIdx) return null;
+  if (tokens[startIdx]?.type === "Punct" && tokens[startIdx].value === "{") {
+    const closeB = findMatchingForward(tokens, startIdx, "{", "}");
+    return [startIdx, closeB !== -1 ? closeB : limitIdx];
+  }
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  let lastIdx = startIdx;
+  for (let i = startIdx; i <= limitIdx; i += 1) {
     const t = tokens[i];
-    if (t.type === "Keyword" && (t.value === "if" || t.value === "while") && tokens[i + 1]?.value === "(") {
-      const close = findMatchingForward(tokens, i + 1, "(", ")");
-      if (close !== -1) {
-        const afterCond = tokens.slice(close + 1, Math.min(endIdx, close + 6));
-        const gatesExecution = t.value === "while" || afterCond.some((at) => at.type === "Keyword" && (at.value === "return" || at.value === "break" || at.value === "continue"));
-        if (gatesExecution) {
-          for (let k = i + 2; k < close; k += 1) {
-            if (tokens[k].type === "Identifier" && isUnqualifiedLocalIdent(tokens, k)) {
-              out.add(tokens[k].value);
+    if (t.type === "Punct") {
+      if (t.value === "(") pDepth += 1;
+      else if (t.value === ")") {
+        if (pDepth === 0) break;
+        pDepth -= 1;
+      } else if (t.value === "{") bDepth += 1;
+      else if (t.value === "}") {
+        if (bDepth === 0) break;
+        bDepth -= 1;
+      } else if (t.value === "[") kDepth += 1;
+      else if (t.value === "]") {
+        if (kDepth === 0) break;
+        kDepth -= 1;
+      } else if (t.value === ";" && pDepth === 0 && bDepth === 0 && kDepth === 0) {
+        break;
+      }
+    }
+    lastIdx = i;
+    const next = tokens[i + 1];
+    if (!next || i + 1 > limitIdx) break;
+    if (pDepth === 0 && bDepth === 0 && kDepth === 0 && next.line > t.endLine) {
+      const curContinues = t.type === "Punct" && [".", "?.", "?:", "=", "+", "-", "*", "/", "&&", "||", "==", "!=", "<", ">"].includes(t.value) || t.type === "Keyword" && (t.value === "else" || t.value === "by");
+      const nextContinues = next.type === "Punct" && [".", "?.", "?:", "+", "&&", "||", "{"].includes(next.value) || next.type === "Keyword" && next.value === "else";
+      if (!curContinues && !nextContinues) break;
+    }
+  }
+  return [startIdx, lastIdx];
+}
+function collectSimpleAssignmentsInRange(tokens, startIdx, endIdx) {
+  const out = [];
+  for (let i = startIdx; i <= endIdx - 2; i += 1) {
+    if (tokens[i].type === "Identifier" && isUnqualifiedLocalIdent(tokens, i) && tokens[i - 1]?.value !== "val" && tokens[i - 1]?.value !== "var" && tokens[i + 1]?.type === "Punct" && tokens[i + 1].value === "=") {
+      let pDepth = 0;
+      let isNamedArg = false;
+      for (let j = i - 1; j >= startIdx; j -= 1) {
+        const pt = tokens[j];
+        if (pt.type === "Punct") {
+          if (pt.value === ")" || pt.value === "]") pDepth += 1;
+          else if (pt.value === "(" || pt.value === "[") {
+            if (pDepth === 0) {
+              isNamedArg = pt.value === "(";
+              break;
+            }
+            pDepth -= 1;
+          } else if (pt.value === "{" && pDepth === 0) {
+            break;
+          } else if (pt.value === "}" && pDepth === 0) {
+            j = findMatchingBackward2(tokens, j, "{", "}");
+            if (j === -1) break;
+          }
+        }
+      }
+      if (isNamedArg) continue;
+      const rhsRange = findSingleStatementOrBlockRange(tokens, i + 2, endIdx);
+      if (rhsRange) {
+        out.push({
+          name: tokens[i].value,
+          rhsStartIdx: rhsRange[0],
+          rhsEndIdx: rhsRange[1],
+          rhsToks: tokens.slice(rhsRange[0], rhsRange[1] + 1)
+        });
+      }
+    }
+  }
+  return out;
+}
+function rangeHasControlExit(tokens, range, exitKeywords) {
+  if (!range) return false;
+  const [startIdx, endIdx] = range;
+  for (let i = startIdx; i <= endIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === "Keyword" && exitKeywords.includes(t.value)) {
+      return true;
+    }
+  }
+  return false;
+}
+function idxInsideRange(idx, range) {
+  return Boolean(range && idx >= range[0] && idx <= range[1]);
+}
+function sharesBraceScopeWithTarget(tokens, guardIdx, targetIdx, scopeStartIdx, scopeEndIdx) {
+  const [encOpen, encClose] = findEnclosingBraceScope(tokens, guardIdx, scopeStartIdx, scopeEndIdx);
+  void encOpen;
+  return targetIdx > guardIdx && targetIdx <= encClose;
+}
+function collectF005GatingConditions(tokens, calls, scanStartIdx, scanEndIdx, effectCall, frameTokIdx) {
+  const slices = [];
+  const effectTokIdx = effectCall.nameTokIdx;
+  const bodyStartIdx = effectCall.trailingLambda.openBraceIdx + 1;
+  const bodyEndIdx = effectCall.trailingLambda.closeBraceIdx;
+  for (let i = scanStartIdx; i < bodyEndIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === "Keyword" && t.value === "if" && tokens[i + 1]?.value === "(") {
+      const closeCond = findMatchingForward(tokens, i + 1, "(", ")");
+      if (closeCond === -1) continue;
+      const condSlice = tokens.slice(i + 2, closeCond);
+      const thenRange = findSingleStatementOrBlockRange(tokens, closeCond + 1, scanEndIdx);
+      if (!thenRange) continue;
+      let elseRange = null;
+      if (tokens[thenRange[1] + 1]?.type === "Keyword" && tokens[thenRange[1] + 1].value === "else") {
+        elseRange = findSingleStatementOrBlockRange(tokens, thenRange[1] + 2, scanEndIdx);
+      }
+      const enclosesTarget = idxInsideRange(effectTokIdx, thenRange) || idxInsideRange(frameTokIdx, thenRange) || idxInsideRange(effectTokIdx, elseRange) || idxInsideRange(frameTokIdx, elseRange);
+      const earlyExitsBeforeEffect = thenRange[1] < effectTokIdx && sharesBraceScopeWithTarget(tokens, i, effectTokIdx, scanStartIdx, scanEndIdx) && (rangeHasControlExit(tokens, thenRange, ["return"]) || rangeHasControlExit(tokens, elseRange, ["return"]));
+      const earlyExitsBeforeFrame = i >= bodyStartIdx && thenRange[1] < frameTokIdx && sharesBraceScopeWithTarget(tokens, i, frameTokIdx, bodyStartIdx - 1, bodyEndIdx) && (rangeHasControlExit(tokens, thenRange, ["return", "break", "continue"]) || rangeHasControlExit(tokens, elseRange, ["return", "break", "continue"]));
+      if (enclosesTarget || earlyExitsBeforeEffect || earlyExitsBeforeFrame) {
+        slices.push(condSlice);
+      }
+      continue;
+    }
+    if (t.type === "Keyword" && t.value === "while" && tokens[i + 1]?.value === "(") {
+      const closeCond = findMatchingForward(tokens, i + 1, "(", ")");
+      if (closeCond === -1) continue;
+      const condSlice = tokens.slice(i + 2, closeCond);
+      const bodyRange = findSingleStatementOrBlockRange(tokens, closeCond + 1, scanEndIdx);
+      let encloses = idxInsideRange(frameTokIdx, bodyRange) || idxInsideRange(effectTokIdx, bodyRange);
+      if (!encloses && tokens[i - 1]?.value === "}") {
+        const openDo = findMatchingBackward2(tokens, i - 1, "{", "}");
+        if (openDo !== -1 && tokens[openDo - 1]?.value === "do" && frameTokIdx > openDo && frameTokIdx < i - 1) {
+          encloses = true;
+        }
+      }
+      if (encloses) {
+        slices.push(condSlice);
+      }
+      continue;
+    }
+    if (t.type === "Keyword" && t.value === "when") {
+      let cursor = i + 1;
+      let subjSlice = null;
+      if (tokens[cursor]?.value === "(") {
+        const closeSubj = findMatchingForward(tokens, cursor, "(", ")");
+        if (closeSubj === -1) continue;
+        subjSlice = tokens.slice(cursor + 1, closeSubj);
+        cursor = closeSubj + 1;
+      }
+      if (tokens[cursor]?.value !== "{") continue;
+      const closeWhen = findMatchingForward(tokens, cursor, "{", "}");
+      if (closeWhen === -1) continue;
+      const whenRange = [cursor, closeWhen];
+      const enclosesTarget = idxInsideRange(effectTokIdx, whenRange) || idxInsideRange(frameTokIdx, whenRange);
+      const earlyExitsBeforeEffect = closeWhen < effectTokIdx && sharesBraceScopeWithTarget(tokens, i, effectTokIdx, scanStartIdx, scanEndIdx) && rangeHasControlExit(tokens, whenRange, ["return"]);
+      const earlyExitsBeforeFrame = i >= bodyStartIdx && closeWhen < frameTokIdx && sharesBraceScopeWithTarget(tokens, i, frameTokIdx, bodyStartIdx - 1, bodyEndIdx) && rangeHasControlExit(tokens, whenRange, ["return", "break", "continue"]);
+      if (enclosesTarget || earlyExitsBeforeEffect || earlyExitsBeforeFrame) {
+        if (subjSlice && subjSlice.length > 0) slices.push(subjSlice);
+        let bDepth = 0;
+        let pDepth = 0;
+        let branchStart = cursor + 1;
+        for (let k = cursor + 1; k < closeWhen; k += 1) {
+          const bt = tokens[k];
+          if (bt.type === "Punct") {
+            if (bt.value === "{") bDepth += 1;
+            else if (bt.value === "}") bDepth = Math.max(0, bDepth - 1);
+            else if (bt.value === "(") pDepth += 1;
+            else if (bt.value === ")") pDepth = Math.max(0, pDepth - 1);
+            else if (bt.value === "->" && bDepth === 0 && pDepth === 0) {
+              const lhs = tokens.slice(branchStart, k).filter((x) => !(x.type === "Keyword" && x.value === "else"));
+              if (lhs.length > 0) slices.push(lhs);
+              const rhsRange = findSingleStatementOrBlockRange(tokens, k + 1, closeWhen - 1);
+              if (rhsRange) {
+                k = rhsRange[1];
+                branchStart = k + 1;
+              } else {
+                branchStart = k + 1;
+              }
             }
           }
         }
       }
     }
   }
-  return Array.from(out);
-}
-function isPotentiallyExternalScaleGuard(ident, enclosingFn, tokens, calls, bodyStartIdx, bodyEndIdx, controlGuardSet = /* @__PURE__ */ new Set()) {
-  if (enclosingFn) {
-    const paramTypes = extractFunctionParamTypes(tokens, enclosingFn);
-    const pType = paramTypes.get(ident);
-    if (pType === "Boolean") return true;
-    if ((pType === "Float" || pType === "Double") && (controlGuardSet.has(ident) || /scale|duration|motion|anim/i.test(ident))) {
-      return true;
+  for (const rc of calls) {
+    if (rc.name === "repeat" && rc.trailingLambda && rc.nameTokIdx >= bodyStartIdx && rc.endTokIdx <= bodyEndIdx && frameTokIdx > rc.trailingLambda.openBraceIdx && frameTokIdx < rc.trailingLambda.closeBraceIdx && rc.args[0]) {
+      slices.push(rc.args[0].tokens);
     }
   }
-  const helperCall = calls.find(
-    (c) => c.name === ident && !c.receiver && c.nameTokIdx >= (enclosingFn ? enclosingFn.startTokIdx : bodyStartIdx) && c.endTokIdx <= (enclosingFn ? enclosingFn.endTokIdx : bodyEndIdx)
-  );
-  if (helperCall && !["remember", "mutableStateOf", "withFrameNanos", "delay"].includes(ident)) {
-    return true;
-  }
-  return false;
+  return slices;
 }
 function checkF006(kf, rawFindings, rawCandidates) {
   const { calls } = kf;
@@ -3898,6 +4239,53 @@ function unwrapZeroArgLambdaTokens(toks) {
   }
   return toks;
 }
+function getLottieOverloadArg(call, paramName, positionalSlot = null, allowPositional = false) {
+  const named = call.args.find((a) => a.name === paramName);
+  if (named) return named;
+  if (allowPositional && positionalSlot !== null && call.args.length > positionalSlot && call.args[positionalSlot].name === null && (call.args[0]?.name === null || call.args[0]?.name === "composition") && call.args.slice(1, positionalSlot).every((a) => a.name === null)) {
+    return call.args[positionalSlot];
+  }
+  return null;
+}
+function classifyLottieSpeedExpr(exprTokens, rawText, atTokIdx, scopedBindings, depth = 0) {
+  if (!Array.isArray(exprTokens) || exprTokens.length === 0 || depth > 4) {
+    return "unknown";
+  }
+  let toks = exprTokens;
+  while (toks.length >= 2 && toks[0].type === "Punct" && toks[0].value === "(" && toks[toks.length - 1].type === "Punct" && toks[toks.length - 1].value === ")" && findMatchingForward(toks, 0, "(", ")") === toks.length - 1) {
+    toks = toks.slice(1, -1);
+  }
+  if (toks.length === 0) return "unknown";
+  if (toks[0].type === "Punct" && (toks[0].value === "-" || toks[0].value === "+")) {
+    const sign = toks[0].value;
+    const innerClass = classifyLottieSpeedExpr(toks.slice(1), "", atTokIdx, scopedBindings, depth + 1);
+    if (sign === "+") return innerClass;
+    if (innerClass === "positive") return "negative";
+    if (innerClass === "negative") return "positive";
+    return innerClass;
+  }
+  if (toks.length === 1 && toks[0].type === "NumberLiteral") {
+    const m = toks[0].value.match(/^([0-9]+(?:\.[0-9]+)?)[fF]?$/);
+    if (!m) return "unknown";
+    const val = Number(m[1]);
+    if (Number.isNaN(val)) return "unknown";
+    return val === 0 ? "zero" : "positive";
+  }
+  if (toks.length === 1 && toks[0].type === "Identifier" && isUnqualifiedLocalIdent(toks, 0)) {
+    const binding = resolveScopedBinding(toks[0].value, atTokIdx, scopedBindings);
+    if (binding?.kind === "local-val" && Array.isArray(binding.rhsTokens)) {
+      return classifyLottieSpeedExpr(
+        binding.rhsTokens,
+        binding.rhsText || "",
+        binding.declStartIdx,
+        scopedBindings,
+        depth + 1
+      );
+    }
+  }
+  void rawText;
+  return "unknown";
+}
 function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scopedBindings) {
   const inner = unwrapZeroArgLambdaTokens(progressTokens);
   let varName = null;
@@ -3910,30 +4298,53 @@ function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scope
     const binding = resolveScopedBinding(varName, atTokIdx, scopedBindings);
     if (binding?.kind === "lottie-anim-state" && binding.animStateMeta) {
       return {
-        progressKind: "animated-state",
+        progressKind: binding.animStateMeta.hasUnknownPlayback ? "custom-progress" : "animated-state",
         hasClipSpec: binding.animStateMeta.hasClipSpec,
-        isNegativeSpeed: binding.animStateMeta.isNegativeSpeed
+        isNegativeSpeed: binding.animStateMeta.isNegativeSpeed,
+        hasUnknownPlayback: Boolean(binding.animStateMeta.hasUnknownPlayback)
       };
     }
     if (isBareVar && binding?.kind === "local-val" && typeof binding.rhsText === "string") {
       return {
         progressKind: classifyExplicitLottieProgress(binding.rhsText),
         hasClipSpec: false,
-        isNegativeSpeed: false
+        isNegativeSpeed: false,
+        hasUnknownPlayback: false
       };
     }
   }
   return {
     progressKind: classifyExplicitLottieProgress(progressText),
     hasClipSpec: false,
-    isNegativeSpeed: false
+    isNegativeSpeed: false,
+    hasUnknownPlayback: false
   };
 }
 function collectLottieConsumers(kf, outConsumers) {
   const { declarations, calls, tokens } = kf;
   const composableFuns = declarations.filter((d) => d.kind === "fun" && d.isComposable);
+  const outerValBindings = [];
+  for (const d of declarations) {
+    if (d.kind === "val" && d.delegateIdx === -1 && d.rhsStartIdx >= 0 && d.rhsStartIdx <= d.endTokIdx) {
+      const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
+      if (!insideComposable) {
+        outerValBindings.push({
+          name: d.name,
+          kind: "local-val",
+          assetRef: extractLottieAssetFromTokens(tokens.slice(d.startTokIdx, d.endTokIdx + 1)) || null,
+          animStateMeta: null,
+          rhsTokens: tokens.slice(d.rhsStartIdx, d.endTokIdx + 1),
+          rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
+          declStartIdx: d.startTokIdx,
+          declEndIdx: d.endTokIdx,
+          scopeStartIdx: 0,
+          scopeEndIdx: tokens.length - 1
+        });
+      }
+    }
+  }
   for (const fn of composableFuns) {
-    const scopedBindings = [];
+    const scopedBindings = [...outerValBindings];
     collectLottieFunctionParamBindings(tokens, fn, scopedBindings);
     collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings);
     const localDecls = declarations.filter(
@@ -3955,23 +4366,30 @@ function collectLottieConsumers(kf, outConsumers) {
       }
       let kind = "other";
       let animStateMeta = null;
+      let rhsTokens = null;
       let rhsText = null;
       if (animStateCall) {
         const compArg = getCallArg(animStateCall, "composition", 0);
         const compIdent = compArg?.tokens.find((t) => t.type === "Identifier")?.value;
-        const hasClipSpec = animStateCall.args.some((a) => a.name === "clipSpec" && a.text !== "null");
-        const speedArg = animStateCall.args.find((a) => a.name === "speed");
-        const isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
+        const clipArg = getLottieOverloadArg(animStateCall, "clipSpec", 4, true);
+        const hasClipSpec = Boolean(clipArg && clipArg.text.trim() !== "null");
+        const speedArg = getLottieOverloadArg(animStateCall, "speed", 5, true);
+        const speedClass = speedArg ? classifyLottieSpeedExpr(speedArg.tokens, speedArg.text, animStateCall.nameTokIdx, scopedBindings) : "positive";
+        const isPlayingArg = getLottieOverloadArg(animStateCall, "isPlaying", 1, true);
+        const reverseOnRepeatArg = getLottieOverloadArg(animStateCall, "reverseOnRepeat", 3, true);
+        const hasUnknownPlayback = speedClass === "zero" || speedClass === "unknown" || Boolean(isPlayingArg && isPlayingArg.text.trim() !== "true") || Boolean(reverseOnRepeatArg && reverseOnRepeatArg.text.trim() !== "false");
         kind = "lottie-anim-state";
         animStateMeta = {
           compIdent,
           hasClipSpec,
-          isNegativeSpeed
+          isNegativeSpeed: speedClass === "negative",
+          hasUnknownPlayback
         };
       } else if (explicitTypeToks && isModifierTypeTokens(explicitTypeToks) || ld.rhsStartIdx >= 0 && ld.rhsStartIdx <= ld.endTokIdx && isProvenModifierExprTokens(tokens.slice(ld.rhsStartIdx, ld.endTokIdx + 1), ld.startTokIdx, scopedBindings)) {
         kind = "modifier";
       } else if (ld.kind === "val" && ld.delegateIdx === -1 && ld.rhsStartIdx >= 0 && ld.rhsStartIdx <= ld.endTokIdx) {
         kind = "local-val";
+        rhsTokens = tokens.slice(ld.rhsStartIdx, ld.endTokIdx + 1);
         rhsText = kf.source.slice(tokens[ld.rhsStartIdx].start, tokens[ld.endTokIdx].end).trim();
       }
       scopedBindings.push({
@@ -3979,6 +4397,7 @@ function collectLottieConsumers(kf, outConsumers) {
         kind,
         assetRef: assetRef || null,
         animStateMeta,
+        rhsTokens,
         rhsText,
         declStartIdx: ld.startTokIdx,
         declEndIdx: ld.endTokIdx,
@@ -4005,9 +4424,6 @@ function collectLottieConsumers(kf, outConsumers) {
         }
       }
       if (!assetRef) continue;
-      let hasClipSpec = c.args.some((a) => a.name === "clipSpec" && a.text !== "null");
-      const speedArg = c.args.find((a) => a.name === "speed");
-      let isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
       const namedProgressArg = c.args.find((a) => a.name === "progress");
       const firstIsCompSlot = c.args.length >= 1 && (c.args[0].name === null || c.args[0].name === "composition");
       const posSlot1Arg = firstIsCompSlot && c.args.length >= 2 && c.args[1].name === null ? c.args[1] : null;
@@ -4023,6 +4439,15 @@ function collectLottieConsumers(kf, outConsumers) {
       } else if (posSlot1Arg && !isProvenModifierExprTokens(posSlot1Arg.tokens, c.nameTokIdx, scopedBindings)) {
         explicitProgress = { tokens: posSlot1Arg.tokens, text: posSlot1Arg.text };
       }
+      const isAutoPlayOverload = !explicitProgress;
+      const clipArg = getLottieOverloadArg(c, "clipSpec", 4, isAutoPlayOverload);
+      let hasClipSpec = Boolean(clipArg && clipArg.text.trim() !== "null");
+      const speedArg = getLottieOverloadArg(c, "speed", 5, isAutoPlayOverload);
+      const speedClass = speedArg ? classifyLottieSpeedExpr(speedArg.tokens, speedArg.text, c.nameTokIdx, scopedBindings) : "positive";
+      let isNegativeSpeed = speedClass === "negative";
+      const isPlayingArg = getLottieOverloadArg(c, "isPlaying", 2, isAutoPlayOverload);
+      const reverseOnRepeatArg = getLottieOverloadArg(c, "reverseOnRepeat", 11, isAutoPlayOverload);
+      let hasUnknownPlayback = speedClass === "zero" || speedClass === "unknown" || Boolean(isPlayingArg && isPlayingArg.text.trim() !== "true") || Boolean(reverseOnRepeatArg && reverseOnRepeatArg.text.trim() !== "false");
       let progressKind = "default-forward";
       if (explicitProgress) {
         const resolved = resolveLottieProgressExpr(
@@ -4034,11 +4459,10 @@ function collectLottieConsumers(kf, outConsumers) {
         progressKind = resolved.progressKind;
         if (resolved.hasClipSpec) hasClipSpec = true;
         if (resolved.isNegativeSpeed) isNegativeSpeed = true;
-      } else {
-        const isPlayingArg = c.args.find((a) => a.name === "isPlaying") || (posSlot1Arg && c.args.length >= 3 && c.args[2].name === null ? c.args[2] : null);
-        if (isPlayingArg && isPlayingArg.text.trim() !== "true") {
-          progressKind = "custom-progress";
-        }
+        if (resolved.hasUnknownPlayback) hasUnknownPlayback = true;
+      }
+      if (hasUnknownPlayback && progressKind !== "constant-mid") {
+        progressKind = "custom-progress";
       }
       outConsumers.push({
         filePath: kf.filePath,
@@ -4050,6 +4474,7 @@ function collectLottieConsumers(kf, outConsumers) {
         assetRelPath: assetRef.assetRelPath,
         hasClipSpec,
         isNegativeSpeed,
+        hasUnknownPlayback,
         progressKind
       });
     }
@@ -4158,24 +4583,26 @@ function checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates) {
       }
       if (cons.progressKind === "custom-progress") {
         if (lf.allBlankAtEnd || lf.allBlankAtStart) {
+          const viaDesc = cons.hasUnknownPlayback ? "with a dynamic or non-forward playback parameter (`speed` / `isPlaying` / `reverseOnRepeat`)" : "via an explicit custom `progress` lambda";
           rawCandidates.push(
             makeRuleCandidate("O-002", {
               file: cons.filePath,
               lines: cons.composableLines,
-              evidence: `\`${cons.composableName}\` drives \`${path2.basename(lf.filePath)}\` (no \`reduced motion\` marker) via an explicit custom \`progress\` lambda.`,
-              verificationHint: "Verify what progress value is supplied when system animations are disabled (`scaleFactor == 0f`) and confirm that frame is visually legible."
+              evidence: `\`${cons.composableName}\` drives \`${path2.basename(lf.filePath)}\` (no \`reduced motion\` marker) ${viaDesc}.`,
+              verificationHint: "Verify which frame is displayed when system animations are disabled (`scaleFactor == 0f`) and confirm that frame is visually legible."
             })
           );
         }
         continue;
       }
       if (cons.hasClipSpec) {
+        const blankAt = lf.allBlankAtEnd ? `op = ${lf.op}` : `ip = ${lf.ip}`;
         rawCandidates.push(
           makeRuleCandidate("O-002", {
             file: cons.filePath,
             lines: cons.composableLines,
-            evidence: `\`${cons.composableName}\` plays \`${path2.basename(lf.filePath)}\` (blank at \`op = ${lf.op}\`, no \`reduced motion\` marker) with a custom \`clipSpec\`.`,
-            verificationHint: "Verify that the `LottieClipSpec` max/end frame lands on a visible, meaningful rest frame when animations are disabled."
+            evidence: `\`${cons.composableName}\` plays \`${path2.basename(lf.filePath)}\` (blank at \`${blankAt}\`, no \`reduced motion\` marker) with a custom \`clipSpec\`.`,
+            verificationHint: "Verify that the `LottieClipSpec` endpoint lands on a visible, meaningful rest frame when animations are disabled."
           })
         );
         continue;
