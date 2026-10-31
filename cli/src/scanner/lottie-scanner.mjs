@@ -37,7 +37,7 @@ export function analyzeLottieJson(content, filePath = '<lottie.json>') {
   try {
     parsed = JSON.parse(content);
   } catch {
-    return { isLottie: false };
+    return { isLottie: false, parseError: true };
   }
 
   if (!isLottieJsonObject(parsed)) {

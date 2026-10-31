@@ -145,11 +145,35 @@ export function runStaticScan({
     }
   }
 
+  const analyzedFilesSet = new Set();
+  const skippedFilesSet = new Set();
+
   for (const filePath of collectedFiles) {
+    const absFilePath = path.resolve(filePath);
+    const baseLower = path.basename(filePath).toLowerCase();
+
+    if (baseLower.endsWith('.json')) {
+      try {
+        const st = fs.statSync(filePath);
+        if (st.size > 4 * 1024 * 1024) {
+          skippedFilesSet.add(absFilePath);
+          continue;
+        }
+      } catch (err) {
+        skippedFilesSet.add(absFilePath);
+        operationalErrors.push({
+          file: filePath,
+          error: `Cannot read "${filePath}": ${err?.message || String(err)}`,
+        });
+        continue;
+      }
+    }
+
     let content;
     try {
       content = fs.readFileSync(filePath, 'utf8');
     } catch (err) {
+      skippedFilesSet.add(absFilePath);
       operationalErrors.push({
         file: filePath,
         error: `Cannot read "${filePath}": ${err?.message || String(err)}`,
@@ -157,21 +181,33 @@ export function runStaticScan({
       continue;
     }
 
-    const baseLower = path.basename(filePath).toLowerCase();
     if (baseLower === 'motion.md') {
-      seenMotionPaths.add(path.resolve(filePath));
+      seenMotionPaths.add(absFilePath);
+      analyzedFilesSet.add(absFilePath);
       motionContracts.push(parseMotionMd(content, filePath, { draft, baseContent: baseMotionContent }));
     } else if (baseLower.endsWith('.kt')) {
       const parsed = scanKotlinSource(content, filePath);
-      if (parsed.lexError) lexErrorCount += 1;
+      if (parsed.lexError) {
+        lexErrorCount += 1;
+        skippedFilesSet.add(absFilePath);
+      } else {
+        analyzedFilesSet.add(absFilePath);
+      }
       kotlinFiles.push(parsed);
     } else if (baseLower.endsWith('.json')) {
-      // Skip obvious non-Lottie config/manifest files quickly before JSON parse if >2 MiB
+      // Skip oversized JSON files (>4 MiB) while marking them skipped so waiver audits never prune live waivers
       if (content.length <= 4 * 1024 * 1024) {
         const lottie = analyzeLottieJson(content, filePath);
-        if (lottie.isLottie) {
-          lottieFiles.push(lottie);
+        if (lottie.parseError) {
+          skippedFilesSet.add(absFilePath);
+        } else {
+          analyzedFilesSet.add(absFilePath);
+          if (lottie.isLottie) {
+            lottieFiles.push(lottie);
+          }
         }
+      } else {
+        skippedFilesSet.add(absFilePath);
       }
     }
   }
@@ -265,7 +301,8 @@ export function runStaticScan({
     waivers: projectConfig.waivers || [],
     usedWaiverIndices,
     includedDomainSet,
-    scannedFilesSet: new Set([...collectedFiles].map((f) => path.resolve(f))),
+    scannedFilesSet: analyzedFilesSet,
+    skippedFilesSet,
     projectIgnoreFiles: configEnabled ? projectConfig.ignoreFiles || [] : [],
     isFullProjectScan,
     hasScanErrors: operationalErrors.length > 0 || lexErrorCount > 0,
@@ -313,7 +350,13 @@ export function runStaticScan({
   };
 }
 
+const CROSS_FILE_WAIVER_RULES = new Set(['O-002']);
+
 function findMatchingProjectWaiver(item, waivers, cwd) {
+  const itemFiles = [
+    item.file,
+    ...(Array.isArray(item.alsoAt) ? item.alsoAt.map((a) => a.file).filter(Boolean) : []),
+  ];
   for (let i = 0; i < waivers.length; i += 1) {
     const w = waivers[i];
     if (isWaiverExpired(w)) continue;
@@ -329,9 +372,9 @@ function findMatchingProjectWaiver(item, waivers, cwd) {
       ) {
         continue;
       }
-      if (!matchesExactProjectPath(item.file, w.files, cwd)) continue;
+      if (!itemFiles.some((f) => matchesExactProjectPath(f, w.files, cwd))) continue;
     } else if (Array.isArray(w.files) && w.files.length > 0) {
-      if (!matchesFilePattern(item.file, w.files, cwd)) continue;
+      if (!itemFiles.some((f) => matchesFilePattern(f, w.files, cwd))) continue;
     }
     if (w.value) {
       const hay = `${item.evidence || ''} ${item.summary || ''}`.toLowerCase();
@@ -350,12 +393,14 @@ export function auditProjectWaivers({
   usedWaiverIndices,
   includedDomainSet,
   scannedFilesSet,
+  skippedFilesSet = new Set(),
   projectIgnoreFiles = [],
   isFullProjectScan,
   hasScanErrors,
   cwd,
 }) {
   const scannedFilesArr = Array.from(scannedFilesSet);
+  const skippedFilesArr = Array.from(skippedFilesSet);
 
   return waivers.map((w, index) => {
     const ruleMeta = findRuleById(w.rule);
@@ -390,16 +435,28 @@ export function auditProjectWaivers({
       usageStatus = 'unknown';
     } else if (hasScanErrors) {
       usageStatus = 'unknown';
+    } else if (
+      CROSS_FILE_WAIVER_RULES.has(w.rule) &&
+      (!isFullProjectScan || skippedFilesSet.size > 0 || projectIgnoreFiles.length > 0)
+    ) {
+      // Cross-file consumer/asset rules (e.g. O-002) require full, unskipped project coverage to prove unused
+      usageStatus = 'unknown';
     } else if (Array.isArray(w.files) && w.files.length > 0) {
-      // Proven-unused ONLY when every pattern in `w.files` actually covered at least one scanned file
-      // (so waivers targeting excluded directories or `ignoreFiles` entries stay `unknown`, never pruned!)
+      // Proven-unused ONLY when every pattern in `w.files` actually covered at least one analyzed file
+      // and zero skipped files (so waivers targeting >4 MiB Lottie assets or excluded dirs stay `unknown`, never pruned!)
       const everyPatternCovered = w.files.every((pat) => {
         if (!/[*?[\]{}]/.test(pat)) {
           const abs = path.resolve(cwd, pat);
+          if (skippedFilesSet.has(abs)) {
+            return false;
+          }
           if (fs.existsSync(abs)) {
-            return scannedFilesSet.has(abs);
+            return scannedFilesSet.has(abs) && !skippedFilesSet.has(abs);
           }
           if (!ruleMeta.overridable) return false;
+        }
+        if (skippedFilesArr.some((sf) => matchesFilePattern(sf, [pat], cwd))) {
+          return false;
         }
         return (
           isFullProjectScan &&
@@ -410,7 +467,12 @@ export function auditProjectWaivers({
       if (everyPatternCovered) {
         usageStatus = 'proven-unused';
       }
-    } else if (isFullProjectScan && projectIgnoreFiles.length === 0 && scannedFilesArr.length > 0) {
+    } else if (
+      isFullProjectScan &&
+      projectIgnoreFiles.length === 0 &&
+      skippedFilesSet.size === 0 &&
+      scannedFilesArr.length > 0
+    ) {
       usageStatus = 'proven-unused';
     }
 

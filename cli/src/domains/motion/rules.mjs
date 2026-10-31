@@ -187,7 +187,7 @@ export function runMotionDomainChecks({
     checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidates);
     checkT002(kf, conventionContext, fileMotionMd, rawFindings);
     checkCandidatesMisc(kf, rawCandidates);
-    collectLottieConsumers(kf, lottieConsumers);
+    collectLottieConsumers(kf, scaleHelpers, lottieConsumers);
   }
 
   // 3. Lottie `.json` + consumer cross-reference (`O-002`)
@@ -3108,29 +3108,51 @@ function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scope
   };
 }
 
-function collectLottieConsumers(kf, outConsumers) {
+function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
   const { declarations, calls, tokens } = kf;
   const composableFuns = declarations.filter((d) => d.kind === 'fun' && d.isComposable);
 
   // Seed file-level / object-level immutable `val` declarations so constants like `private const val BACKWARDS = -1f` resolve
   const outerValBindings = [];
-  for (const d of declarations) {
-    if (d.kind === 'val' && d.delegateIdx === -1 && d.rhsStartIdx >= 0 && d.rhsStartIdx <= d.endTokIdx) {
-      const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
-      if (!insideComposable) {
-        outerValBindings.push({
-          name: d.name,
-          kind: 'local-val',
-          assetRef: extractLottieAssetFromTokens(tokens.slice(d.startTokIdx, d.endTokIdx + 1)) || null,
-          animStateMeta: null,
-          rhsTokens: tokens.slice(d.rhsStartIdx, d.endTokIdx + 1),
-          rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
-          declStartIdx: d.startTokIdx,
-          declEndIdx: d.endTokIdx,
-          scopeStartIdx: 0,
-          scopeEndIdx: tokens.length - 1,
-        });
-      }
+  const outerDecls = declarations
+    .filter((d) => (d.kind === 'val' || d.kind === 'var') && (d.rhsStartIdx >= 0 || d.delegateIdx >= 0))
+    .sort((a, b) => a.startTokIdx - b.startTokIdx);
+  for (const d of outerDecls) {
+    const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
+    if (insideComposable) continue;
+    const exprStart = d.rhsStartIdx >= 0 ? d.rhsStartIdx : d.delegateIdx;
+    if (exprStart < 0 || exprStart > d.endTokIdx) continue;
+    const exprToks = tokens.slice(exprStart, d.endTokIdx + 1);
+    const rawSelection = extractLottieAssetSelectionForExpr(tokens, calls, exprToks, outerValBindings, d.startTokIdx);
+    const assetSelection = rawSelection
+      ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || d.kind === 'var' }
+      : null;
+    if (d.kind === 'val' && d.delegateIdx === -1 && d.rhsStartIdx >= 0) {
+      outerValBindings.push({
+        name: d.name,
+        kind: 'local-val',
+        assetSelection,
+        animStateMeta: null,
+        rhsTokens: exprToks,
+        rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
+        declStartIdx: d.startTokIdx,
+        declEndIdx: d.endTokIdx,
+        scopeStartIdx: 0,
+        scopeEndIdx: tokens.length - 1,
+      });
+    } else if (assetSelection) {
+      outerValBindings.push({
+        name: d.name,
+        kind: 'other',
+        assetSelection,
+        animStateMeta: null,
+        rhsTokens: null,
+        rhsText: null,
+        declStartIdx: d.startTokIdx,
+        declEndIdx: d.endTokIdx,
+        scopeStartIdx: 0,
+        scopeEndIdx: tokens.length - 1,
+      });
     }
   }
 
@@ -3145,10 +3167,30 @@ function collectLottieConsumers(kf, outConsumers) {
       )
       .sort((a, b) => a.startTokIdx - b.startTokIdx);
 
+    const localScaleVars = new Set();
+    for (const ld of localDecls) {
+      const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
+      if (
+        declToks.some(
+          (t) =>
+            t.type === 'Identifier' &&
+            (DURATION_SCALE_IDENTIFIERS.has(t.value) || (scaleHelpers && scaleHelpers.has(t.value)))
+        )
+      ) {
+        localScaleVars.add(ld.name);
+      }
+    }
+
     for (const ld of localDecls) {
       const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, ld.startTokIdx, fn.startTokIdx, fn.endTokIdx);
-      const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
-      const assetRef = extractLottieAssetFromTokens(declToks);
+      const exprStart = ld.rhsStartIdx >= 0 ? ld.rhsStartIdx : ld.delegateIdx;
+      const exprToks = exprStart >= 0 && exprStart <= ld.endTokIdx ? tokens.slice(exprStart, ld.endTokIdx + 1) : null;
+      const rawSelection = exprToks
+        ? extractLottieAssetSelectionForExpr(tokens, calls, exprToks, scopedBindings, ld.startTokIdx)
+        : null;
+      const assetSelection = rawSelection
+        ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || ld.kind === 'var' }
+        : null;
 
       const animStateCall = calls.find(
         (c) => c.name === 'animateLottieCompositionAsState' && c.nameTokIdx >= ld.startTokIdx && c.endTokIdx <= ld.endTokIdx
@@ -3173,7 +3215,9 @@ function collectLottieConsumers(kf, outConsumers) {
 
       if (animStateCall) {
         const compArg = getCallArg(animStateCall, 'composition', 0);
-        const compIdent = compArg?.tokens.find((t) => t.type === 'Identifier')?.value;
+        const isSimpleCompIdent =
+          Boolean(compArg) && compArg.tokens.length === 1 && compArg.tokens[0].type === 'Identifier';
+        const compIdent = isSimpleCompIdent ? compArg.tokens[0].value : null;
         const clipArg = getLottieOverloadArg(animStateCall, 'clipSpec', 4, true);
         const hasClipSpec = Boolean(clipArg && clipArg.text.trim() !== 'null');
         const speedArg = getLottieOverloadArg(animStateCall, 'speed', 5, true);
@@ -3183,6 +3227,7 @@ function collectLottieConsumers(kf, outConsumers) {
         const isPlayingArg = getLottieOverloadArg(animStateCall, 'isPlaying', 1, true);
         const reverseOnRepeatArg = getLottieOverloadArg(animStateCall, 'reverseOnRepeat', 3, true);
         const hasUnknownPlayback =
+          !isSimpleCompIdent ||
           speedClass === 'zero' ||
           speedClass === 'unknown' ||
           Boolean(isPlayingArg && isPlayingArg.text.trim() !== 'true') ||
@@ -3210,7 +3255,7 @@ function collectLottieConsumers(kf, outConsumers) {
       scopedBindings.push({
         name: ld.name,
         kind,
-        assetRef: assetRef || null,
+        assetSelection,
         animStateMeta,
         rhsTokens,
         rhsText,
@@ -3227,20 +3272,25 @@ function collectLottieConsumers(kf, outConsumers) {
       const compArg = getCallArg(c, 'composition', 0);
       if (!compArg) continue;
 
-      let assetRef = extractLottieAssetFromTokens(compArg.tokens);
-      if (!assetRef) {
-        for (let idx = 0; idx < compArg.tokens.length; idx += 1) {
-          const t = compArg.tokens[idx];
-          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(compArg.tokens, idx)) {
-            const binding = resolveScopedBinding(t.value, c.nameTokIdx, scopedBindings);
-            if (binding?.assetRef) {
-              assetRef = binding.assetRef;
-              break;
-            }
-          }
-        }
-      }
-      if (!assetRef) continue;
+      const assetSelection = extractLottieAssetSelectionForExpr(
+        tokens,
+        calls,
+        compArg.tokens,
+        scopedBindings,
+        c.nameTokIdx
+      );
+      if (!assetSelection || assetSelection.assets.length === 0) continue;
+
+      const guardSlices = collectEnclosingGuardSlices(tokens, fn, c.nameTokIdx);
+      const guardedByDurationScale = guardSlices.some((slice) =>
+        slice.some(
+          (t, idx) =>
+            t.type === 'Identifier' &&
+            (DURATION_SCALE_IDENTIFIERS.has(t.value) ||
+              (scaleHelpers && scaleHelpers.has(t.value)) ||
+              (localScaleVars.has(t.value) && isUnqualifiedLocalIdent(slice, idx)))
+        )
+      );
 
       // Determine `progress` provenance (`default-forward` vs `animated-state` vs `constant-*` vs `custom-progress`)
       const namedProgressArg = c.args.find((a) => a.name === 'progress');
@@ -3295,23 +3345,28 @@ function collectLottieConsumers(kf, outConsumers) {
         if (resolved.hasUnknownPlayback) hasUnknownPlayback = true;
       }
 
-      if (hasUnknownPlayback && progressKind !== 'constant-mid') {
-        progressKind = 'custom-progress';
-      }
+      const uncertainAsset = assetSelection.uncertain;
+      const effectiveUnknownPlayback = hasUnknownPlayback || uncertainAsset || guardedByDurationScale;
+      const effectiveProgressKind =
+        effectiveUnknownPlayback && progressKind !== 'constant-mid' ? 'custom-progress' : progressKind;
 
-      outConsumers.push({
-        filePath: kf.filePath,
-        composableName: fn.name,
-        composableLines: [fn.startLine, fn.endLine],
-        callLines: [c.startLine, c.endLine],
-        assetBaseName: assetRef.baseName,
-        assetKind: assetRef.kind,
-        assetRelPath: assetRef.assetRelPath,
-        hasClipSpec,
-        isNegativeSpeed,
-        hasUnknownPlayback,
-        progressKind,
-      });
+      for (const assetRef of assetSelection.assets) {
+        outConsumers.push({
+          filePath: kf.filePath,
+          composableName: fn.name,
+          composableLines: [fn.startLine, fn.endLine],
+          callLines: [c.startLine, c.endLine],
+          assetBaseName: assetRef.baseName,
+          assetKind: assetRef.kind,
+          assetRelPath: assetRef.assetRelPath,
+          uncertainAsset,
+          guardedByDurationScale,
+          hasClipSpec,
+          isNegativeSpeed,
+          hasUnknownPlayback: effectiveUnknownPlayback,
+          progressKind: effectiveProgressKind,
+        });
+      }
     }
   }
 }
@@ -3335,32 +3390,305 @@ function classifyExplicitLottieProgress(rawExpr) {
   return 'custom-progress';
 }
 
-function extractLottieAssetFromTokens(toks) {
-  // Match `R.raw.<name>`
-  for (let i = 0; i + 4 < toks.length; i += 1) {
-    if (
-      toks[i].value === 'R' &&
-      toks[i + 1].value === '.' &&
-      toks[i + 2].value === 'raw' &&
-      toks[i + 3].value === '.' &&
-      toks[i + 4].type === 'Identifier'
-    ) {
-      return { kind: 'raw', baseName: toks[i + 4].value, assetRelPath: null };
+function collectEnclosingGuardSlices(tokens, fn, targetTokIdx) {
+  const slices = [];
+  if (!fn || fn.startTokIdx >= fn.endTokIdx) return slices;
+  const scanStartIdx = fn.startTokIdx;
+  const scanEndIdx = fn.endTokIdx;
+
+  for (let i = scanStartIdx; i < targetTokIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === 'Keyword' && t.value === 'if' && tokens[i + 1]?.value === '(') {
+      const closeCond = findMatchingForward(tokens, i + 1, '(', ')');
+      if (closeCond === -1) continue;
+      const condSlice = tokens.slice(i + 2, closeCond);
+      const thenRange = findSingleStatementOrBlockRange(tokens, closeCond + 1, scanEndIdx);
+      if (!thenRange) continue;
+      let elseRange = null;
+      if (tokens[thenRange[1] + 1]?.type === 'Keyword' && tokens[thenRange[1] + 1].value === 'else') {
+        elseRange = findSingleStatementOrBlockRange(tokens, thenRange[1] + 2, scanEndIdx);
+      }
+      const enclosesTarget = idxInsideRange(targetTokIdx, thenRange) || idxInsideRange(targetTokIdx, elseRange);
+      const earlyExitsBeforeTarget =
+        thenRange[1] < targetTokIdx &&
+        sharesBraceScopeWithTarget(tokens, i, targetTokIdx, scanStartIdx, scanEndIdx) &&
+        (rangeHasControlExit(tokens, thenRange, ['return']) || rangeHasControlExit(tokens, elseRange, ['return']));
+      if (enclosesTarget || earlyExitsBeforeTarget) {
+        slices.push(condSlice);
+      }
+      continue;
+    }
+    if (t.type === 'Keyword' && t.value === 'when') {
+      let cursor = i + 1;
+      let subjSlice = null;
+      if (tokens[cursor]?.value === '(') {
+        const closeSubj = findMatchingForward(tokens, cursor, '(', ')');
+        if (closeSubj === -1) continue;
+        subjSlice = tokens.slice(cursor + 1, closeSubj);
+        cursor = closeSubj + 1;
+      }
+      if (tokens[cursor]?.value !== '{') continue;
+      const closeWhen = findMatchingForward(tokens, cursor, '{', '}');
+      if (closeWhen === -1) continue;
+      const whenRange = [cursor, closeWhen];
+      const enclosesTarget = idxInsideRange(targetTokIdx, whenRange);
+      const earlyExitsBeforeTarget =
+        closeWhen < targetTokIdx &&
+        sharesBraceScopeWithTarget(tokens, i, targetTokIdx, scanStartIdx, scanEndIdx) &&
+        rangeHasControlExit(tokens, whenRange, ['return']);
+      if (enclosesTarget || earlyExitsBeforeTarget) {
+        if (subjSlice && subjSlice.length > 0) slices.push(subjSlice);
+      }
     }
   }
-  // Match string `"foo/bar/sync_complete.json"` or raw string `"""sync_complete.json"""`
-  for (const t of toks) {
+  return slices;
+}
+
+const ALLOWED_UNCONDITIONAL_LOTTIE_CALLS = new Set(['RawRes', 'Asset']);
+
+const DISALLOWED_UNCONDITIONAL_LOTTIE_KEYWORDS = new Set([
+  'if', 'else', 'when', 'try', 'catch', 'for', 'while', 'do', 'return', 'throw',
+]);
+
+const DISALLOWED_UNCONDITIONAL_LOTTIE_PUNCT = new Set([
+  '?:', '?.', '->', '{', '}', '[', ']', '::', '&&', '||',
+  '==', '!=', '<', '>', '<=', '>=', '+', '-', '*', '/', '%',
+]);
+
+function stripOuterParensTokens(toks) {
+  let cur = toks;
+  while (
+    cur.length >= 2 &&
+    cur[0].type === 'Punct' &&
+    cur[0].value === '(' &&
+    cur[cur.length - 1].type === 'Punct' &&
+    cur[cur.length - 1].value === ')'
+  ) {
+    let depth = 0;
+    let wrapsEntire = true;
+    for (let i = 0; i < cur.length; i += 1) {
+      if (cur[i].type === 'Punct' && cur[i].value === '(') depth += 1;
+      else if (cur[i].type === 'Punct' && cur[i].value === ')') {
+        depth -= 1;
+        if (depth === 0 && i < cur.length - 1) {
+          wrapsEntire = false;
+          break;
+        }
+      }
+    }
+    if (!wrapsEntire) break;
+    cur = cur.slice(1, -1);
+  }
+  return cur;
+}
+
+function unwrapRememberLottieComposition(tokens, calls, exprToks) {
+  const stripped = stripOuterParensTokens(exprToks);
+  if (stripped.length === 0) return stripped;
+
+  const firstTok = stripped[0];
+  const remCall = calls.find(
+    (c) =>
+      c.name === 'rememberLottieComposition' &&
+      c.hasParens &&
+      (tokens[c.nameTokIdx] === firstTok || tokens[c.chainRootIdx] === firstTok)
+  );
+  if (!remCall) return stripped;
+
+  // Verify any qualifier chain before `rememberLottieComposition` is purely package identifiers (`a.b.rememberLottieComposition`)
+  const remNamePos = stripped.indexOf(tokens[remCall.nameTokIdx]);
+  if (remNamePos < 0) return stripped;
+  for (let i = 0; i < remNamePos; i += 1) {
+    const t = stripped[i];
+    if (i % 2 === 0 && t.type !== 'Identifier') return stripped;
+    if (i % 2 === 1 && !(t.type === 'Punct' && t.value === '.')) return stripped;
+  }
+
+  const remEndPos = stripped.indexOf(tokens[remCall.endTokIdx]);
+  if (remEndPos === -1) return stripped;
+
+  const trailing = stripped.slice(remEndPos + 1);
+  const validTrailing =
+    trailing.length === 0 ||
+    (trailing.length === 1 && trailing[0].type === 'Punct' && trailing[0].value === '!!') ||
+    (trailing.length === 2 &&
+      trailing[0].type === 'Punct' &&
+      trailing[0].value === '.' &&
+      trailing[1].type === 'Identifier' &&
+      trailing[1].value === 'value') ||
+    (trailing.length === 3 &&
+      trailing[0].type === 'Punct' &&
+      trailing[0].value === '.' &&
+      trailing[1].type === 'Identifier' &&
+      trailing[1].value === 'value' &&
+      trailing[2].type === 'Punct' &&
+      trailing[2].value === '!!');
+
+  if (!validTrailing) return stripped;
+  const specArg = getCallArg(remCall, 'spec', 0);
+  return specArg && specArg.tokens.length > 0 ? stripOuterParensTokens(specArg.tokens) : stripped;
+}
+
+function extractLottieAssetSelectionForExpr(tokens, calls, exprToks, scopedBindings, atTokIdx) {
+  if (!exprToks || exprToks.length === 0) return null;
+  const specToks = unwrapRememberLottieComposition(tokens, calls, exprToks);
+  if (!specToks || specToks.length === 0) return null;
+
+  const rawAssets = [];
+  const consumed = new Set();
+  let uncertain = false;
+  let localVarRefs = 0;
+
+  // 1. Collect all `[pkg.]*R.raw.<name>` spans
+  for (let i = 0; i + 4 < specToks.length; i += 1) {
+    if (
+      specToks[i].type === 'Identifier' &&
+      specToks[i].value === 'R' &&
+      specToks[i + 1].value === '.' &&
+      specToks[i + 2].value === 'raw' &&
+      specToks[i + 3].value === '.' &&
+      specToks[i + 4].type === 'Identifier'
+    ) {
+      let pkgStart = i;
+      while (
+        pkgStart >= 2 &&
+        specToks[pkgStart - 1].type === 'Punct' &&
+        specToks[pkgStart - 1].value === '.' &&
+        specToks[pkgStart - 2].type === 'Identifier'
+      ) {
+        pkgStart -= 2;
+      }
+      if (pkgStart > 0 && specToks[pkgStart - 1].type === 'Punct' && (specToks[pkgStart - 1].value === '.' || specToks[pkgStart - 1].value === '?.' || specToks[pkgStart - 1].value === '::')) {
+        uncertain = true;
+      }
+      for (let k = pkgStart; k <= i + 4; k += 1) consumed.add(k);
+      rawAssets.push({ kind: 'raw', baseName: specToks[i + 4].value, assetRelPath: null });
+    }
+  }
+
+  // 2. Collect all `"foo/bar/anim.json"` string literals
+  for (let i = 0; i < specToks.length; i += 1) {
+    const t = specToks[i];
     if (t.type === 'StringLiteral' && /\.json$/i.test(t.value.trim())) {
+      consumed.add(i);
       const cleanRel = t.value.trim().replace(/\\/g, '/').replace(/^\/+/, '');
       const base = cleanRel.split('/').pop() || '';
-      return {
+      rawAssets.push({
         kind: 'asset',
         baseName: base.replace(/\.json$/i, ''),
         assetRelPath: cleanRel,
-      };
+      });
     }
   }
-  return null;
+
+  // 3. Named argument labels (`resId =`, `assetName =`, `spec =`, `composition =`)
+  for (let i = 0; i + 1 < specToks.length; i += 1) {
+    if (
+      !consumed.has(i) &&
+      specToks[i].type === 'Identifier' &&
+      specToks[i + 1].type === 'Punct' &&
+      specToks[i + 1].value === '='
+    ) {
+      consumed.add(i);
+      consumed.add(i + 1);
+    }
+  }
+
+  // 4. Function/constructor calls (`LottieCompositionSpec.RawRes(...)`, `LottieCompositionSpec.Asset(...)`, vs arbitrary calls)
+  for (let i = 0; i < specToks.length; i += 1) {
+    if (consumed.has(i)) continue;
+    if (
+      specToks[i].type === 'Identifier' &&
+      specToks[i + 1]?.type === 'Punct' &&
+      specToks[i + 1].value === '('
+    ) {
+      if (ALLOWED_UNCONDITIONAL_LOTTIE_CALLS.has(specToks[i].value)) {
+        consumed.add(i);
+        let q = i;
+        while (
+          q >= 2 &&
+          specToks[q - 1].type === 'Punct' &&
+          specToks[q - 1].value === '.' &&
+          specToks[q - 2].type === 'Identifier'
+        ) {
+          consumed.add(q - 1);
+          consumed.add(q - 2);
+          q -= 2;
+        }
+      } else {
+        consumed.add(i);
+        uncertain = true;
+      }
+    }
+  }
+
+  // 5. Remaining identifiers: resolve unqualified local `val` / composition bindings
+  for (let i = 0; i < specToks.length; i += 1) {
+    if (consumed.has(i)) continue;
+    const t = specToks[i];
+    if (t.type !== 'Identifier') continue;
+    if (isUnqualifiedLocalIdent(specToks, i)) {
+      localVarRefs += 1;
+      consumed.add(i);
+      if (
+        specToks[i + 1]?.type === 'Punct' &&
+        specToks[i + 1].value === '.' &&
+        specToks[i + 2]?.type === 'Identifier' &&
+        specToks[i + 2].value === 'value'
+      ) {
+        consumed.add(i + 1);
+        consumed.add(i + 2);
+      }
+      const binding = resolveScopedBinding(t.value, atTokIdx, scopedBindings);
+      if (binding?.assetSelection && binding.assetSelection.assets.length > 0) {
+        rawAssets.push(...binding.assetSelection.assets);
+        if (binding.assetSelection.uncertain) uncertain = true;
+      } else {
+        uncertain = true;
+      }
+    } else {
+      uncertain = true;
+    }
+  }
+
+  // Deduplicate assets
+  const seenKeys = new Set();
+  const assets = [];
+  for (const a of rawAssets) {
+    const key = `${a.kind}:${a.assetRelPath || a.baseName}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      assets.push(a);
+    }
+  }
+  if (assets.length === 0) return null;
+
+  if (assets.length > 1 || localVarRefs > 1) {
+    uncertain = true;
+  }
+
+  // 6. Any branching/conditional keyword, operator, or unconsumed token makes the selection uncertain
+  for (let i = 0; i < specToks.length; i += 1) {
+    const t = specToks[i];
+    if (t.type === 'Keyword' && DISALLOWED_UNCONDITIONAL_LOTTIE_KEYWORDS.has(t.value)) {
+      uncertain = true;
+      break;
+    }
+    if (t.type === 'Punct' && DISALLOWED_UNCONDITIONAL_LOTTIE_PUNCT.has(t.value)) {
+      uncertain = true;
+      break;
+    }
+    if (!consumed.has(i)) {
+      const isStructuralPunct =
+        t.type === 'Punct' && (t.value === '(' || t.value === ')' || t.value === ',' || t.value === '!!');
+      if (!isStructuralPunct) {
+        uncertain = true;
+        break;
+      }
+    }
+  }
+
+  return { assets, uncertain };
 }
 
 function doesConsumerMatchLottieFile(cons, lf) {
@@ -3443,9 +3771,13 @@ function checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates) {
 
       if (cons.progressKind === 'custom-progress') {
         if (lf.allBlankAtEnd || lf.allBlankAtStart) {
-          const viaDesc = cons.hasUnknownPlayback
-            ? 'with a dynamic or non-forward playback parameter (`speed` / `isPlaying` / `reverseOnRepeat`)'
-            : 'via an explicit custom `progress` lambda';
+          const viaDesc = cons.uncertainAsset
+            ? 'via a conditional or dynamic `LottieCompositionSpec` selection'
+            : cons.guardedByDurationScale
+              ? 'inside an animator duration-scale guard'
+              : cons.hasUnknownPlayback
+                ? 'with a dynamic or non-forward playback parameter (`speed` / `isPlaying` / `reverseOnRepeat`)'
+                : 'via an explicit custom `progress` lambda';
           rawCandidates.push(
             makeRuleCandidate('O-002', {
               file: cons.filePath,

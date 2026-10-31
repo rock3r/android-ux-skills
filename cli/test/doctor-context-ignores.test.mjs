@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   runDoctorChecks,
   gatherProjectContext,
+  runStaticScan,
   runCli,
 } from '../src/index.mjs';
 import { findBinaryOnPath } from '../src/commands/doctor.mjs';
@@ -286,6 +287,70 @@ import androidx.compose.runtime.Composable
     const ctxObj = JSON.parse(ctxRes.stdout);
     assert.equal(ctxObj.hooks.active, false);
     assert.equal(ctxObj.directives.includes('MANUAL_DETECTOR_REQUIRED'), true);
+
+    // 5. Oversized (> 4 MiB) skipped Lottie `.json` asset MUST report waiver usageStatus='unknown'
+    //    (NEVER 'proven-unused') and `ignores prune` MUST preserve the waiver untouched!
+    const rawDir = path.join(tmpDir, 'src', 'main', 'res', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    const hugeLottiePath = path.join(rawDir, 'huge_hero.json');
+    const padStr = 'x'.repeat(4 * 1024 * 1024 + 512);
+    fs.writeFileSync(
+      hugeLottiePath,
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        nm: padStr,
+        layers: [{ ty: 4, ip: 0, op: 30, ks: { o: { a: 0, k: 100 } } }],
+      }),
+      'utf8'
+    );
+    assert.equal(
+      (
+        await run([
+          'ignores',
+          'add',
+          'O-002',
+          '--kind',
+          'false-positive',
+          '--file',
+          'src/main/res/raw/huge_hero.json',
+          '--local',
+          '--reason',
+          'Oversized hero Lottie asset verified manually',
+        ])
+      ).code,
+      0
+    );
+
+    const scanHuge = runStaticScan({ targets: [tmpDir], cwd: tmpDir });
+    const hugeWaiverAudit = scanHuge.waiverAudit.find((a) => a.waiver.rule === 'O-002');
+    assert.ok(hugeWaiverAudit, 'Expected O-002 waiver in waiverAudit');
+    assert.equal(
+      hugeWaiverAudit.usageStatus,
+      'unknown',
+      `Skipped >4 MiB Lottie asset waiver must have usageStatus='unknown', got: ${JSON.stringify(hugeWaiverAudit)}`
+    );
+
+    const detHuge = JSON.parse((await run(['detect', '.', '--report-unused-ignores', '--json'])).stdout);
+    assert.equal(
+      (detHuge.diagnostics || []).some((d) => String(d.summary || '').includes('O-002')),
+      false,
+      `detect --report-unused-ignores must not flag O-002 waiver on skipped >4 MiB Lottie asset, got: ${JSON.stringify(detHuge.diagnostics)}`
+    );
+
+    const listHuge = JSON.parse((await run(['ignores', 'list', '--json'])).stdout);
+    const listedO002 = listHuge.waivers.find((w) => w.rule === 'O-002');
+    assert.equal(listedO002.usageStatus, 'unknown');
+
+    const pruneWithHuge = JSON.parse((await run(['ignores', 'prune', '--yes', '--json'])).stdout);
+    assert.equal(
+      pruneWithHuge.pruned.some((p) => p.rule === 'O-002'),
+      false,
+      `ignores prune must preserve O-002 waiver on skipped >4 MiB Lottie asset, got: ${JSON.stringify(pruneWithHuge)}`
+    );
+    assert.equal(pruneWithHuge.keptCount, 3, 'All 3 waivers (used T-002, excluded T-002, skipped >4 MiB O-002) must be kept');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

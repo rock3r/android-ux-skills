@@ -953,6 +953,81 @@ fun DelegatedNav(navController: NavController) {
       0,
       `Block-body non-@Composable spec helper pickSpec() must emit 0 T-002 findings, got: ${JSON.stringify(abstentionRes.findings)}`
     );
+
+    // 11. O-002 conditional `LottieCompositionSpec` / composition selection (`if (...) R.raw.blank else R.raw.visible`,
+    //     `overrideSpec ?: LottieCompositionSpec.RawRes(R.raw.blank)`) -> candidate only (0 proven O-002 findings),
+    //     whereas unconditional `LottieCompositionSpec.RawRes(R.raw.blank)` -> 1 proven O-002 finding:
+    const condLottieDir = path.join(tmpDir, 'cond-lottie');
+    const condRawDir = path.join(condLottieDir, 'src', 'main', 'res', 'raw');
+    const condUiDir = path.join(condLottieDir, 'src', 'main', 'java', 'demo');
+    fs.mkdirSync(condRawDir, { recursive: true });
+    fs.mkdirSync(condUiDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(condRawDir, 'blank.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        layers: [{ ty: 4, ip: 0, op: 30, ks: { o: { a: 0, k: 100 } } }], // blank at op = 60
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(condRawDir, 'visible.json'),
+      JSON.stringify({
+        v: '5.7.4',
+        fr: 60,
+        ip: 0,
+        op: 60,
+        layers: [{ ty: 4, ip: 0, op: 60, ks: { o: { a: 0, k: 100 } } }], // visible throughout [0, 60]
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(condUiDir, 'ConditionalLottie.kt'),
+      `package demo
+import androidx.compose.runtime.*
+import com.airbnb.lottie.compose.*
+
+@Composable
+fun ConditionalRawResBadge() {
+    val comp by rememberLottieComposition(
+        LottieCompositionSpec.RawRes(if (false) R.raw.blank else R.raw.visible)
+    )
+    LottieAnimation(comp)
+}
+
+@Composable
+fun ElvisSpecFallbackBadge(overrideSpec: LottieCompositionSpec?) {
+    val comp by rememberLottieComposition(
+        overrideSpec ?: LottieCompositionSpec.RawRes(R.raw.blank)
+    )
+    LottieAnimation(comp)
+}
+
+@Composable
+fun UnconditionalBlankBadge() {
+    val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.blank))
+    LottieAnimation(comp)
+}
+`,
+      'utf8'
+    );
+    const condLottieRes = runStaticScan({ targets: [condLottieDir], cwd: tmpDir });
+    const condO002Findings = condLottieRes.findings.filter((f) => f.rule === 'O-002');
+    assert.equal(
+      condO002Findings.length,
+      1,
+      `Expected exactly 1 proven O-002 finding (UnconditionalBlankBadge only), got: ${JSON.stringify(condO002Findings)}`
+    );
+    assert.match(condO002Findings[0].evidence, /UnconditionalBlankBadge/);
+    const condO002Cands = condLottieRes.candidates.filter((c) => c.rule === 'O-002');
+    assert.equal(
+      condO002Cands.length,
+      2,
+      `Expected 2 O-002 candidates for the 2 conditional/fallback Lottie consumers, got: ${JSON.stringify(condO002Cands)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

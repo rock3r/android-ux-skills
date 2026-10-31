@@ -1539,7 +1539,7 @@ function analyzeLottieJson(content, filePath = "<lottie.json>") {
   try {
     parsed = JSON.parse(content);
   } catch {
-    return { isLottie: false };
+    return { isLottie: false, parseError: true };
   }
   if (!isLottieJsonObject(parsed)) {
     return { isLottie: false };
@@ -2210,7 +2210,7 @@ function runMotionDomainChecks({
     checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidates);
     checkT002(kf, conventionContext, fileMotionMd, rawFindings);
     checkCandidatesMisc(kf, rawCandidates);
-    collectLottieConsumers(kf, lottieConsumers);
+    collectLottieConsumers(kf, scaleHelpers, lottieConsumers);
   }
   checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates);
   const afterExceptionsFindings = [];
@@ -4592,27 +4592,45 @@ function resolveLottieProgressExpr(progressTokens, progressText, atTokIdx, scope
     hasUnknownPlayback: false
   };
 }
-function collectLottieConsumers(kf, outConsumers) {
+function collectLottieConsumers(kf, scaleHelpers, outConsumers) {
   const { declarations, calls, tokens } = kf;
   const composableFuns = declarations.filter((d) => d.kind === "fun" && d.isComposable);
   const outerValBindings = [];
-  for (const d of declarations) {
-    if (d.kind === "val" && d.delegateIdx === -1 && d.rhsStartIdx >= 0 && d.rhsStartIdx <= d.endTokIdx) {
-      const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
-      if (!insideComposable) {
-        outerValBindings.push({
-          name: d.name,
-          kind: "local-val",
-          assetRef: extractLottieAssetFromTokens(tokens.slice(d.startTokIdx, d.endTokIdx + 1)) || null,
-          animStateMeta: null,
-          rhsTokens: tokens.slice(d.rhsStartIdx, d.endTokIdx + 1),
-          rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
-          declStartIdx: d.startTokIdx,
-          declEndIdx: d.endTokIdx,
-          scopeStartIdx: 0,
-          scopeEndIdx: tokens.length - 1
-        });
-      }
+  const outerDecls = declarations.filter((d) => (d.kind === "val" || d.kind === "var") && (d.rhsStartIdx >= 0 || d.delegateIdx >= 0)).sort((a, b) => a.startTokIdx - b.startTokIdx);
+  for (const d of outerDecls) {
+    const insideComposable = composableFuns.some((fn) => d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx);
+    if (insideComposable) continue;
+    const exprStart = d.rhsStartIdx >= 0 ? d.rhsStartIdx : d.delegateIdx;
+    if (exprStart < 0 || exprStart > d.endTokIdx) continue;
+    const exprToks = tokens.slice(exprStart, d.endTokIdx + 1);
+    const rawSelection = extractLottieAssetSelectionForExpr(tokens, calls, exprToks, outerValBindings, d.startTokIdx);
+    const assetSelection = rawSelection ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || d.kind === "var" } : null;
+    if (d.kind === "val" && d.delegateIdx === -1 && d.rhsStartIdx >= 0) {
+      outerValBindings.push({
+        name: d.name,
+        kind: "local-val",
+        assetSelection,
+        animStateMeta: null,
+        rhsTokens: exprToks,
+        rhsText: kf.source.slice(tokens[d.rhsStartIdx].start, tokens[d.endTokIdx].end).trim(),
+        declStartIdx: d.startTokIdx,
+        declEndIdx: d.endTokIdx,
+        scopeStartIdx: 0,
+        scopeEndIdx: tokens.length - 1
+      });
+    } else if (assetSelection) {
+      outerValBindings.push({
+        name: d.name,
+        kind: "other",
+        assetSelection,
+        animStateMeta: null,
+        rhsTokens: null,
+        rhsText: null,
+        declStartIdx: d.startTokIdx,
+        declEndIdx: d.endTokIdx,
+        scopeStartIdx: 0,
+        scopeEndIdx: tokens.length - 1
+      });
     }
   }
   for (const fn of composableFuns) {
@@ -4622,10 +4640,21 @@ function collectLottieConsumers(kf, outConsumers) {
     const localDecls = declarations.filter(
       (d) => (d.kind === "val" || d.kind === "var") && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
     ).sort((a, b) => a.startTokIdx - b.startTokIdx);
+    const localScaleVars = /* @__PURE__ */ new Set();
+    for (const ld of localDecls) {
+      const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
+      if (declToks.some(
+        (t) => t.type === "Identifier" && (DURATION_SCALE_IDENTIFIERS.has(t.value) || scaleHelpers && scaleHelpers.has(t.value))
+      )) {
+        localScaleVars.add(ld.name);
+      }
+    }
     for (const ld of localDecls) {
       const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, ld.startTokIdx, fn.startTokIdx, fn.endTokIdx);
-      const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
-      const assetRef = extractLottieAssetFromTokens(declToks);
+      const exprStart = ld.rhsStartIdx >= 0 ? ld.rhsStartIdx : ld.delegateIdx;
+      const exprToks = exprStart >= 0 && exprStart <= ld.endTokIdx ? tokens.slice(exprStart, ld.endTokIdx + 1) : null;
+      const rawSelection = exprToks ? extractLottieAssetSelectionForExpr(tokens, calls, exprToks, scopedBindings, ld.startTokIdx) : null;
+      const assetSelection = rawSelection ? { assets: rawSelection.assets, uncertain: rawSelection.uncertain || ld.kind === "var" } : null;
       const animStateCall = calls.find(
         (c) => c.name === "animateLottieCompositionAsState" && c.nameTokIdx >= ld.startTokIdx && c.endTokIdx <= ld.endTokIdx
       );
@@ -4642,14 +4671,15 @@ function collectLottieConsumers(kf, outConsumers) {
       let rhsText = null;
       if (animStateCall) {
         const compArg = getCallArg(animStateCall, "composition", 0);
-        const compIdent = compArg?.tokens.find((t) => t.type === "Identifier")?.value;
+        const isSimpleCompIdent = Boolean(compArg) && compArg.tokens.length === 1 && compArg.tokens[0].type === "Identifier";
+        const compIdent = isSimpleCompIdent ? compArg.tokens[0].value : null;
         const clipArg = getLottieOverloadArg(animStateCall, "clipSpec", 4, true);
         const hasClipSpec = Boolean(clipArg && clipArg.text.trim() !== "null");
         const speedArg = getLottieOverloadArg(animStateCall, "speed", 5, true);
         const speedClass = speedArg ? classifyLottieSpeedExpr(speedArg.tokens, speedArg.text, animStateCall.nameTokIdx, scopedBindings) : "positive";
         const isPlayingArg = getLottieOverloadArg(animStateCall, "isPlaying", 1, true);
         const reverseOnRepeatArg = getLottieOverloadArg(animStateCall, "reverseOnRepeat", 3, true);
-        const hasUnknownPlayback = speedClass === "zero" || speedClass === "unknown" || Boolean(isPlayingArg && isPlayingArg.text.trim() !== "true") || Boolean(reverseOnRepeatArg && reverseOnRepeatArg.text.trim() !== "false");
+        const hasUnknownPlayback = !isSimpleCompIdent || speedClass === "zero" || speedClass === "unknown" || Boolean(isPlayingArg && isPlayingArg.text.trim() !== "true") || Boolean(reverseOnRepeatArg && reverseOnRepeatArg.text.trim() !== "false");
         kind = "lottie-anim-state";
         animStateMeta = {
           compIdent,
@@ -4667,7 +4697,7 @@ function collectLottieConsumers(kf, outConsumers) {
       scopedBindings.push({
         name: ld.name,
         kind,
-        assetRef: assetRef || null,
+        assetSelection,
         animStateMeta,
         rhsTokens,
         rhsText,
@@ -4682,20 +4712,20 @@ function collectLottieConsumers(kf, outConsumers) {
       if (c.name !== "LottieAnimation" || !c.hasParens) continue;
       const compArg = getCallArg(c, "composition", 0);
       if (!compArg) continue;
-      let assetRef = extractLottieAssetFromTokens(compArg.tokens);
-      if (!assetRef) {
-        for (let idx = 0; idx < compArg.tokens.length; idx += 1) {
-          const t = compArg.tokens[idx];
-          if (t.type === "Identifier" && isUnqualifiedLocalIdent(compArg.tokens, idx)) {
-            const binding = resolveScopedBinding(t.value, c.nameTokIdx, scopedBindings);
-            if (binding?.assetRef) {
-              assetRef = binding.assetRef;
-              break;
-            }
-          }
-        }
-      }
-      if (!assetRef) continue;
+      const assetSelection = extractLottieAssetSelectionForExpr(
+        tokens,
+        calls,
+        compArg.tokens,
+        scopedBindings,
+        c.nameTokIdx
+      );
+      if (!assetSelection || assetSelection.assets.length === 0) continue;
+      const guardSlices = collectEnclosingGuardSlices(tokens, fn, c.nameTokIdx);
+      const guardedByDurationScale = guardSlices.some(
+        (slice) => slice.some(
+          (t, idx) => t.type === "Identifier" && (DURATION_SCALE_IDENTIFIERS.has(t.value) || scaleHelpers && scaleHelpers.has(t.value) || localScaleVars.has(t.value) && isUnqualifiedLocalIdent(slice, idx))
+        )
+      );
       const namedProgressArg = c.args.find((a) => a.name === "progress");
       const firstIsCompSlot = c.args.length >= 1 && (c.args[0].name === null || c.args[0].name === "composition");
       const posSlot1Arg = firstIsCompSlot && c.args.length >= 2 && c.args[1].name === null ? c.args[1] : null;
@@ -4733,22 +4763,26 @@ function collectLottieConsumers(kf, outConsumers) {
         if (resolved.isNegativeSpeed) isNegativeSpeed = true;
         if (resolved.hasUnknownPlayback) hasUnknownPlayback = true;
       }
-      if (hasUnknownPlayback && progressKind !== "constant-mid") {
-        progressKind = "custom-progress";
+      const uncertainAsset = assetSelection.uncertain;
+      const effectiveUnknownPlayback = hasUnknownPlayback || uncertainAsset || guardedByDurationScale;
+      const effectiveProgressKind = effectiveUnknownPlayback && progressKind !== "constant-mid" ? "custom-progress" : progressKind;
+      for (const assetRef of assetSelection.assets) {
+        outConsumers.push({
+          filePath: kf.filePath,
+          composableName: fn.name,
+          composableLines: [fn.startLine, fn.endLine],
+          callLines: [c.startLine, c.endLine],
+          assetBaseName: assetRef.baseName,
+          assetKind: assetRef.kind,
+          assetRelPath: assetRef.assetRelPath,
+          uncertainAsset,
+          guardedByDurationScale,
+          hasClipSpec,
+          isNegativeSpeed,
+          hasUnknownPlayback: effectiveUnknownPlayback,
+          progressKind: effectiveProgressKind
+        });
       }
-      outConsumers.push({
-        filePath: kf.filePath,
-        composableName: fn.name,
-        composableLines: [fn.startLine, fn.endLine],
-        callLines: [c.startLine, c.endLine],
-        assetBaseName: assetRef.baseName,
-        assetKind: assetRef.kind,
-        assetRelPath: assetRef.assetRelPath,
-        hasClipSpec,
-        isNegativeSpeed,
-        hasUnknownPlayback,
-        progressKind
-      });
     }
   }
 }
@@ -4770,24 +4804,242 @@ function classifyExplicitLottieProgress(rawExpr) {
   }
   return "custom-progress";
 }
-function extractLottieAssetFromTokens(toks) {
-  for (let i = 0; i + 4 < toks.length; i += 1) {
-    if (toks[i].value === "R" && toks[i + 1].value === "." && toks[i + 2].value === "raw" && toks[i + 3].value === "." && toks[i + 4].type === "Identifier") {
-      return { kind: "raw", baseName: toks[i + 4].value, assetRelPath: null };
+function collectEnclosingGuardSlices(tokens, fn, targetTokIdx) {
+  const slices = [];
+  if (!fn || fn.startTokIdx >= fn.endTokIdx) return slices;
+  const scanStartIdx = fn.startTokIdx;
+  const scanEndIdx = fn.endTokIdx;
+  for (let i = scanStartIdx; i < targetTokIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === "Keyword" && t.value === "if" && tokens[i + 1]?.value === "(") {
+      const closeCond = findMatchingForward(tokens, i + 1, "(", ")");
+      if (closeCond === -1) continue;
+      const condSlice = tokens.slice(i + 2, closeCond);
+      const thenRange = findSingleStatementOrBlockRange(tokens, closeCond + 1, scanEndIdx);
+      if (!thenRange) continue;
+      let elseRange = null;
+      if (tokens[thenRange[1] + 1]?.type === "Keyword" && tokens[thenRange[1] + 1].value === "else") {
+        elseRange = findSingleStatementOrBlockRange(tokens, thenRange[1] + 2, scanEndIdx);
+      }
+      const enclosesTarget = idxInsideRange(targetTokIdx, thenRange) || idxInsideRange(targetTokIdx, elseRange);
+      const earlyExitsBeforeTarget = thenRange[1] < targetTokIdx && sharesBraceScopeWithTarget(tokens, i, targetTokIdx, scanStartIdx, scanEndIdx) && (rangeHasControlExit(tokens, thenRange, ["return"]) || rangeHasControlExit(tokens, elseRange, ["return"]));
+      if (enclosesTarget || earlyExitsBeforeTarget) {
+        slices.push(condSlice);
+      }
+      continue;
+    }
+    if (t.type === "Keyword" && t.value === "when") {
+      let cursor = i + 1;
+      let subjSlice = null;
+      if (tokens[cursor]?.value === "(") {
+        const closeSubj = findMatchingForward(tokens, cursor, "(", ")");
+        if (closeSubj === -1) continue;
+        subjSlice = tokens.slice(cursor + 1, closeSubj);
+        cursor = closeSubj + 1;
+      }
+      if (tokens[cursor]?.value !== "{") continue;
+      const closeWhen = findMatchingForward(tokens, cursor, "{", "}");
+      if (closeWhen === -1) continue;
+      const whenRange = [cursor, closeWhen];
+      const enclosesTarget = idxInsideRange(targetTokIdx, whenRange);
+      const earlyExitsBeforeTarget = closeWhen < targetTokIdx && sharesBraceScopeWithTarget(tokens, i, targetTokIdx, scanStartIdx, scanEndIdx) && rangeHasControlExit(tokens, whenRange, ["return"]);
+      if (enclosesTarget || earlyExitsBeforeTarget) {
+        if (subjSlice && subjSlice.length > 0) slices.push(subjSlice);
+      }
     }
   }
-  for (const t of toks) {
+  return slices;
+}
+var ALLOWED_UNCONDITIONAL_LOTTIE_CALLS = /* @__PURE__ */ new Set(["RawRes", "Asset"]);
+var DISALLOWED_UNCONDITIONAL_LOTTIE_KEYWORDS = /* @__PURE__ */ new Set([
+  "if",
+  "else",
+  "when",
+  "try",
+  "catch",
+  "for",
+  "while",
+  "do",
+  "return",
+  "throw"
+]);
+var DISALLOWED_UNCONDITIONAL_LOTTIE_PUNCT = /* @__PURE__ */ new Set([
+  "?:",
+  "?.",
+  "->",
+  "{",
+  "}",
+  "[",
+  "]",
+  "::",
+  "&&",
+  "||",
+  "==",
+  "!=",
+  "<",
+  ">",
+  "<=",
+  ">=",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%"
+]);
+function stripOuterParensTokens(toks) {
+  let cur = toks;
+  while (cur.length >= 2 && cur[0].type === "Punct" && cur[0].value === "(" && cur[cur.length - 1].type === "Punct" && cur[cur.length - 1].value === ")") {
+    let depth = 0;
+    let wrapsEntire = true;
+    for (let i = 0; i < cur.length; i += 1) {
+      if (cur[i].type === "Punct" && cur[i].value === "(") depth += 1;
+      else if (cur[i].type === "Punct" && cur[i].value === ")") {
+        depth -= 1;
+        if (depth === 0 && i < cur.length - 1) {
+          wrapsEntire = false;
+          break;
+        }
+      }
+    }
+    if (!wrapsEntire) break;
+    cur = cur.slice(1, -1);
+  }
+  return cur;
+}
+function unwrapRememberLottieComposition(tokens, calls, exprToks) {
+  const stripped = stripOuterParensTokens(exprToks);
+  if (stripped.length === 0) return stripped;
+  const firstTok = stripped[0];
+  const remCall = calls.find(
+    (c) => c.name === "rememberLottieComposition" && c.hasParens && (tokens[c.nameTokIdx] === firstTok || tokens[c.chainRootIdx] === firstTok)
+  );
+  if (!remCall) return stripped;
+  const remNamePos = stripped.indexOf(tokens[remCall.nameTokIdx]);
+  if (remNamePos < 0) return stripped;
+  for (let i = 0; i < remNamePos; i += 1) {
+    const t = stripped[i];
+    if (i % 2 === 0 && t.type !== "Identifier") return stripped;
+    if (i % 2 === 1 && !(t.type === "Punct" && t.value === ".")) return stripped;
+  }
+  const remEndPos = stripped.indexOf(tokens[remCall.endTokIdx]);
+  if (remEndPos === -1) return stripped;
+  const trailing = stripped.slice(remEndPos + 1);
+  const validTrailing = trailing.length === 0 || trailing.length === 1 && trailing[0].type === "Punct" && trailing[0].value === "!!" || trailing.length === 2 && trailing[0].type === "Punct" && trailing[0].value === "." && trailing[1].type === "Identifier" && trailing[1].value === "value" || trailing.length === 3 && trailing[0].type === "Punct" && trailing[0].value === "." && trailing[1].type === "Identifier" && trailing[1].value === "value" && trailing[2].type === "Punct" && trailing[2].value === "!!";
+  if (!validTrailing) return stripped;
+  const specArg = getCallArg(remCall, "spec", 0);
+  return specArg && specArg.tokens.length > 0 ? stripOuterParensTokens(specArg.tokens) : stripped;
+}
+function extractLottieAssetSelectionForExpr(tokens, calls, exprToks, scopedBindings, atTokIdx) {
+  if (!exprToks || exprToks.length === 0) return null;
+  const specToks = unwrapRememberLottieComposition(tokens, calls, exprToks);
+  if (!specToks || specToks.length === 0) return null;
+  const rawAssets = [];
+  const consumed = /* @__PURE__ */ new Set();
+  let uncertain = false;
+  let localVarRefs = 0;
+  for (let i = 0; i + 4 < specToks.length; i += 1) {
+    if (specToks[i].type === "Identifier" && specToks[i].value === "R" && specToks[i + 1].value === "." && specToks[i + 2].value === "raw" && specToks[i + 3].value === "." && specToks[i + 4].type === "Identifier") {
+      let pkgStart = i;
+      while (pkgStart >= 2 && specToks[pkgStart - 1].type === "Punct" && specToks[pkgStart - 1].value === "." && specToks[pkgStart - 2].type === "Identifier") {
+        pkgStart -= 2;
+      }
+      if (pkgStart > 0 && specToks[pkgStart - 1].type === "Punct" && (specToks[pkgStart - 1].value === "." || specToks[pkgStart - 1].value === "?." || specToks[pkgStart - 1].value === "::")) {
+        uncertain = true;
+      }
+      for (let k = pkgStart; k <= i + 4; k += 1) consumed.add(k);
+      rawAssets.push({ kind: "raw", baseName: specToks[i + 4].value, assetRelPath: null });
+    }
+  }
+  for (let i = 0; i < specToks.length; i += 1) {
+    const t = specToks[i];
     if (t.type === "StringLiteral" && /\.json$/i.test(t.value.trim())) {
+      consumed.add(i);
       const cleanRel = t.value.trim().replace(/\\/g, "/").replace(/^\/+/, "");
       const base = cleanRel.split("/").pop() || "";
-      return {
+      rawAssets.push({
         kind: "asset",
         baseName: base.replace(/\.json$/i, ""),
         assetRelPath: cleanRel
-      };
+      });
     }
   }
-  return null;
+  for (let i = 0; i + 1 < specToks.length; i += 1) {
+    if (!consumed.has(i) && specToks[i].type === "Identifier" && specToks[i + 1].type === "Punct" && specToks[i + 1].value === "=") {
+      consumed.add(i);
+      consumed.add(i + 1);
+    }
+  }
+  for (let i = 0; i < specToks.length; i += 1) {
+    if (consumed.has(i)) continue;
+    if (specToks[i].type === "Identifier" && specToks[i + 1]?.type === "Punct" && specToks[i + 1].value === "(") {
+      if (ALLOWED_UNCONDITIONAL_LOTTIE_CALLS.has(specToks[i].value)) {
+        consumed.add(i);
+        let q = i;
+        while (q >= 2 && specToks[q - 1].type === "Punct" && specToks[q - 1].value === "." && specToks[q - 2].type === "Identifier") {
+          consumed.add(q - 1);
+          consumed.add(q - 2);
+          q -= 2;
+        }
+      } else {
+        consumed.add(i);
+        uncertain = true;
+      }
+    }
+  }
+  for (let i = 0; i < specToks.length; i += 1) {
+    if (consumed.has(i)) continue;
+    const t = specToks[i];
+    if (t.type !== "Identifier") continue;
+    if (isUnqualifiedLocalIdent(specToks, i)) {
+      localVarRefs += 1;
+      consumed.add(i);
+      if (specToks[i + 1]?.type === "Punct" && specToks[i + 1].value === "." && specToks[i + 2]?.type === "Identifier" && specToks[i + 2].value === "value") {
+        consumed.add(i + 1);
+        consumed.add(i + 2);
+      }
+      const binding = resolveScopedBinding(t.value, atTokIdx, scopedBindings);
+      if (binding?.assetSelection && binding.assetSelection.assets.length > 0) {
+        rawAssets.push(...binding.assetSelection.assets);
+        if (binding.assetSelection.uncertain) uncertain = true;
+      } else {
+        uncertain = true;
+      }
+    } else {
+      uncertain = true;
+    }
+  }
+  const seenKeys = /* @__PURE__ */ new Set();
+  const assets = [];
+  for (const a of rawAssets) {
+    const key = `${a.kind}:${a.assetRelPath || a.baseName}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      assets.push(a);
+    }
+  }
+  if (assets.length === 0) return null;
+  if (assets.length > 1 || localVarRefs > 1) {
+    uncertain = true;
+  }
+  for (let i = 0; i < specToks.length; i += 1) {
+    const t = specToks[i];
+    if (t.type === "Keyword" && DISALLOWED_UNCONDITIONAL_LOTTIE_KEYWORDS.has(t.value)) {
+      uncertain = true;
+      break;
+    }
+    if (t.type === "Punct" && DISALLOWED_UNCONDITIONAL_LOTTIE_PUNCT.has(t.value)) {
+      uncertain = true;
+      break;
+    }
+    if (!consumed.has(i)) {
+      const isStructuralPunct = t.type === "Punct" && (t.value === "(" || t.value === ")" || t.value === "," || t.value === "!!");
+      if (!isStructuralPunct) {
+        uncertain = true;
+        break;
+      }
+    }
+  }
+  return { assets, uncertain };
 }
 function doesConsumerMatchLottieFile(cons, lf) {
   if (cons.assetBaseName !== lf.assetBaseName) return false;
@@ -4855,7 +5107,7 @@ function checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates) {
       }
       if (cons.progressKind === "custom-progress") {
         if (lf.allBlankAtEnd || lf.allBlankAtStart) {
-          const viaDesc = cons.hasUnknownPlayback ? "with a dynamic or non-forward playback parameter (`speed` / `isPlaying` / `reverseOnRepeat`)" : "via an explicit custom `progress` lambda";
+          const viaDesc = cons.uncertainAsset ? "via a conditional or dynamic `LottieCompositionSpec` selection" : cons.guardedByDurationScale ? "inside an animator duration-scale guard" : cons.hasUnknownPlayback ? "with a dynamic or non-forward playback parameter (`speed` / `isPlaying` / `reverseOnRepeat`)" : "via an explicit custom `progress` lambda";
           rawCandidates.push(
             makeRuleCandidate("O-002", {
               file: cons.filePath,
@@ -5473,31 +5725,64 @@ function runStaticScan({
       });
     }
   }
+  const analyzedFilesSet = /* @__PURE__ */ new Set();
+  const skippedFilesSet = /* @__PURE__ */ new Set();
   for (const filePath of collectedFiles) {
+    const absFilePath = path4.resolve(filePath);
+    const baseLower = path4.basename(filePath).toLowerCase();
+    if (baseLower.endsWith(".json")) {
+      try {
+        const st = fs3.statSync(filePath);
+        if (st.size > 4 * 1024 * 1024) {
+          skippedFilesSet.add(absFilePath);
+          continue;
+        }
+      } catch (err) {
+        skippedFilesSet.add(absFilePath);
+        operationalErrors.push({
+          file: filePath,
+          error: `Cannot read "${filePath}": ${err?.message || String(err)}`
+        });
+        continue;
+      }
+    }
     let content;
     try {
       content = fs3.readFileSync(filePath, "utf8");
     } catch (err) {
+      skippedFilesSet.add(absFilePath);
       operationalErrors.push({
         file: filePath,
         error: `Cannot read "${filePath}": ${err?.message || String(err)}`
       });
       continue;
     }
-    const baseLower = path4.basename(filePath).toLowerCase();
     if (baseLower === "motion.md") {
-      seenMotionPaths.add(path4.resolve(filePath));
+      seenMotionPaths.add(absFilePath);
+      analyzedFilesSet.add(absFilePath);
       motionContracts.push(parseMotionMd(content, filePath, { draft, baseContent: baseMotionContent }));
     } else if (baseLower.endsWith(".kt")) {
       const parsed = scanKotlinSource(content, filePath);
-      if (parsed.lexError) lexErrorCount += 1;
+      if (parsed.lexError) {
+        lexErrorCount += 1;
+        skippedFilesSet.add(absFilePath);
+      } else {
+        analyzedFilesSet.add(absFilePath);
+      }
       kotlinFiles.push(parsed);
     } else if (baseLower.endsWith(".json")) {
       if (content.length <= 4 * 1024 * 1024) {
         const lottie = analyzeLottieJson(content, filePath);
-        if (lottie.isLottie) {
-          lottieFiles.push(lottie);
+        if (lottie.parseError) {
+          skippedFilesSet.add(absFilePath);
+        } else {
+          analyzedFilesSet.add(absFilePath);
+          if (lottie.isLottie) {
+            lottieFiles.push(lottie);
+          }
         }
+      } else {
+        skippedFilesSet.add(absFilePath);
       }
     }
   }
@@ -5577,7 +5862,8 @@ function runStaticScan({
     waivers: projectConfig.waivers || [],
     usedWaiverIndices,
     includedDomainSet,
-    scannedFilesSet: new Set([...collectedFiles].map((f) => path4.resolve(f))),
+    scannedFilesSet: analyzedFilesSet,
+    skippedFilesSet,
     projectIgnoreFiles: configEnabled ? projectConfig.ignoreFiles || [] : [],
     isFullProjectScan,
     hasScanErrors: operationalErrors.length > 0 || lexErrorCount > 0,
@@ -5621,7 +5907,12 @@ function runStaticScan({
     stats: collectStats ? domainStats : void 0
   };
 }
+var CROSS_FILE_WAIVER_RULES = /* @__PURE__ */ new Set(["O-002"]);
 function findMatchingProjectWaiver(item, waivers, cwd) {
+  const itemFiles = [
+    item.file,
+    ...Array.isArray(item.alsoAt) ? item.alsoAt.map((a) => a.file).filter(Boolean) : []
+  ];
   for (let i = 0; i < waivers.length; i += 1) {
     const w = waivers[i];
     if (isWaiverExpired(w)) continue;
@@ -5631,9 +5922,9 @@ function findMatchingProjectWaiver(item, waivers, cwd) {
       if (w.kind !== "false-positive" || !Array.isArray(w.files) || w.files.length === 0 || w.files.some((pat) => /[*?[\]{}]/.test(pat))) {
         continue;
       }
-      if (!matchesExactProjectPath(item.file, w.files, cwd)) continue;
+      if (!itemFiles.some((f) => matchesExactProjectPath(f, w.files, cwd))) continue;
     } else if (Array.isArray(w.files) && w.files.length > 0) {
-      if (!matchesFilePattern(item.file, w.files, cwd)) continue;
+      if (!itemFiles.some((f) => matchesFilePattern(f, w.files, cwd))) continue;
     }
     if (w.value) {
       const hay = `${item.evidence || ""} ${item.summary || ""}`.toLowerCase();
@@ -5648,12 +5939,14 @@ function auditProjectWaivers({
   usedWaiverIndices,
   includedDomainSet,
   scannedFilesSet,
+  skippedFilesSet = /* @__PURE__ */ new Set(),
   projectIgnoreFiles = [],
   isFullProjectScan,
   hasScanErrors,
   cwd
 }) {
   const scannedFilesArr = Array.from(scannedFilesSet);
+  const skippedFilesArr = Array.from(skippedFilesSet);
   return waivers.map((w, index) => {
     const ruleMeta = findRuleById(w.rule);
     const expired = isWaiverExpired(w);
@@ -5682,21 +5975,29 @@ function auditProjectWaivers({
       usageStatus = "unknown";
     } else if (hasScanErrors) {
       usageStatus = "unknown";
+    } else if (CROSS_FILE_WAIVER_RULES.has(w.rule) && (!isFullProjectScan || skippedFilesSet.size > 0 || projectIgnoreFiles.length > 0)) {
+      usageStatus = "unknown";
     } else if (Array.isArray(w.files) && w.files.length > 0) {
       const everyPatternCovered = w.files.every((pat) => {
         if (!/[*?[\]{}]/.test(pat)) {
           const abs = path4.resolve(cwd, pat);
+          if (skippedFilesSet.has(abs)) {
+            return false;
+          }
           if (fs3.existsSync(abs)) {
-            return scannedFilesSet.has(abs);
+            return scannedFilesSet.has(abs) && !skippedFilesSet.has(abs);
           }
           if (!ruleMeta.overridable) return false;
+        }
+        if (skippedFilesArr.some((sf) => matchesFilePattern(sf, [pat], cwd))) {
+          return false;
         }
         return isFullProjectScan && projectIgnoreFiles.length === 0 && scannedFilesArr.some((sf) => matchesFilePattern(sf, [pat], cwd));
       });
       if (everyPatternCovered) {
         usageStatus = "proven-unused";
       }
-    } else if (isFullProjectScan && projectIgnoreFiles.length === 0 && scannedFilesArr.length > 0) {
+    } else if (isFullProjectScan && projectIgnoreFiles.length === 0 && skippedFilesSet.size === 0 && scannedFilesArr.length > 0) {
       usageStatus = "proven-unused";
     }
     const issues = [];
