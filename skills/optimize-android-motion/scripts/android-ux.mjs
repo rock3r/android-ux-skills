@@ -9996,10 +9996,13 @@ function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.env } = 
     }
     if (raw.toolCall && typeof raw.toolCall === "object") {
       const toolName2 = String(raw.toolCall.name || "");
-      const args = raw.toolCall.args && typeof raw.toolCall.args === "object" ? raw.toolCall.args : {};
       const rawCandidates = [];
-      for (const candidate of [args.Path, args.NotebookPath, args.file_path, args.path]) {
-        if (typeof candidate === "string" && candidate.trim()) rawCandidates.push(candidate.trim());
+      const jetPatchSources = [];
+      collectToolArgSource(raw.toolCall.args, rawCandidates, jetPatchSources);
+      for (const patchText of jetPatchSources) {
+        for (const p of parseApplyPatchPaths(patchText)) {
+          rawCandidates.push(p);
+        }
       }
       const files = Array.from(
         new Set(rawCandidates.map((c) => resolveCandidatePathAgainstRoots(c, roots2, roots2[0])).filter(Boolean))
@@ -10096,42 +10099,50 @@ function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.env } = 
     preimage: resolvePreimageInfo(toolName, raw)
   };
 }
-function extractTargetFilesFromEvent(raw, projectRoot, roots = [projectRoot]) {
-  const candidates = [];
-  const ti = raw.tool_input && typeof raw.tool_input === "object" ? raw.tool_input : {};
-  for (const val of [ti.file_path, ti.path, ti.notebook_path, raw.file_path, raw.path]) {
-    if (typeof val === "string" && val.trim()) candidates.push(val.trim());
+function collectStructuredToolArgs(argsObj, candidates, patchSources) {
+  if (!argsObj || typeof argsObj !== "object" || Array.isArray(argsObj)) return;
+  for (const v of [argsObj.Path, argsObj.NotebookPath, argsObj.file_path, argsObj.path, argsObj.file, argsObj.notebook_path]) {
+    if (typeof v === "string" && v.trim()) candidates.push(v.trim());
   }
-  if (Array.isArray(ti.edits)) {
-    for (const ed of ti.edits) {
-      if (typeof ed?.file_path === "string" && ed.file_path.trim()) {
-        candidates.push(ed.file_path.trim());
+  if (Array.isArray(argsObj.edits)) {
+    for (const ed of argsObj.edits) {
+      for (const ep of [ed?.file_path, ed?.path, ed?.file]) {
+        if (typeof ep === "string" && ep.trim()) candidates.push(ep.trim());
       }
     }
   }
-  const patchSources = [];
-  if (typeof ti.command === "string") patchSources.push(ti.command);
-  if (typeof ti.patch === "string") patchSources.push(ti.patch);
-  if (typeof raw.toolArgs === "string") {
-    const trimmed = raw.toolArgs.trim();
+  if (typeof argsObj.command === "string") patchSources.push(argsObj.command);
+  if (typeof argsObj.patch === "string") patchSources.push(argsObj.patch);
+}
+function collectToolArgSource(source, candidates, patchSources) {
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (!trimmed) return;
     if (trimmed.startsWith("{")) {
       try {
-        const parsedArgs = JSON.parse(trimmed);
-        for (const v of [parsedArgs.path, parsedArgs.file_path, parsedArgs.file]) {
-          if (typeof v === "string" && v.trim()) candidates.push(v.trim());
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          collectStructuredToolArgs(parsed, candidates, patchSources);
+          return;
         }
-        if (typeof parsedArgs.patch === "string") patchSources.push(parsedArgs.patch);
       } catch {
-        patchSources.push(trimmed);
       }
-    } else {
-      patchSources.push(trimmed);
     }
-  } else if (raw.toolArgs && typeof raw.toolArgs === "object") {
-    for (const v of [raw.toolArgs.path, raw.toolArgs.file_path, raw.toolArgs.file]) {
-      if (typeof v === "string" && v.trim()) candidates.push(v.trim());
-    }
+    patchSources.push(trimmed);
+    return;
   }
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    collectStructuredToolArgs(source, candidates, patchSources);
+  }
+}
+function extractTargetFilesFromEvent(raw, projectRoot, roots = [projectRoot]) {
+  const candidates = [];
+  const patchSources = [];
+  for (const val of [raw.file_path, raw.path, raw.file, raw.notebook_path]) {
+    if (typeof val === "string" && val.trim()) candidates.push(val.trim());
+  }
+  collectToolArgSource(raw.tool_input, candidates, patchSources);
+  collectToolArgSource(raw.toolArgs, candidates, patchSources);
   for (const patchText of patchSources) {
     for (const p of parseApplyPatchPaths(patchText)) {
       candidates.push(p);

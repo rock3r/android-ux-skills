@@ -807,6 +807,36 @@ import androidx.compose.ui.draw.alpha
     );
     assert.equal(cursorMulti.emitted, true, 'Cursor multi-root edit in workspace_roots[1] must emit findings');
     assert.match(cursorMulti.payload.additional_context, /FeatureB\.kt.*\[F-001\]/);
+
+    // 5. Object-valued `toolArgs: { patch: "*** Begin Patch..." }` (Copilot) and string `tool_input` (Codex) extract patched files
+    const patchBody = `*** Begin Patch\n*** Update File: FeatureB.kt\n@@\n*** End Patch\n`;
+    const copilotObjPatch = executeHookPayload(
+      JSON.stringify({
+        hookEventName: 'postToolUse',
+        sessionId: 'cop-obj-patch',
+        toolName: 'apply_patch',
+        toolUseId: 'cop-tu-1',
+        cwd: rootB,
+        toolArgs: { patch: patchBody },
+      }),
+      { cwd: rootB, env, platform: 'linux' }
+    );
+    assert.equal(copilotObjPatch.emitted, true, 'Object-valued toolArgs.patch must extract target file');
+    assert.match(copilotObjPatch.payload.additionalContext, /FeatureB\.kt.*\[F-001\]/);
+
+    const codexStrPatch = executeHookPayload(
+      JSON.stringify({
+        hook_event_name: 'PostToolUse',
+        session_id: 'codex-str-patch',
+        tool_name: 'apply_patch',
+        tool_use_id: 'cdx-tu-1',
+        cwd: rootB,
+        tool_input: patchBody,
+      }),
+      { cwd: rootB, env: { ...env, ANDROID_UX_HOOK_HARNESS: 'codex' }, platform: 'linux' }
+    );
+    assert.equal(codexStrPatch.emitted, true, 'String-valued tool_input apply_patch must extract target file');
+    assert.match(codexStrPatch.payload.hookSpecificOutput.additionalContext, /FeatureB\.kt.*\[F-001\]/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
