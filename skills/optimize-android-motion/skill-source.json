@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "skill": "optimize-android-motion",
+  "attribution": "Perfetto measurement workflow, precomposed step-deck patterns, non-disposing folding slots, saveLayer latching, and ModalBottomSheet offscreen compositing derived from empirical 120 Hz profiling on Android 16/17 hardware. Shares the floor and obligation rules from STANDARDS.md.",
+  "sources": [
+    {
+      "type": "upstream-reference",
+      "role": "supporting-reference",
+      "label": "developer.android.com — Jetpack Compose phases and performance",
+      "version": "2026-10-19",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-10-19",
+      "license": "unknown",
+      "url": "https://developer.android.com/develop/ui/compose/performance/phases",
+      "check": {
+        "type": "manual",
+        "reason": "Unversioned documentation site. Re-read when Compose phase execution or layout/draw deferral APIs change."
+      }
+    },
+    {
+      "type": "upstream-reference",
+      "role": "supporting-reference",
+      "label": "androidx compose-material3 — ModalBottomSheet and MotionScheme",
+      "version": "8ada756bb2132fac399365d71d77ada043c5bab4",
+      "versionSource": "gitCommit",
+      "fetchedAt": "2026-10-19",
+      "license": "Apache-2.0",
+      "url": "https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3",
+      "check": {
+        "type": "github",
+        "repository": "androidx/androidx",
+        "path": "compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/ModalBottomSheet.kt",
+        "trackingRef": "androidx-main"
+      }
+    },
+    {
+      "type": "upstream-skill",
+      "role": "supporting-reference",
+      "label": "android/skills — jetpack-compose-performance and android-profiler",
+      "version": "2026-10-21",
+      "versionSource": "fetchDate",
+      "fetchedAt": "2026-10-21",
+      "license": "Apache-2.0",
+      "url": "https://github.com/android/skills",
+      "check": {
+        "type": "github",
+        "repository": "android/skills",
+        "path": "profilers/android-profiler/SKILL.md",
+        "trackingRef": "main"
+      }
+    },
+    {
+      "type": "local-original-content",
+      "role": "original-content",
+      "label": "Android motion optimization — Perfetto diagnosis, deck precomposition, and GPU pipeline patterns",
+      "version": "0.1.0",
+      "versionSource": "frontmatter",
+      "fetchedAt": "2026-10-21",
+      "license": "Apache-2.0"
+    }
+  ]
+}

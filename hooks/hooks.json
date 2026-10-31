@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \"${CLAUDE_PLUGIN_ROOT}/skills/animate-compose/scripts/android-ux\" ] || \"${CLAUDE_PLUGIN_ROOT}/skills/animate-compose/scripts/android-ux\" hook",
+            "timeout": 5,
+            "statusMessage": "Checking Android UX changes"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \"${CLAUDE_PLUGIN_ROOT}/skills/animate-compose/scripts/android-ux\" ] || \"${CLAUDE_PLUGIN_ROOT}/skills/animate-compose/scripts/android-ux\" hook",
+            "timeout": 15,
+            "statusMessage": "Android UX turn check"
+          }
+        ]
+      }
+    ]
+  }
+}

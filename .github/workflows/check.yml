@@ -20,6 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install CLI build dependencies
+        run: npm ci
+
       - name: Install rumdl
         run: |
           set -euo pipefail
@@ -36,14 +45,14 @@ jobs:
       - name: Markdown lint
         run: rumdl check .
 
-      - name: Skill references are in sync with STANDARDS.md
-        # The copies under skills/*/references/ are generated. A hand-edit there would be
-        # silently lost on the next sync, so drift is a failure rather than a warning.
+      - name: Skill references and CLI bundles are in sync
+        # The copies under skills/*/references/ and skills/*/scripts/ are generated. A
+        # hand-edit there would be silently lost on the next sync, so drift is a failure.
         run: ./scripts/sync-references.sh --check
 
-      - name: Skills satisfy the registry contract
+      - name: Skills and manifests satisfy the registry contract
         # Slugs, frontmatter, SemVer, tag shape, ingestible file set, sidecar validity,
-        # size cap — and that every rule id a skill cites still exists in STANDARDS.md.
+        # size cap, bundled CLI checks — and that every rule id cited still exists in STANDARDS.md.
         run: ./scripts/check-skills.sh
 
       - name: Eval fixtures do not leak their answers
@@ -64,7 +73,31 @@ jobs:
         run: ./scripts/test-judge-evals.py
 
       - name: Eval batteries parse and plan
-        run: ./scripts/run-evals.py --skill review-android-motion --dry-run --out /dev/null
+        run: |
+          for s in review-android-motion optimize-android-motion; do
+            ./scripts/run-evals.py --skill "$s" --dry-run --out /dev/null
+          done
 
       - name: Shell scripts parse
-        run: for f in scripts/*.sh; do bash -n "$f"; done
+        run: for f in scripts/*.sh cli/launcher/android-ux; do bash -n "$f"; done
+
+  cli-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run CLI test suite
+        run: npm test

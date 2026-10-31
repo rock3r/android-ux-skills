@@ -63,8 +63,9 @@ and no inherited conversation context whenever subagent tools are available. Run
 inline is a degraded run and must be labeled as one.
 
 **Assessment A — unanchored motion judgment.** Start with an empty context containing only
-the target code and `MOTION.md`, without `references/standards.md` or any rule findings.
-It evaluates:
+the target code and `MOTION.md`, without `references/standards.md`, without running
+`scripts/android-ux` (`context` or `detect`), without reading `scripts/android-ux.mjs`,
+and disregarding any prior hook messages in the session. It evaluates:
 
 - Should this motion exist at all, and what purpose does it serve?
 - Does it match the project's motion language in `MOTION.md`? (If `MOTION.md` was not
@@ -78,7 +79,14 @@ It evaluates:
 
 **Assessment B — rule checks.** Check the target code against `references/standards.md` and
 return every match with `path`, `line-range`, `rule-id`, `severity`, and one line of
-evidence.
+evidence. Assessment B may run `sh "<skill-dir>/scripts/android-ux" detect --json
+<target>` once to collect exact 1-based line spans for mechanical `findings[]` and
+advisory `candidates[]`, then read `references/standards.md` and the target files to
+verify each candidate and evaluate semantic rules that static analysis cannot see. If
+executing `scripts/android-ux` fails or is blocked by a sandbox (`EPERM`, `Operation not
+permitted`, or missing Node), do not retry, do not mention Node installation, and never
+read `scripts/android-ux.mjs` — read `references/standards.md` and numbered views of the
+target files directly.
 
 Always read line numbers from a numbered view (`cat -n`, `nl -ba`, `rg -n`, or editor line
 numbers) rather than counting lines by eye.

@@ -1,0 +1,55 @@
+{
+  "name": "android-ux",
+  "version": "0.1.0",
+  "description": "Deterministic CLI spine, static Compose motion detector, Perfetto trace analyzer, and non-blocking agent hooks for Android UX skills.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Sebastiano Poggi",
+    "url": "https://github.com/rock3r"
+  },
+  "homepage": "https://github.com/rock3r/android-ux-skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rock3r/android-ux-skills.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "android-ux": "./cli/bin/android-ux.mjs"
+  },
+  "exports": {
+    ".": "./cli/src/index.mjs"
+  },
+  "files": [
+    "cli/bin/",
+    "cli/src/",
+    "cli/launcher/",
+    "plugin.json",
+    "hooks.json",
+    "hooks/",
+    ".claude-plugin/",
+    "STANDARDS.md",
+    "skills/*/SKILL.md",
+    "skills/*/references/**",
+    "skills/*/scripts/**"
+  ],
+  "scripts": {
+    "build": "./scripts/sync-references.sh",
+    "test": "node --test cli/test/*.test.mjs",
+    "check": "./scripts/sync-references.sh --check && ./scripts/check-skills.sh"
+  },
+  "keywords": [
+    "android",
+    "jetpack-compose",
+    "motion",
+    "animation",
+    "perfetto",
+    "agent-skills",
+    "ux"
+  ],
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

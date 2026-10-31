@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "android-ux-skills",
   "version": "1.0.0",
-  "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language into a MOTION.md, and review motion adversarially.",
+  "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language into a MOTION.md, review motion adversarially, and eliminate transition and GPU jank.",
   "author": {
     "name": "Sebastiano Poggi",
     "url": "https://github.com/rock3r"
@@ -23,7 +23,7 @@
       "interface": {
         "displayName": "Android UX Skills",
         "shortDescription": "Android motion and design-engineering craft",
-        "longDescription": "Three skills for Android motion: animate-compose for adding motion that belongs, improve-android-motion for mapping a codebase's motion language into a MOTION.md, and review-android-motion for adversarial review of motion changes."
+        "longDescription": "Four skills for Android motion: animate-compose for adding motion that belongs, improve-android-motion for mapping a codebase's motion language into a MOTION.md, review-android-motion for adversarial review of motion changes, and optimize-android-motion for tracing and fixing dropped frames in transitions and reveals."
       }
     }
   }

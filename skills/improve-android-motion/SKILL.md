@@ -47,6 +47,15 @@ Auditing a repository separates two jobs:
 
 ## Phase 1 — Inspect the codebase
 
+Start with one call to `sh "<skill-dir>/scripts/android-ux" context --signals --json` and
+`sh "<skill-dir>/scripts/android-ux" detect --stats --json` to gather an inventory of
+existing `MOTION.md` specs, Gradle dependencies, token definitions, spec-call counts, and
+mechanical findings. When validating a proposed `MOTION.md` draft, run `sh
+"<skill-dir>/scripts/android-ux" detect --draft <draft-file> --json` (adding `--base
+MOTION.md` when updating an existing contract). If executing the script fails or is denied
+by the sandbox, do not retry and never read `scripts/android-ux.mjs` — inspect the
+repository directly with read-only file and search tools.
+
 Check the repository for existing motion patterns:
 
 - Does a `MOTION.md` file already exist? If so, update it against current code rather than

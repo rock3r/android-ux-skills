@@ -352,9 +352,84 @@ def resolve_actor(command: str) -> tuple[str, list[str]]:
     return str(real), grants
 
 
+def _prepare_pi_home(battery: Path) -> tuple[Path | None, dict[str, str]]:
+    """Stage a sandbox-safe Pi home under `battery`.
+
+    Pioneer's Seatbelt sandbox forbids `fork`/`exec` inside the actor. User packages
+    that spawn background processes at startup (`pi-subagents`) fail with
+    `EPERM (syscall: spawn)` when inherited from `~/.pi/agent`. Staging a `--pi-home`
+    that preserves `extensions/` and `npm/` while filtering `pi-subagents` from
+    `packages` — and materialising any local-loopback providers from `models-store.json`
+    into `models.json` — keeps both cloud/extension and local-proxy providers working
+    inside the sandbox.
+    """
+    src = Path.home() / ".pi" / "agent"
+    if not src.is_dir():
+        return None, {}
+    dest = battery / "pi-home"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "auth.json",
+        "models-store.json",
+        "claude-code.json",
+        "claude-code-models.json",
+        "kimi-code-models.json",
+    ):
+        f = src / name
+        if f.is_file():
+            shutil.copy2(f, dest / name)
+
+    for dirname in ("extensions", "npm"):
+        d = src / dirname
+        target = dest / dirname
+        if d.is_dir() and not target.exists():
+            target.symlink_to(d, target_is_directory=True)
+
+    settings_file = src / "settings.json"
+    if settings_file.is_file():
+        settings = json.loads(settings_file.read_text())
+        if isinstance(settings.get("packages"), list):
+            settings["packages"] = [
+                pkg for pkg in settings["packages"]
+                if "pi-subagents" not in str(pkg)
+            ]
+        (dest / "settings.json").write_text(json.dumps(settings, indent=2))
+
+    models_data: dict = {"providers": {}}
+    models_file = src / "models.json"
+    if models_file.is_file():
+        models_data = json.loads(models_file.read_text())
+        models_data.setdefault("providers", {})
+
+    loopback_hosts: dict[str, str] = {}
+    store_file = src / "models-store.json"
+    if store_file.is_file():
+        store = json.loads(store_file.read_text())
+        for prov, pdata in store.items():
+            if not isinstance(pdata, dict):
+                continue
+            pmodels = pdata.get("models") or []
+            if not pmodels or not isinstance(pmodels[0], dict):
+                continue
+            base_url = pmodels[0].get("baseUrl") or ""
+            m_loop = re.match(r"^https?://(127\.0\.0\.1|localhost):(\d+)", base_url)
+            if m_loop:
+                loopback_hosts[prov] = f"{m_loop.group(1)}:{m_loop.group(2)}"
+                if prov not in models_data["providers"]:
+                    models_data["providers"][prov] = {
+                        "api": pmodels[0].get("api", "openai-completions"),
+                        "baseUrl": base_url,
+                        "apiKey": "local",
+                        "models": pmodels,
+                    }
+    (dest / "models.json").write_text(json.dumps(models_data, indent=2))
+    return dest, loopback_hosts
+
+
 def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
             timeout_ms: int, dry: bool, actor: tuple[str, list[str]] | None = None,
-            thinking: str = "") -> ArmResult:
+            thinking: str = "", pi_home: Path | None = None,
+            loopback: str | None = None) -> ArmResult:
     arm = run_dir.name
     # A dry run only prints the command, so the bare name will do; resolving it would
     # make the plan fail wherever pi is not installed, which is CI.
@@ -365,6 +440,10 @@ def run_arm(run_dir: Path, prompt: str, skill_path: Path | None, model: str,
         "--timeout-ms", str(timeout_ms),
         "--deny-read-probe", str(ROOT / "skills"),  # answer keys must be unreachable
     ]
+    if pi_home is not None:
+        cmd += ["--pi-home", str(pi_home)]
+    if loopback is not None:
+        cmd += ["--allow-loopback", loopback]
     for g in grants:
         cmd += ["--runtime-read", g]
     cmd += ["--", actor_path, "--model", model]
@@ -606,6 +685,36 @@ def work_root() -> Path:
     return root if "ANDROID_UX_SKILLS_WORK_DIR" in os.environ else root / "android-ux-skills"
 
 
+def _flatten_staged_fixtures(arm_dir: Path) -> None:
+    """Materialise staged fixtures at `<arm_dir>/<basename>` for Pioneer 0.4.6+.
+
+    Pioneer 0.4.6+ nests staged files under `fixtures/<subdir>/<name>` instead of
+    flattening to `<arm_dir>/<name>`. Every battery prompt in this repo names files
+    at the working-directory root (`File: AppNavigation.kt` alongside `MOTION.md`),
+    and `validate()` guarantees unique basenames per case. Flattening and removing
+    `fixtures/` avoids duplicate files and prevents fixture folder names (`c10`, `m1`)
+    from leaking case metadata.
+    """
+    case_meta_path = arm_dir / "case.json"
+    fixtures_dir = arm_dir / "fixtures"
+    if not case_meta_path.is_file() or not fixtures_dir.is_dir():
+        return
+    meta = json.loads(case_meta_path.read_text())
+    flat_names = []
+    for rel in meta.get("files", []):
+        src = arm_dir / rel
+        name = Path(rel).name
+        dst = arm_dir / name
+        if src.is_file() and not dst.exists():
+            shutil.copy2(src, dst)
+        flat_names.append(name)
+    shutil.rmtree(fixtures_dir, ignore_errors=True)
+    meta["prompt"] = meta.get("source_prompt", meta.get("prompt", ""))
+    meta["files"] = flat_names
+    meta.pop("fixtures_dir", None)
+    case_meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+
+
 def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                 work_dir: Path | None = None, actor_command: str = "pi",
                 tag: str = "", thinking: str = "") -> dict:
@@ -642,6 +751,8 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
             raise SystemExit(f"pioneer eval prepare failed for {name}:\n  {detail}")
 
     actor = None if dry else resolve_actor(actor_command)
+    pi_home, loopback_hosts = (None, {}) if dry else _prepare_pi_home(battery)
+    loopback = loopback_hosts.get(model.partition("/")[0])
 
     cases = []
     for case in spec["evals"]:
@@ -656,6 +767,8 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
         # the process output. They are also the input any later qualitative pass needs.
         transcripts = battery / "transcripts" / f"eval-{cid}"
         if not dry:
+            for arm in ("baseline", "with-skill"):
+                _flatten_staged_fixtures(case_dir / arm)
             transcripts.mkdir(parents=True, exist_ok=True)
             (transcripts / "prompt.md").write_text(prompt)
 
@@ -677,7 +790,7 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                 ("with-skill", case_dir / f"with-skill{suffix}" / "skills" / skill),
             ):
                 r = run_arm(case_dir / f"{arm}{suffix}", prompt, skill_path,
-                            model, timeout_ms, dry, actor, thinking)
+                            model, timeout_ms, dry, actor, thinking, pi_home, loopback)
                 arms[arm].append(r)
                 if not dry:
                     f = transcripts / f"{arm}{suffix}.md"
