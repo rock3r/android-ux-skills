@@ -525,6 +525,43 @@ fun ShadowingShowcase(flag: Boolean) {
     const f001Hits = shadowRes.findings.filter((f) => f.rule === 'F-001');
     assert.equal(f001Hits.length, 1, `Expected exactly 1 F-001 finding (inside when branch), got: ${JSON.stringify(f001Hits)}`);
     assert.deepEqual(f001Hits[0].lines, [34, 34]);
+
+    // 5. Qualified member reads (`model.alpha.value`, `model?.alpha?.value`, `model.progress` in `lerp`)
+    //    must NOT be misattributed to same-named local `Animatable` / `animateFloatAsState` bindings!
+    const memberFile = path.join(tmpDir, 'QualifiedMember.kt');
+    fs.writeFileSync(
+      memberFile,
+      `package demo
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+
+class StaticAlphaHolder(val value: Float)
+class UiModel(val alpha: StaticAlphaHolder, val progress: Float)
+
+@Composable
+fun QualifiedMemberShowcase(model: UiModel, nullableModel: UiModel?) {
+    val alpha = remember { Animatable(0f) }
+    val progress by animateFloatAsState(1f)
+    val c = lerp(Color.Red, Color.Blue, model.progress)
+    Box(Modifier.alpha(model.alpha.value).background(c))
+    Box(Modifier.alpha(nullableModel?.alpha?.value ?: 1f))
+}
+`,
+      'utf8'
+    );
+    const memberRes = runStaticScan({ targets: [memberFile], cwd: tmpDir });
+    assert.equal(
+      memberRes.findings.filter((f) => f.rule === 'F-001').length,
+      0,
+      `Qualified member reads must not trigger F-001, got: ${JSON.stringify(memberRes.findings)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

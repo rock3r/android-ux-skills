@@ -19,6 +19,13 @@ import { detectActiveHookMode } from './context.mjs';
 
 export const SUPPORTED_PROVIDERS = ['claude', 'codex', 'cursor', 'copilot', 'jetski'];
 
+export const OWNED_SKILL_PREFERENCE = [
+  'animate-compose',
+  'review-android-motion',
+  'improve-android-motion',
+  'optimize-android-motion',
+];
+
 const HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|install|uninstall|reset> [options]
 
 Inspect, wire, or toggle non-blocking Android UX context hooks.
@@ -40,7 +47,32 @@ Subcommands:
       Clear OS user-cache session dedupe state for this project.
 `;
 
-export function resolveProviderPaths(provider, { cwd, scope = 'project', env = process.env, platform = process.platform }) {
+function selectProviderLauncherSkill(skillsDir, preferredSkills = null) {
+  if (Array.isArray(preferredSkills) && preferredSkills.length > 0) {
+    const preferredSet = new Set(preferredSkills);
+    const orderedHit = OWNED_SKILL_PREFERENCE.find((s) => preferredSet.has(s));
+    return orderedHit || preferredSkills[0];
+  }
+  for (const s of OWNED_SKILL_PREFERENCE) {
+    if (
+      fs.existsSync(path.join(skillsDir, s, 'scripts', 'android-ux')) ||
+      fs.existsSync(path.join(skillsDir, s, 'scripts', 'android-ux.mjs'))
+    ) {
+      return s;
+    }
+  }
+  for (const s of OWNED_SKILL_PREFERENCE) {
+    if (fs.existsSync(path.join(skillsDir, s))) {
+      return s;
+    }
+  }
+  return OWNED_SKILL_PREFERENCE[0];
+}
+
+export function resolveProviderPaths(
+  provider,
+  { cwd, scope = 'project', env = process.env, platform = process.platform, preferredSkills = null }
+) {
   const baseRoot = scope === 'global'
     ? resolveHomeDir(env, platform)
     : path.resolve(cwd);
@@ -50,39 +82,43 @@ export function resolveProviderPaths(provider, { cwd, scope = 'project', env = p
   switch (provider) {
     case 'claude': {
       const skillsDir = path.join(baseRoot, '.claude', 'skills');
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = scope === 'global'
         ? path.join(baseRoot, '.claude', 'settings.json')
         : path.join(baseRoot, '.claude', 'settings.local.json');
       const launcherPosix = scope === 'global'
-        ? normalizePosixPath(path.join(skillsDir, 'animate-compose', 'scripts', 'android-ux'))
-        : '.claude/skills/animate-compose/scripts/android-ux';
-      return { provider, skillsDir, manifestPath, launcherPosix };
+        ? normalizePosixPath(path.join(skillsDir, launcherSkill, 'scripts', 'android-ux'))
+        : `.claude/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case 'codex': {
       const skillsDir = path.join(baseRoot, '.codex', 'skills');
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path.join(baseRoot, '.codex', 'hooks.json');
       const launcherPosix = scope === 'global'
-        ? normalizePosixPath(path.join(skillsDir, 'animate-compose', 'scripts', 'android-ux'))
-        : '.codex/skills/animate-compose/scripts/android-ux';
+        ? normalizePosixPath(path.join(skillsDir, launcherSkill, 'scripts', 'android-ux'))
+        : `.codex/skills/${launcherSkill}/scripts/android-ux`;
       const launcherWin = scope === 'global'
-        ? path.win32.join(skillsDir.replace(/\//g, '\\'), 'animate-compose', 'scripts', 'android-ux.cmd')
-        : '.codex\\skills\\animate-compose\\scripts\\android-ux.cmd';
-      return { provider, skillsDir, manifestPath, launcherPosix, launcherWin };
+        ? path.win32.join(skillsDir.replace(/\//g, '\\'), launcherSkill, 'scripts', 'android-ux.cmd')
+        : `.codex\\skills\\${launcherSkill}\\scripts\\android-ux.cmd`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix, launcherWin };
     }
     case 'cursor': {
       const skillsDir = path.join(baseRoot, '.cursor', 'skills');
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path.join(baseRoot, '.cursor', 'hooks.json');
       const launcherPosix = scope === 'global'
-        ? normalizePosixPath(path.join(skillsDir, 'animate-compose', 'scripts', 'android-ux'))
-        : '.cursor/skills/animate-compose/scripts/android-ux';
-      return { provider, skillsDir, manifestPath, launcherPosix };
+        ? normalizePosixPath(path.join(skillsDir, launcherSkill, 'scripts', 'android-ux'))
+        : `.cursor/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case 'copilot': {
       if (scope === 'global') return null;
       const skillsDir = path.join(baseRoot, '.github', 'skills');
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path.join(baseRoot, '.github', 'hooks', 'android-ux.json');
-      const launcherPosix = '$(git rev-parse --show-toplevel)/.github/skills/animate-compose/scripts/android-ux';
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = `$(git rev-parse --show-toplevel)/.github/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case 'jetski': {
       const hasAgentsDir = scope === 'project' && fs.existsSync(path.join(baseRoot, '_agents'));
@@ -90,10 +126,11 @@ export function resolveProviderPaths(provider, { cwd, scope = 'project', env = p
         ? path.join(baseRoot, '_agents')
         : path.join(baseRoot, '.gemini');
       const skillsDir = path.join(containerDir, 'skills');
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path.join(containerDir, 'hooks.json');
       // Jetski runs hook commands with cwd = directory containing hooks.json
-      const launcherPosix = './skills/animate-compose/scripts/android-ux';
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = `./skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     default:
       return null;
@@ -213,7 +250,8 @@ export function installProviderHookManifest(info) {
     };
   } else if (info.provider === 'jetski') {
     next = { ...existing };
-    const jetskiCmd = `"${info.launcherPosix}" hook || "skills\\animate-compose\\scripts\\android-ux.cmd" hook || echo {}`;
+    const winSkill = info.launcherSkill || OWNED_SKILL_PREFERENCE[0];
+    const jetskiCmd = `"${info.launcherPosix}" hook || "skills\\${winSkill}\\scripts\\android-ux.cmd" hook || echo {}`;
     next['android-ux'] = {
       PostToolUse: [
         {
@@ -480,7 +518,7 @@ function handleHooksToggle(args, io, enable) {
       ? requestedProviders
       : SUPPORTED_PROVIDERS.filter((prov) => {
           const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-          return info && fs.existsSync(path.join(info.skillsDir, 'animate-compose'));
+          return info && OWNED_SKILL_PREFERENCE.some((s) => fs.existsSync(path.join(info.skillsDir, s)));
         });
 
     // Pre-validate existing manifests before mutating config or writing manifests

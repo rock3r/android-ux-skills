@@ -491,6 +491,51 @@ test('PR review regressions: malformed manifest preservation (hooks install/unin
       false,
       'Unrelated sibling skills in .claude/skills must NOT be copied into .cursor/skills'
     );
+
+    // 3. Single-skill standalone install (only `review-android-motion` present, no `animate-compose`):
+    //    `install --providers claude` and `hooks install` MUST wire hooks to the actually installed skill launcher!
+    const singleSourceSkills = path.join(tmpDir, 'single-source-skills');
+    const singleReviewSrc = path.join(singleSourceSkills, 'review-android-motion');
+    fs.cpSync(path.join(REPO_ROOT, 'skills', 'review-android-motion'), singleReviewSrc, {
+      recursive: true,
+      filter: (src) => !src.includes(`${path.sep}evals`),
+    });
+    const singleTargetProj = path.join(tmpDir, 'single-skill-proj');
+    fs.mkdirSync(singleTargetProj, { recursive: true });
+
+    const singleInstall = spawnSync(
+      'sh',
+      [path.join(singleReviewSrc, 'scripts', 'android-ux'), 'install', '--providers', 'claude'],
+      { cwd: singleTargetProj, encoding: 'utf8' }
+    );
+    assert.equal(singleInstall.status, 0, `Single-skill install failed: ${singleInstall.stderr}`);
+
+    const expectedLauncherRel = '.claude/skills/review-android-motion/scripts/android-ux';
+    const expectedLauncherAbs = path.join(singleTargetProj, '.claude', 'skills', 'review-android-motion', 'scripts', 'android-ux');
+    assert.equal(fs.existsSync(expectedLauncherAbs), true, 'Installed review-android-motion launcher must exist on disk');
+    assert.equal(
+      fs.existsSync(path.join(singleTargetProj, '.claude', 'skills', 'animate-compose')),
+      false,
+      'animate-compose must not exist in single-skill target'
+    );
+
+    const singleManifest = JSON.parse(
+      fs.readFileSync(path.join(singleTargetProj, '.claude', 'settings.local.json'), 'utf8')
+    );
+    const wiredCmd = singleManifest.hooks.PostToolUse[0].hooks[0].command;
+    assert.match(wiredCmd, /review-android-motion\/scripts\/android-ux/, `Hook command must target review-android-motion, got: ${wiredCmd}`);
+    assert.doesNotMatch(wiredCmd, /animate-compose/, 'Hook command must not point to missing animate-compose');
+
+    const statusOut = await runCmd(['hooks', 'status', '--json'], singleTargetProj);
+    assert.equal(JSON.parse(statusOut.stdout).active, true, 'hooks status must report active=true on single-skill install');
+
+    // `hooks uninstall` + `hooks install` (without `--providers`) must also auto-detect `review-android-motion`
+    assert.equal((await runCmd(['hooks', 'uninstall'], singleTargetProj)).code, 0);
+    assert.equal((await runCmd(['hooks', 'install'], singleTargetProj)).code, 0);
+    const rewiredManifest = JSON.parse(
+      fs.readFileSync(path.join(singleTargetProj, '.claude', 'settings.local.json'), 'utf8')
+    );
+    assert.match(rewiredManifest.hooks.PostToolUse[0].hooks[0].command, /review-android-motion\/scripts\/android-ux/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

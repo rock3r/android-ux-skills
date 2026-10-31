@@ -908,13 +908,10 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
         const rhsCalls = calls.filter((c) => c.nameTokIdx >= b.rhsStartIdx && c.endTokIdx <= b.declEndIdx);
         const lerpCall = rhsCalls.find((rc) => rc.name === 'lerp');
         if (lerpCall) {
-          const usesFrameVar = lerpCall.args.some((a) =>
-            a.tokens.some((tok, idx) =>
-              tok.type === 'Identifier' &&
-              a.tokens[idx - 1]?.value !== '.' &&
-              resolveScopedLocalKind(tok.value, lerpCall.nameTokIdx, scopedBindings) === 'frame'
-            ) ||
-            Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
+          const usesFrameVar = lerpCall.args.some(
+            (a) =>
+              Boolean(findScopedSimpleVarRef(a.tokens, lerpCall.nameTokIdx, scopedBindings, 'frame')) ||
+              Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
           );
           if (usesFrameVar) {
             b.kind = 'derivedColor';
@@ -991,6 +988,18 @@ function findScopedReferencedAnimatedVar(args, atTokIdx, scopedBindings) {
   return null;
 }
 
+function isUnqualifiedLocalIdent(toks, idx) {
+  const prev = toks[idx - 1];
+  if (prev && prev.type === 'Punct' && (prev.value === '.' || prev.value === '?.' || prev.value === '::')) {
+    return false;
+  }
+  const next = toks[idx + 1];
+  if (next && next.type === 'Punct' && next.value === '::') {
+    return false;
+  }
+  return true;
+}
+
 function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
   let bDepth = 0;
   for (let i = 0; i < toks.length; i += 1) {
@@ -1006,12 +1015,9 @@ function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
       }
     }
     if (bDepth > 0) continue; // Deferred lambda body, not evaluated eagerly at call site
-    if (t.type === 'Identifier') {
-      const prev = toks[i - 1];
-      if (!prev || prev.type !== 'Punct' || (prev.value !== '.' && prev.value !== '?.')) {
-        if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
-          return t.value;
-        }
+    if (t.type === 'Identifier' && isUnqualifiedLocalIdent(toks, i)) {
+      if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
+        return t.value;
       }
     }
   }
@@ -1035,6 +1041,7 @@ function findScopedAnimatableRead(toks, atTokIdx, scopedBindings) {
     if (bDepth > 0 || i + 2 >= toks.length) continue;
     if (
       toks[i].type === 'Identifier' &&
+      isUnqualifiedLocalIdent(toks, i) &&
       toks[i + 1].type === 'Punct' &&
       (toks[i + 1].value === '.' || toks[i + 1].value === '?.') &&
       toks[i + 2].type === 'Identifier' &&
@@ -1172,15 +1179,15 @@ function classifyItemsIndexedKey(kf, keyArg) {
   if (idxName === '_') return null;
 
   const bodyToks = toks.slice(arrowPos + 1, -1);
-  const usesIdx = bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === idxName && bodyToks[idx - 1]?.value !== '.');
-  const usesItem = itemName !== '_' && bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === itemName && bodyToks[idx - 1]?.value !== '.');
+  const usesIdx = bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === idxName && isUnqualifiedLocalIdent(bodyToks, idx));
+  const usesItem = itemName !== '_' && bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === itemName && isUnqualifiedLocalIdent(bodyToks, idx));
   void kf;
   if (!usesIdx || usesItem) return null;
 
   // Check if `idxName` is used as a collection subscript (`list[i]`, `list.get(i)`, `list.getOrNull(i)`)
   for (let i = 0; i < bodyToks.length; i += 1) {
     const t = bodyToks[i];
-    if (t.type === 'Identifier' && t.value === idxName && bodyToks[i - 1]?.value !== '.') {
+    if (t.type === 'Identifier' && t.value === idxName && isUnqualifiedLocalIdent(bodyToks, i)) {
       const prev = bodyToks[i - 1];
       const next = bodyToks[i + 1];
       if (prev?.value === '[' && next?.value === ']') {
@@ -1363,7 +1370,7 @@ function checkF005(kf, scaleHelpers, rawFindings, rawCandidates) {
     if (bodyCalls.some((ic) => scaleHelpers.has(ic.name))) continue;
 
     const keyIdents = c.args.flatMap((a) =>
-      a.tokens.filter((t) => t.type === 'Identifier').map((t) => t.value)
+      a.tokens.filter((t, idx) => t.type === 'Identifier' && isUnqualifiedLocalIdent(a.tokens, idx)).map((t) => t.value)
     );
     if (keyIdents.some((id) => localScaleDerivedVars.has(id) || scaleHelpers.has(id))) {
       continue;
@@ -1483,7 +1490,7 @@ function extractGuardIdentifiers(tokens, startIdx, endIdx) {
           afterCond.some((at) => at.type === 'Keyword' && (at.value === 'return' || at.value === 'break' || at.value === 'continue'));
         if (gatesExecution) {
           for (let k = i + 2; k < close; k += 1) {
-            if (tokens[k].type === 'Identifier' && tokens[k - 1]?.value !== '.') {
+            if (tokens[k].type === 'Identifier' && isUnqualifiedLocalIdent(tokens, k)) {
               out.add(tokens[k].value);
             }
           }
@@ -1907,7 +1914,7 @@ function checkCandidatesMisc(kf, rawCandidates) {
                 ac.endTokIdx < lc.trailingLambda.closeBraceIdx
             );
             const assignsVar = bToks.some(
-              (bt, idx) => bt.type === 'Identifier' && bt.value === lv.name && bToks[idx + 1]?.value === '='
+              (bt, idx) => bt.type === 'Identifier' && bt.value === lv.name && isUnqualifiedLocalIdent(bToks, idx) && bToks[idx + 1]?.value === '='
             );
             if (hasAnimInBlock && assignsVar) {
               animGatingVars.add(lv.name);
@@ -1965,7 +1972,9 @@ function checkCandidatesMisc(kf, rawCandidates) {
       const enabledArg = c.args.find((a) => a.name === 'enabled');
       if (enabledArg) {
         const matchesBuiltin = /(\bisRunning\b|\bisAnimating\b|\bisTransitioning\b)/.test(enabledArg.text);
-        const matchesGatingVar = enabledArg.tokens.some((t) => t.type === 'Identifier' && animGatingVars.has(t.value));
+        const matchesGatingVar = enabledArg.tokens.some(
+          (t, idx) => t.type === 'Identifier' && isUnqualifiedLocalIdent(enabledArg.tokens, idx) && animGatingVars.has(t.value)
+        );
         if (matchesBuiltin || matchesGatingVar) {
           rawCandidates.push(
             makeRuleCandidate('T-012', {
@@ -2074,8 +2083,9 @@ function collectLottieConsumers(kf, outConsumers) {
 
       let assetRef = extractLottieAssetFromTokens(compArg.tokens);
       if (!assetRef) {
-        for (const t of compArg.tokens) {
-          if (t.type === 'Identifier' && compVarToAsset.has(t.value)) {
+        for (let idx = 0; idx < compArg.tokens.length; idx += 1) {
+          const t = compArg.tokens[idx];
+          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(compArg.tokens, idx) && compVarToAsset.has(t.value)) {
             assetRef = compVarToAsset.get(t.value);
             break;
           }
@@ -2092,8 +2102,9 @@ function collectLottieConsumers(kf, outConsumers) {
       let progressKind = 'default-forward';
       if (progressArg && (progressArg.name === 'progress' || progressArg.text.startsWith('{') || /^[0-9.]/.test(progressArg.text))) {
         let matchedAnimState = false;
-        for (const t of progressArg.tokens) {
-          if (t.type === 'Identifier' && stateVarToProgressOpts.has(t.value)) {
+        for (let idx = 0; idx < progressArg.tokens.length; idx += 1) {
+          const t = progressArg.tokens[idx];
+          if (t.type === 'Identifier' && isUnqualifiedLocalIdent(progressArg.tokens, idx) && stateVarToProgressOpts.has(t.value)) {
             const st = stateVarToProgressOpts.get(t.value);
             if (st.hasClipSpec) hasClipSpec = true;
             if (st.isNegativeSpeed) isNegativeSpeed = true;

@@ -235,6 +235,7 @@ export async function runInstallCommand(rawArgs, io = defaultIo()) {
           scope,
           env: io.env,
           platform: io.platform || process.platform,
+          preferredSkills: skillNames,
         });
         if (!info) continue;
         if (withHooks) {

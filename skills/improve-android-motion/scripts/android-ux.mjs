@@ -2831,9 +2831,7 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
         const lerpCall = rhsCalls.find((rc) => rc.name === "lerp");
         if (lerpCall) {
           const usesFrameVar = lerpCall.args.some(
-            (a) => a.tokens.some(
-              (tok, idx) => tok.type === "Identifier" && a.tokens[idx - 1]?.value !== "." && resolveScopedLocalKind(tok.value, lerpCall.nameTokIdx, scopedBindings) === "frame"
-            ) || Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
+            (a) => Boolean(findScopedSimpleVarRef(a.tokens, lerpCall.nameTokIdx, scopedBindings, "frame")) || Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
           );
           if (usesFrameVar) {
             b.kind = "derivedColor";
@@ -2902,6 +2900,17 @@ function findScopedReferencedAnimatedVar(args, atTokIdx, scopedBindings) {
   }
   return null;
 }
+function isUnqualifiedLocalIdent(toks, idx) {
+  const prev = toks[idx - 1];
+  if (prev && prev.type === "Punct" && (prev.value === "." || prev.value === "?." || prev.value === "::")) {
+    return false;
+  }
+  const next = toks[idx + 1];
+  if (next && next.type === "Punct" && next.value === "::") {
+    return false;
+  }
+  return true;
+}
 function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
   let bDepth = 0;
   for (let i = 0; i < toks.length; i += 1) {
@@ -2917,12 +2926,9 @@ function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
       }
     }
     if (bDepth > 0) continue;
-    if (t.type === "Identifier") {
-      const prev = toks[i - 1];
-      if (!prev || prev.type !== "Punct" || prev.value !== "." && prev.value !== "?.") {
-        if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
-          return t.value;
-        }
+    if (t.type === "Identifier" && isUnqualifiedLocalIdent(toks, i)) {
+      if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
+        return t.value;
       }
     }
   }
@@ -2943,7 +2949,7 @@ function findScopedAnimatableRead(toks, atTokIdx, scopedBindings) {
       }
     }
     if (bDepth > 0 || i + 2 >= toks.length) continue;
-    if (toks[i].type === "Identifier" && toks[i + 1].type === "Punct" && (toks[i + 1].value === "." || toks[i + 1].value === "?.") && toks[i + 2].type === "Identifier" && toks[i + 2].value === "value" && resolveScopedLocalKind(toks[i].value, atTokIdx, scopedBindings) === "animatable") {
+    if (toks[i].type === "Identifier" && isUnqualifiedLocalIdent(toks, i) && toks[i + 1].type === "Punct" && (toks[i + 1].value === "." || toks[i + 1].value === "?.") && toks[i + 2].type === "Identifier" && toks[i + 2].value === "value" && resolveScopedLocalKind(toks[i].value, atTokIdx, scopedBindings) === "animatable") {
       return toks[i].value;
     }
   }
@@ -3059,13 +3065,13 @@ function classifyItemsIndexedKey(kf, keyArg) {
   const itemName = itemParamTok ? itemParamTok.value : "_";
   if (idxName === "_") return null;
   const bodyToks = toks.slice(arrowPos + 1, -1);
-  const usesIdx = bodyToks.some((t, idx) => t.type === "Identifier" && t.value === idxName && bodyToks[idx - 1]?.value !== ".");
-  const usesItem = itemName !== "_" && bodyToks.some((t, idx) => t.type === "Identifier" && t.value === itemName && bodyToks[idx - 1]?.value !== ".");
+  const usesIdx = bodyToks.some((t, idx) => t.type === "Identifier" && t.value === idxName && isUnqualifiedLocalIdent(bodyToks, idx));
+  const usesItem = itemName !== "_" && bodyToks.some((t, idx) => t.type === "Identifier" && t.value === itemName && isUnqualifiedLocalIdent(bodyToks, idx));
   void kf;
   if (!usesIdx || usesItem) return null;
   for (let i = 0; i < bodyToks.length; i += 1) {
     const t = bodyToks[i];
-    if (t.type === "Identifier" && t.value === idxName && bodyToks[i - 1]?.value !== ".") {
+    if (t.type === "Identifier" && t.value === idxName && isUnqualifiedLocalIdent(bodyToks, i)) {
       const prev = bodyToks[i - 1];
       const next = bodyToks[i + 1];
       if (prev?.value === "[" && next?.value === "]") {
@@ -3199,7 +3205,7 @@ function checkF005(kf, scaleHelpers, rawFindings, rawCandidates) {
     const bodyCalls = calls.filter((ic) => ic.nameTokIdx >= bodyStartIdx && ic.endTokIdx < bodyEndIdx);
     if (bodyCalls.some((ic) => scaleHelpers.has(ic.name))) continue;
     const keyIdents = c.args.flatMap(
-      (a) => a.tokens.filter((t) => t.type === "Identifier").map((t) => t.value)
+      (a) => a.tokens.filter((t, idx) => t.type === "Identifier" && isUnqualifiedLocalIdent(a.tokens, idx)).map((t) => t.value)
     );
     if (keyIdents.some((id) => localScaleDerivedVars.has(id) || scaleHelpers.has(id))) {
       continue;
@@ -3298,7 +3304,7 @@ function extractGuardIdentifiers(tokens, startIdx, endIdx) {
         const gatesExecution = t.value === "while" || afterCond.some((at) => at.type === "Keyword" && (at.value === "return" || at.value === "break" || at.value === "continue"));
         if (gatesExecution) {
           for (let k = i + 2; k < close; k += 1) {
-            if (tokens[k].type === "Identifier" && tokens[k - 1]?.value !== ".") {
+            if (tokens[k].type === "Identifier" && isUnqualifiedLocalIdent(tokens, k)) {
               out.add(tokens[k].value);
             }
           }
@@ -3607,7 +3613,7 @@ function checkCandidatesMisc(kf, rawCandidates) {
               (ac) => (ac.name === "animateTo" || ac.name === "animateDecay") && ac.nameTokIdx > lc.trailingLambda.openBraceIdx && ac.endTokIdx < lc.trailingLambda.closeBraceIdx
             );
             const assignsVar = bToks.some(
-              (bt, idx) => bt.type === "Identifier" && bt.value === lv.name && bToks[idx + 1]?.value === "="
+              (bt, idx) => bt.type === "Identifier" && bt.value === lv.name && isUnqualifiedLocalIdent(bToks, idx) && bToks[idx + 1]?.value === "="
             );
             if (hasAnimInBlock && assignsVar) {
               animGatingVars.add(lv.name);
@@ -3657,7 +3663,9 @@ function checkCandidatesMisc(kf, rawCandidates) {
       const enabledArg = c.args.find((a) => a.name === "enabled");
       if (enabledArg) {
         const matchesBuiltin = /(\bisRunning\b|\bisAnimating\b|\bisTransitioning\b)/.test(enabledArg.text);
-        const matchesGatingVar = enabledArg.tokens.some((t) => t.type === "Identifier" && animGatingVars.has(t.value));
+        const matchesGatingVar = enabledArg.tokens.some(
+          (t, idx) => t.type === "Identifier" && isUnqualifiedLocalIdent(enabledArg.tokens, idx) && animGatingVars.has(t.value)
+        );
         if (matchesBuiltin || matchesGatingVar) {
           rawCandidates.push(
             makeRuleCandidate("T-012", {
@@ -3747,8 +3755,9 @@ function collectLottieConsumers(kf, outConsumers) {
       if (!compArg) continue;
       let assetRef = extractLottieAssetFromTokens(compArg.tokens);
       if (!assetRef) {
-        for (const t of compArg.tokens) {
-          if (t.type === "Identifier" && compVarToAsset.has(t.value)) {
+        for (let idx = 0; idx < compArg.tokens.length; idx += 1) {
+          const t = compArg.tokens[idx];
+          if (t.type === "Identifier" && isUnqualifiedLocalIdent(compArg.tokens, idx) && compVarToAsset.has(t.value)) {
             assetRef = compVarToAsset.get(t.value);
             break;
           }
@@ -3762,8 +3771,9 @@ function collectLottieConsumers(kf, outConsumers) {
       let progressKind = "default-forward";
       if (progressArg && (progressArg.name === "progress" || progressArg.text.startsWith("{") || /^[0-9.]/.test(progressArg.text))) {
         let matchedAnimState = false;
-        for (const t of progressArg.tokens) {
-          if (t.type === "Identifier" && stateVarToProgressOpts.has(t.value)) {
+        for (let idx = 0; idx < progressArg.tokens.length; idx += 1) {
+          const t = progressArg.tokens[idx];
+          if (t.type === "Identifier" && isUnqualifiedLocalIdent(progressArg.tokens, idx) && stateVarToProgressOpts.has(t.value)) {
             const st = stateVarToProgressOpts.get(t.value);
             if (st.hasClipSpec) hasClipSpec = true;
             if (st.isNegativeSpeed) isNegativeSpeed = true;
@@ -8688,6 +8698,12 @@ function defaultIo6() {
 import fs10 from "node:fs";
 import path11 from "node:path";
 var SUPPORTED_PROVIDERS = ["claude", "codex", "cursor", "copilot", "jetski"];
+var OWNED_SKILL_PREFERENCE = [
+  "animate-compose",
+  "review-android-motion",
+  "improve-android-motion",
+  "optimize-android-motion"
+];
 var HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|install|uninstall|reset> [options]
 
 Inspect, wire, or toggle non-blocking Android UX context hooks.
@@ -8708,43 +8724,66 @@ Subcommands:
   reset [--json]
       Clear OS user-cache session dedupe state for this project.
 `;
-function resolveProviderPaths(provider, { cwd, scope = "project", env = process.env, platform = process.platform }) {
+function selectProviderLauncherSkill(skillsDir, preferredSkills = null) {
+  if (Array.isArray(preferredSkills) && preferredSkills.length > 0) {
+    const preferredSet = new Set(preferredSkills);
+    const orderedHit = OWNED_SKILL_PREFERENCE.find((s) => preferredSet.has(s));
+    return orderedHit || preferredSkills[0];
+  }
+  for (const s of OWNED_SKILL_PREFERENCE) {
+    if (fs10.existsSync(path11.join(skillsDir, s, "scripts", "android-ux")) || fs10.existsSync(path11.join(skillsDir, s, "scripts", "android-ux.mjs"))) {
+      return s;
+    }
+  }
+  for (const s of OWNED_SKILL_PREFERENCE) {
+    if (fs10.existsSync(path11.join(skillsDir, s))) {
+      return s;
+    }
+  }
+  return OWNED_SKILL_PREFERENCE[0];
+}
+function resolveProviderPaths(provider, { cwd, scope = "project", env = process.env, platform = process.platform, preferredSkills = null }) {
   const baseRoot = scope === "global" ? resolveHomeDir(env, platform) : path11.resolve(cwd);
   if (!baseRoot) return null;
   switch (provider) {
     case "claude": {
       const skillsDir = path11.join(baseRoot, ".claude", "skills");
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = scope === "global" ? path11.join(baseRoot, ".claude", "settings.json") : path11.join(baseRoot, ".claude", "settings.local.json");
-      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, "animate-compose", "scripts", "android-ux")) : ".claude/skills/animate-compose/scripts/android-ux";
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, launcherSkill, "scripts", "android-ux")) : `.claude/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case "codex": {
       const skillsDir = path11.join(baseRoot, ".codex", "skills");
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path11.join(baseRoot, ".codex", "hooks.json");
-      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, "animate-compose", "scripts", "android-ux")) : ".codex/skills/animate-compose/scripts/android-ux";
-      const launcherWin = scope === "global" ? path11.win32.join(skillsDir.replace(/\//g, "\\"), "animate-compose", "scripts", "android-ux.cmd") : ".codex\\skills\\animate-compose\\scripts\\android-ux.cmd";
-      return { provider, skillsDir, manifestPath, launcherPosix, launcherWin };
+      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, launcherSkill, "scripts", "android-ux")) : `.codex/skills/${launcherSkill}/scripts/android-ux`;
+      const launcherWin = scope === "global" ? path11.win32.join(skillsDir.replace(/\//g, "\\"), launcherSkill, "scripts", "android-ux.cmd") : `.codex\\skills\\${launcherSkill}\\scripts\\android-ux.cmd`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix, launcherWin };
     }
     case "cursor": {
       const skillsDir = path11.join(baseRoot, ".cursor", "skills");
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path11.join(baseRoot, ".cursor", "hooks.json");
-      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, "animate-compose", "scripts", "android-ux")) : ".cursor/skills/animate-compose/scripts/android-ux";
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = scope === "global" ? normalizePosixPath(path11.join(skillsDir, launcherSkill, "scripts", "android-ux")) : `.cursor/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case "copilot": {
       if (scope === "global") return null;
       const skillsDir = path11.join(baseRoot, ".github", "skills");
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path11.join(baseRoot, ".github", "hooks", "android-ux.json");
-      const launcherPosix = "$(git rev-parse --show-toplevel)/.github/skills/animate-compose/scripts/android-ux";
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = `$(git rev-parse --show-toplevel)/.github/skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     case "jetski": {
       const hasAgentsDir = scope === "project" && fs10.existsSync(path11.join(baseRoot, "_agents"));
       const containerDir = hasAgentsDir ? path11.join(baseRoot, "_agents") : path11.join(baseRoot, ".gemini");
       const skillsDir = path11.join(containerDir, "skills");
+      const launcherSkill = selectProviderLauncherSkill(skillsDir, preferredSkills);
       const manifestPath = path11.join(containerDir, "hooks.json");
-      const launcherPosix = "./skills/animate-compose/scripts/android-ux";
-      return { provider, skillsDir, manifestPath, launcherPosix };
+      const launcherPosix = `./skills/${launcherSkill}/scripts/android-ux`;
+      return { provider, skillsDir, manifestPath, launcherSkill, launcherPosix };
     }
     default:
       return null;
@@ -8861,7 +8900,8 @@ function installProviderHookManifest(info) {
     };
   } else if (info.provider === "jetski") {
     next = { ...existing };
-    const jetskiCmd = `"${info.launcherPosix}" hook || "skills\\animate-compose\\scripts\\android-ux.cmd" hook || echo {}`;
+    const winSkill = info.launcherSkill || OWNED_SKILL_PREFERENCE[0];
+    const jetskiCmd = `"${info.launcherPosix}" hook || "skills\\${winSkill}\\scripts\\android-ux.cmd" hook || echo {}`;
     next["android-ux"] = {
       PostToolUse: [
         {
@@ -9109,7 +9149,7 @@ function handleHooksToggle(args, io, enable) {
     }
     const providersToWire = requestedProviders.length > 0 ? requestedProviders : SUPPORTED_PROVIDERS.filter((prov) => {
       const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-      return info && fs10.existsSync(path11.join(info.skillsDir, "animate-compose"));
+      return info && OWNED_SKILL_PREFERENCE.some((s) => fs10.existsSync(path11.join(info.skillsDir, s)));
     });
     const resolvedTargets = [];
     for (const prov of providersToWire) {
@@ -9446,7 +9486,8 @@ async function runInstallCommand(rawArgs, io = defaultIo8()) {
         cwd: io.cwd,
         scope,
         env: io.env,
-        platform: io.platform || process.platform
+        platform: io.platform || process.platform,
+        preferredSkills: skillNames
       });
       if (!info) continue;
       if (withHooks) {

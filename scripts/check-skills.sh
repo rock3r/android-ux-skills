@@ -96,6 +96,10 @@ for dir in "$root"/skills/*/; do
         grep -q "'$skill'" "$root/cli/src/commands/install.mjs" || \
             skill_fail "$skill: missing from ANDROID_UX_SKILL_NAMES in cli/src/commands/install.mjs"
     fi
+    if [[ -f "$root/cli/src/commands/hooks.mjs" ]]; then
+        grep -q "'$skill'" "$root/cli/src/commands/hooks.mjs" || \
+            skill_fail "$skill: missing from OWNED_SKILL_PREFERENCE in cli/src/commands/hooks.mjs"
+    fi
     if [[ -f "$mjs_bundle" ]]; then
         bundle_bytes="$(wc -c < "$mjs_bundle" | tr -d ' ')"
         if [[ "${bundle_bytes:-0}" -gt $((512 * 1024)) ]]; then
