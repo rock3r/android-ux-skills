@@ -19,19 +19,22 @@ import { detectActiveHookMode } from './context.mjs';
 
 export const SUPPORTED_PROVIDERS = ['claude', 'codex', 'cursor', 'copilot', 'jetski'];
 
-const HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|reset> [options]
+const HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|install|uninstall|reset> [options]
 
-Inspect or toggle non-blocking Android UX context hooks.
+Inspect, wire, or toggle non-blocking Android UX context hooks.
 
 Subcommands:
   status [--json]
       Show hook enablement (.android-ux/config*.json), active harness manifests, and OS session cache count.
 
-  on [--local|--shared] [--providers <list>] [--scope project|global] [--json]
-      Re-enable hooks in config and wire hook manifests for installed/selected providers.
+  on | install [--local|--shared] [--providers <list>] [--scope project|global] [--json]
+      Enable hooks in config and wire hook manifests for installed/selected providers.
 
   off [--local|--shared] [--json]
       Disable hooks for this repo (defaults to --local via .android-ux/config.local.json + <gitdir>/info/exclude).
+
+  uninstall [--providers <list>] [--scope project|global] [--json]
+      Remove Android UX hook entries from harness manifests while preserving unrelated user hooks and settings.
 
   reset [--json]
       Clear OS user-cache session dedupe state for this project.
@@ -241,14 +244,100 @@ export function installProviderHookManifest(info) {
   return true;
 }
 
-function readExistingJsonObject(filePath) {
-  if (!fs.existsSync(filePath)) return {};
+export function readExistingJsonObject(filePath) {
+  let raw;
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return {};
+    throw new Error(`Refusing to overwrite unreadable manifest "${filePath}": ${err?.message || String(err)}`);
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Refusing to overwrite malformed JSON manifest "${filePath}": ${err?.message || String(err)}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Refusing to overwrite manifest "${filePath}": top-level JSON value must be an object.`);
+  }
+  return parsed;
+}
+
+export function uninstallProviderHooks(info) {
+  if (!info || !info.manifestPath) return false;
+  let raw;
+  try {
+    raw = fs.readFileSync(info.manifestPath, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return false;
+    throw new Error(`Refusing to modify unreadable manifest "${info.manifestPath}": ${err?.message || String(err)}`);
+  }
+
+  let existing;
+  try {
+    existing = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Refusing to modify malformed JSON manifest "${info.manifestPath}": ${err?.message || String(err)}`);
+  }
+
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+    throw new Error(`Refusing to modify manifest "${info.manifestPath}": top-level JSON value must be an object.`);
+  }
+
+  let next;
+  if (info.provider === 'claude' || info.provider === 'codex') {
+    next = stripAndroidUxEntriesFromClaudeOrCodex(existing);
+    if (next.hooks && typeof next.hooks === 'object' && Object.keys(next.hooks).length === 0) {
+      delete next.hooks;
+    }
+  } else if (info.provider === 'cursor') {
+    next = { ...existing };
+    if (next.hooks && typeof next.hooks === 'object' && !Array.isArray(next.hooks)) {
+      next.hooks = { ...next.hooks };
+      for (const [k, list] of Object.entries(next.hooks)) {
+        if (Array.isArray(list)) {
+          next.hooks[k] = list.filter((h) => !String(h?.command || '').includes('android-ux'));
+          if (next.hooks[k].length === 0) delete next.hooks[k];
+        }
+      }
+      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+    }
+  } else if (info.provider === 'copilot') {
+    next = { ...existing };
+    if (next.hooks && typeof next.hooks === 'object' && !Array.isArray(next.hooks)) {
+      next.hooks = { ...next.hooks };
+      for (const [k, list] of Object.entries(next.hooks)) {
+        if (Array.isArray(list)) {
+          next.hooks[k] = list.filter(
+            (h) => !String(h?.bash || h?.powershell || h?.command || '').includes('android-ux')
+          );
+          if (next.hooks[k].length === 0) delete next.hooks[k];
+        }
+      }
+      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+    }
+    const remainingKeys = Object.keys(next).filter((k) => k !== 'version');
+    if (remainingKeys.length === 0) {
+      fs.unlinkSync(info.manifestPath);
+      return true;
+    }
+  } else if (info.provider === 'jetski') {
+    if (!Object.prototype.hasOwnProperty.call(existing, 'android-ux')) return false;
+    next = { ...existing };
+    delete next['android-ux'];
+  } else {
+    return false;
+  }
+
+  const serialized = `${JSON.stringify(next, null, 2)}\n`;
+  if (serialized === `${JSON.stringify(existing, null, 2)}\n`) {
+    return false;
+  }
+  fs.writeFileSync(info.manifestPath, serialized, 'utf8');
+  return true;
 }
 
 function stripAndroidUxEntriesFromClaudeOrCodex(obj) {
@@ -280,14 +369,15 @@ export async function runHooksCommand(rawArgs, io = defaultIo()) {
   }
 
   const sub = args[0] && !args[0].startsWith('--') ? args.shift().toLowerCase() : 'status';
-  if (!['status', 'on', 'off', 'reset'].includes(sub)) {
-    io.stderr.write(`Error: unknown hooks subcommand "${sub}". Valid: status, on, off, reset\n`);
+  if (!['status', 'on', 'off', 'install', 'uninstall', 'reset'].includes(sub)) {
+    io.stderr.write(`Error: unknown hooks subcommand "${sub}". Valid: status, on, off, install, uninstall, reset\n`);
     return 1;
   }
 
   if (sub === 'status') return handleHooksStatus(args, io);
-  if (sub === 'on') return handleHooksToggle(args, io, true);
+  if (sub === 'on' || sub === 'install') return handleHooksToggle(args, io, true);
   if (sub === 'off') return handleHooksToggle(args, io, false);
+  if (sub === 'uninstall') return handleHooksUninstall(args, io);
   return handleHooksReset(args, io);
 }
 
@@ -349,11 +439,17 @@ function handleHooksToggle(args, io, enable) {
     } else if (a === '--providers' || a.startsWith('--providers=')) {
       const v = a.includes('=') ? a.slice('--providers='.length) : args[++i];
       for (const p of String(v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+        if (p === 'all') {
+          for (const sp of SUPPORTED_PROVIDERS) {
+            if (!requestedProviders.includes(sp)) requestedProviders.push(sp);
+          }
+          continue;
+        }
         if (!SUPPORTED_PROVIDERS.includes(p)) {
-          io.stderr.write(`Error: unknown provider "${p}". Valid: ${SUPPORTED_PROVIDERS.join(', ')}\n`);
+          io.stderr.write(`Error: unknown provider "${p}". Valid: all, ${SUPPORTED_PROVIDERS.join(', ')}\n`);
           return 1;
         }
-        requestedProviders.push(p);
+        if (!requestedProviders.includes(p)) requestedProviders.push(p);
       }
     } else {
       io.stderr.write(`Error: unknown hooks option "${a}"\n`);
@@ -361,63 +457,147 @@ function handleHooksToggle(args, io, enable) {
     }
   }
 
-  const targetCfgPath = local ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
-  const rawObj = readEditableConfigObject(io.cwd, { local });
+  try {
+    const targetCfgPath = local ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
 
-  if (!enable) {
-    rawObj.hook = { ...(rawObj.hook || {}), enabled: false };
-    writeConfigObject(io.cwd, rawObj, { local });
+    if (!enable) {
+      const rawObj = readEditableConfigObject(io.cwd, { local });
+      rawObj.hook = { ...(rawObj.hook || {}), enabled: false };
+      writeConfigObject(io.cwd, rawObj, { local });
+      if (json) {
+        io.stdout.write(`${JSON.stringify(createJsonEnvelope('hooks.off', {
+          enabled: false,
+          configFile: normalizePosixPath(path.relative(io.cwd, targetCfgPath)),
+        }), null, 2)}\n`);
+      } else {
+        io.stdout.write(`Disabled Android UX hooks in ${normalizePosixPath(path.relative(io.cwd, targetCfgPath))}.\n`);
+      }
+      return 0;
+    }
+
+    // Wire manifests for explicitly requested providers or providers whose skill bundle is already installed
+    const providersToWire = requestedProviders.length > 0
+      ? requestedProviders
+      : SUPPORTED_PROVIDERS.filter((prov) => {
+          const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+          return info && fs.existsSync(path.join(info.skillsDir, 'animate-compose'));
+        });
+
+    // Pre-validate existing manifests before mutating config or writing manifests
+    const resolvedTargets = [];
+    for (const prov of providersToWire) {
+      const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+      if (info) {
+        readExistingJsonObject(info.manifestPath);
+        resolvedTargets.push(info);
+      }
+    }
+
+    // Re-enabling: update config if `enabled: false` was set in either shared or local
+    for (const isLoc of [true, false]) {
+      const p = isLoc ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
+      if (!fs.existsSync(p)) continue;
+      const editable = readEditableConfigObject(io.cwd, { local: isLoc });
+      if (editable.hook && editable.hook.enabled === false) {
+        editable.hook.enabled = true;
+        writeConfigObject(io.cwd, editable, { local: isLoc });
+      }
+    }
+
+    const wiredManifests = [];
+    for (const info of resolvedTargets) {
+      if (installProviderHookManifest(info)) {
+        wiredManifests.push(normalizePosixPath(path.relative(io.cwd, info.manifestPath) || info.manifestPath));
+      }
+    }
+
     if (json) {
-      io.stdout.write(`${JSON.stringify(createJsonEnvelope('hooks.off', {
-        enabled: false,
-        configFile: normalizePosixPath(path.relative(io.cwd, targetCfgPath)),
+      io.stdout.write(`${JSON.stringify(createJsonEnvelope('hooks.on', {
+        enabled: true,
+        wiredManifests,
       }), null, 2)}\n`);
     } else {
-      io.stdout.write(`Disabled Android UX hooks in ${normalizePosixPath(path.relative(io.cwd, targetCfgPath))}.\n`);
+      io.stdout.write(
+        wiredManifests.length > 0
+          ? `Enabled Android UX hooks and updated manifests: ${wiredManifests.join(', ')}\n`
+          : 'Enabled Android UX hooks (run `npx android-ux install` to install skill bundles + harness manifests).\n'
+      );
     }
     return 0;
+  } catch (err) {
+    io.stderr.write(`Error: ${err?.message || String(err)}\n`);
+    return 1;
   }
+}
 
-  // Re-enabling: update config if `enabled: false` was set in either shared or local
-  for (const isLoc of [true, false]) {
-    const p = isLoc ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
-    if (!fs.existsSync(p)) continue;
-    const editable = readEditableConfigObject(io.cwd, { local: isLoc });
-    if (editable.hook && editable.hook.enabled === false) {
-      editable.hook.enabled = true;
-      writeConfigObject(io.cwd, editable, { local: isLoc });
+function handleHooksUninstall(args, io) {
+  let json = false;
+  let scope = 'project';
+  const requestedProviders = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === '--json') json = true;
+    else if (a === '--scope' || a.startsWith('--scope=')) {
+      const v = a.includes('=') ? a.slice('--scope='.length) : args[++i];
+      if (!['project', 'global'].includes(v)) {
+        io.stderr.write('Error: --scope must be project or global\n');
+        return 1;
+      }
+      scope = v;
+    } else if (a === '--providers' || a.startsWith('--providers=')) {
+      const v = a.includes('=') ? a.slice('--providers='.length) : args[++i];
+      for (const p of String(v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+        if (p === 'all') {
+          for (const sp of SUPPORTED_PROVIDERS) {
+            if (!requestedProviders.includes(sp)) requestedProviders.push(sp);
+          }
+          continue;
+        }
+        if (!SUPPORTED_PROVIDERS.includes(p)) {
+          io.stderr.write(`Error: unknown provider "${p}". Valid: all, ${SUPPORTED_PROVIDERS.join(', ')}\n`);
+          return 1;
+        }
+        if (!requestedProviders.includes(p)) requestedProviders.push(p);
+      }
+    } else {
+      io.stderr.write(`Error: unknown hooks uninstall option "${a}"\n`);
+      return 1;
     }
   }
 
-  // Wire manifests for explicitly requested providers or providers whose skill bundle is already installed
-  const providersToWire = requestedProviders.length > 0
-    ? requestedProviders
-    : SUPPORTED_PROVIDERS.filter((prov) => {
-        const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-        return info && fs.existsSync(path.join(info.skillsDir, 'animate-compose'));
-      });
-
-  const wiredManifests = [];
-  for (const prov of providersToWire) {
-    const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-    if (info && installProviderHookManifest(info)) {
-      wiredManifests.push(normalizePosixPath(path.relative(io.cwd, info.manifestPath) || info.manifestPath));
+  const providers = requestedProviders.length > 0 ? requestedProviders : SUPPORTED_PROVIDERS;
+  try {
+    const targets = [];
+    for (const prov of providers) {
+      const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+      if (info && fs.existsSync(info.manifestPath)) {
+        readExistingJsonObject(info.manifestPath);
+        targets.push(info);
+      }
     }
-  }
 
-  if (json) {
-    io.stdout.write(`${JSON.stringify(createJsonEnvelope('hooks.on', {
-      enabled: true,
-      wiredManifests,
-    }), null, 2)}\n`);
-  } else {
-    io.stdout.write(
-      wiredManifests.length > 0
-        ? `Enabled Android UX hooks and updated manifests: ${wiredManifests.join(', ')}\n`
-        : 'Enabled Android UX hooks (run `npx android-ux install` to install skill bundles + harness manifests).\n'
-    );
+    const removedManifests = [];
+    for (const info of targets) {
+      if (uninstallProviderHooks(info)) {
+        removedManifests.push(normalizePosixPath(path.relative(io.cwd, info.manifestPath) || info.manifestPath));
+      }
+    }
+
+    if (json) {
+      io.stdout.write(`${JSON.stringify(createJsonEnvelope('hooks.uninstall', { removedManifests }), null, 2)}\n`);
+    } else {
+      io.stdout.write(
+        removedManifests.length > 0
+          ? `Removed Android UX hooks from: ${removedManifests.join(', ')}\n`
+          : 'No Android UX hook entries found to remove.\n'
+      );
+    }
+    return 0;
+  } catch (err) {
+    io.stderr.write(`Error: ${err?.message || String(err)}\n`);
+    return 1;
   }
-  return 0;
 }
 
 function handleHooksReset(args, io) {

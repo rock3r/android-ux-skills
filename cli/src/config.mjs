@@ -192,6 +192,9 @@ export function writeConfigObject(cwd, nextObj, { local = false } = {}) {
 export function readEditableConfigObject(cwd, { local = false } = {}) {
   const targetPath = local ? getLocalConfigPath(cwd) : getSharedConfigPath(cwd);
   const raw = readRawJson(targetPath);
+  if (raw.malformed) {
+    throw new Error(`Refusing to overwrite malformed or unreadable config file "${targetPath}".`);
+  }
   return raw.data ? { ...raw.data } : {};
 }
 

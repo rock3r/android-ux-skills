@@ -393,3 +393,105 @@ ${preimage}`;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('PR review regressions: malformed manifest preservation (hooks install/uninstall + install) and third-party skill isolation on standalone update', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aux-pr-reg-'));
+  try {
+    // 1. Truncated/malformed `.claude/settings.local.json` MUST NOT be overwritten by `hooks install`, `hooks uninstall`, or `install`
+    const corruptProj = path.join(tmpDir, 'corrupt-proj');
+    const claudeDir = path.join(corruptProj, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    const manifestPath = path.join(claudeDir, 'settings.local.json');
+    const truncatedJson = '{\n  "permissions": { "allow": ["Bash(git status)"] },\n  "env": { "FOO": "bar"';
+    fs.writeFileSync(manifestPath, truncatedJson, 'utf8');
+
+    const runCmd = async (argv, cwd = corruptProj) => {
+      let stdout = '';
+      let stderr = '';
+      const code = await runCli(argv, {
+        cwd,
+        env: process.env,
+        stdout: { write: (s) => { stdout += s; } },
+        stderr: { write: (s) => { stderr += s; } },
+      });
+      return { code, stdout, stderr };
+    };
+
+    const installHookRes = await runCmd(['hooks', 'install', '--providers', 'claude']);
+    assert.equal(installHookRes.code, 1, 'hooks install must fail with exit 1 on malformed manifest');
+    assert.match(installHookRes.stderr, /Refusing to overwrite malformed JSON manifest/);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), truncatedJson, 'Truncated manifest bytes must remain untouched on hooks install');
+
+    const uninstallHookRes = await runCmd(['hooks', 'uninstall', '--providers', 'claude']);
+    assert.equal(uninstallHookRes.code, 1, 'hooks uninstall must fail with exit 1 on malformed manifest');
+    assert.match(uninstallHookRes.stderr, /Refusing to overwrite malformed JSON manifest/);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), truncatedJson, 'Truncated manifest bytes must remain untouched on hooks uninstall');
+
+    const fullInstallRes = await runCmd(['install', '--providers', 'claude']);
+    assert.equal(fullInstallRes.code, 1, 'install must fail with exit 1 on malformed manifest');
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), truncatedJson, 'Truncated manifest bytes must remain untouched on install');
+
+    // Non-object JSON (`[]`) must also be rejected without overwriting
+    const arrayJson = '["do-not-clobber"]\n';
+    fs.writeFileSync(manifestPath, arrayJson, 'utf8');
+    const arrayRes = await runCmd(['hooks', 'install', '--providers', 'claude']);
+    assert.equal(arrayRes.code, 1);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), arrayJson);
+
+    // Valid `.claude/settings.local.json`: `hooks install` + `hooks uninstall` preserves permissions, env, and custom hooks
+    const validSettings = {
+      permissions: { allow: ['Bash(git status)'] },
+      env: { KEEP_ME: '1' },
+      hooks: {
+        PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo keep-user-hook' }] }],
+      },
+    };
+    fs.writeFileSync(manifestPath, `${JSON.stringify(validSettings, null, 2)}\n`, 'utf8');
+    assert.equal((await runCmd(['hooks', 'install', '--providers', 'claude'])).code, 0);
+    assert.match(fs.readFileSync(manifestPath, 'utf8'), /android-ux/);
+    assert.equal((await runCmd(['hooks', 'uninstall', '--providers', 'claude'])).code, 0);
+    const afterUninstall = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.deepEqual(afterUninstall, validSettings, 'hooks uninstall must restore unrelated permissions, env, and custom hooks intact');
+
+    // 2. Standalone installed bundle `update --providers cursor --no-hooks` MUST NOT copy or clobber sibling third-party skills!
+    const sharedProj = path.join(tmpDir, 'shared-skills-proj');
+    fs.mkdirSync(path.join(sharedProj, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(sharedProj, '.cursor'), { recursive: true });
+    assert.equal((await runCmd(['install', '--providers', 'claude', '--no-hooks'], sharedProj)).code, 0);
+
+    // Add a third-party skill in `.claude/skills/third-party-skill` AND a customized version in `.cursor/skills/third-party-skill`
+    const claudeThirdParty = path.join(sharedProj, '.claude', 'skills', 'third-party-skill');
+    const cursorThirdParty = path.join(sharedProj, '.cursor', 'skills', 'third-party-skill');
+    const claudeUnlistedOnly = path.join(sharedProj, '.claude', 'skills', 'claude-only-custom');
+    fs.mkdirSync(claudeThirdParty, { recursive: true });
+    fs.mkdirSync(cursorThirdParty, { recursive: true });
+    fs.mkdirSync(claudeUnlistedOnly, { recursive: true });
+    fs.writeFileSync(path.join(claudeThirdParty, 'SKILL.md'), '---\nname: third-party-skill\n---\nCLAUDE VERSION\n', 'utf8');
+    fs.writeFileSync(path.join(cursorThirdParty, 'SKILL.md'), '---\nname: third-party-skill\n---\nCURSOR CUSTOMIZED VERSION\n', 'utf8');
+    fs.writeFileSync(path.join(claudeUnlistedOnly, 'SKILL.md'), '---\nname: claude-only-custom\n---\nPRIVATE\n', 'utf8');
+
+    const claudeLauncher = path.join(sharedProj, '.claude', 'skills', 'animate-compose', 'scripts', 'android-ux');
+    const crossUpdate = spawnSync('sh', [claudeLauncher, 'update', '--providers', 'cursor', '--no-hooks'], {
+      cwd: sharedProj,
+      encoding: 'utf8',
+    });
+    assert.equal(crossUpdate.status, 0, `Standalone cross-provider update failed: ${crossUpdate.stderr}`);
+    assert.equal(
+      fs.existsSync(path.join(sharedProj, '.cursor', 'skills', 'animate-compose', 'SKILL.md')),
+      true,
+      'Android UX skills must be installed into .cursor/skills'
+    );
+    assert.equal(
+      fs.readFileSync(path.join(cursorThirdParty, 'SKILL.md'), 'utf8'),
+      '---\nname: third-party-skill\n---\nCURSOR CUSTOMIZED VERSION\n',
+      'Customized Cursor third-party skill must NOT be overwritten by Claude sibling skill'
+    );
+    assert.equal(
+      fs.existsSync(path.join(sharedProj, '.cursor', 'skills', 'claude-only-custom')),
+      false,
+      'Unrelated sibling skills in .claude/skills must NOT be copied into .cursor/skills'
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

@@ -92,6 +92,10 @@ for dir in "$root"/skills/*/; do
     [[ -f "$sh_launcher" ]] || skill_fail "$skill: missing scripts/android-ux"
     [[ -x "$sh_launcher" ]] || skill_fail "$skill: scripts/android-ux is not executable"
     [[ -f "$cmd_launcher" ]] || skill_fail "$skill: missing scripts/android-ux.cmd"
+    if [[ -f "$root/cli/src/commands/install.mjs" ]]; then
+        grep -q "'$skill'" "$root/cli/src/commands/install.mjs" || \
+            skill_fail "$skill: missing from ANDROID_UX_SKILL_NAMES in cli/src/commands/install.mjs"
+    fi
     if [[ -f "$mjs_bundle" ]]; then
         bundle_bytes="$(wc -c < "$mjs_bundle" | tr -d ' ')"
         if [[ "${bundle_bytes:-0}" -gt $((512 * 1024)) ]]; then

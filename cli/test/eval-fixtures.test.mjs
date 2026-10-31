@@ -476,6 +476,55 @@ import androidx.compose.runtime.Composable
       ['ScreenB.kt:4', 'Screens.kt:5'],
       'Exception in featureA/MOTION.md must waive only featureA LegacyBanner, not OtherFeatureAScreen or sibling featureB'
     );
+
+    // 4. F-001 lambda parameter, destructured parameter, typed parameter, for-loop shadowing vs `when` branch non-shadowing
+    const shadowFile = path.join(tmpDir, 'LambdaShadow.kt');
+    fs.writeFileSync(
+      shadowFile,
+      `package demo
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+
+@Composable
+fun ShadowingShowcase(flag: Boolean) {
+    val alpha by animateFloatAsState(if (flag) 1f else 0.4f)
+
+    // Shadowed by simple lambda param -> CLEAN
+    listOf(1f).forEach { alpha ->
+        Box(Modifier.alpha(alpha))
+    }
+
+    // Shadowed by destructured lambda param -> CLEAN
+    listOf(1f to "x").forEach { (alpha, _) ->
+        Box(Modifier.alpha(alpha))
+    }
+
+    // Shadowed by typed + function-typed lambda params -> CLEAN
+    withTransform { map: (Int) -> Float, alpha: Float ->
+        Box(Modifier.alpha(alpha))
+    }
+
+    // Shadowed by for-loop variable -> CLEAN
+    for (alpha in listOf(0.5f, 1f)) {
+        Box(Modifier.alpha(alpha))
+    }
+
+    // NOT shadowed inside a when branch -> MUST FLAG F-001 on line 34!
+    when (flag) {
+        true -> Box(Modifier.alpha(alpha))
+        false -> Unit
+    }
+}
+`,
+      'utf8'
+    );
+    const shadowRes = runStaticScan({ targets: [shadowFile], cwd: tmpDir });
+    const f001Hits = shadowRes.findings.filter((f) => f.rule === 'F-001');
+    assert.equal(f001Hits.length, 1, `Expected exactly 1 F-001 finding (inside when branch), got: ${JSON.stringify(f001Hits)}`);
+    assert.deepEqual(f001Hits[0].lines, [34, 34]);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

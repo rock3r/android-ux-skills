@@ -2495,11 +2495,293 @@ function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
   for (const b of scopedBindings) {
     if (b.name !== varName) continue;
     if (atTokIdx <= b.declEndIdx || atTokIdx > b.scopeEndIdx || atTokIdx < b.scopeStartIdx) continue;
-    if (!best || b.scopeStartIdx >= best.scopeStartIdx) {
+    if (!best || b.scopeStartIdx > best.scopeStartIdx || b.scopeStartIdx === best.scopeStartIdx && b.declEndIdx >= best.declEndIdx) {
       best = b;
     }
   }
   return best ? best.kind : null;
+}
+function findMatchingBackward2(tokens, closeIdx, openSym, closeSym) {
+  let depth = 0;
+  for (let i = closeIdx; i >= 0; i -= 1) {
+    const t = tokens[i];
+    if (t.type === "Punct") {
+      if (t.value === closeSym) depth += 1;
+      else if (t.value === openSym) {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+function parseDestructuringParamNames(tokens, startIdx, closeParenIdx) {
+  const names = [];
+  let cursor = startIdx;
+  while (cursor < closeParenIdx) {
+    while (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "@") {
+      cursor += 1;
+      while (cursor < closeParenIdx && (tokens[cursor]?.type === "Identifier" || tokens[cursor]?.value === ".")) {
+        cursor += 1;
+      }
+      if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "(") {
+        const closeAnn = findMatchingForward(tokens, cursor, "(", ")");
+        if (closeAnn === -1 || closeAnn >= closeParenIdx) return null;
+        cursor = closeAnn + 1;
+      }
+    }
+    if (tokens[cursor]?.type !== "Identifier") return null;
+    if (tokens[cursor].value !== "_") {
+      names.push(tokens[cursor].value);
+    }
+    cursor += 1;
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === ":") {
+      cursor = skipKotlinTypeInLambdaParam(tokens, cursor + 1, closeParenIdx);
+      if (cursor === -1) return null;
+    }
+    if (cursor === closeParenIdx) break;
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === ",") {
+      cursor += 1;
+      if (cursor === closeParenIdx) break;
+      continue;
+    }
+    return null;
+  }
+  return names;
+}
+function skipKotlinTypeInLambdaParam(tokens, startIdx, limitIdx) {
+  let cursor = startIdx;
+  while (cursor < limitIdx) {
+    if (tokens[cursor]?.value === "suspend") {
+      cursor += 1;
+    }
+    let wasParenGroup = false;
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "(") {
+      const closeP = findMatchingForward(tokens, cursor, "(", ")");
+      if (closeP === -1 || closeP >= limitIdx) return -1;
+      cursor = closeP + 1;
+      wasParenGroup = true;
+    } else if (tokens[cursor]?.type === "Identifier") {
+      cursor += 1;
+      while (cursor < limitIdx) {
+        if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "." && tokens[cursor + 1]?.type === "Identifier") {
+          cursor += 2;
+        } else if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "<") {
+          const closeAngle = findMatchingForward(tokens, cursor, "<", ">");
+          if (closeAngle === -1 || closeAngle >= limitIdx) return -1;
+          cursor = closeAngle + 1;
+        } else {
+          break;
+        }
+      }
+      if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "." && tokens[cursor + 1]?.value === "(") {
+        const closeRecvP = findMatchingForward(tokens, cursor + 1, "(", ")");
+        if (closeRecvP === -1 || closeRecvP >= limitIdx) return -1;
+        cursor = closeRecvP + 1;
+        wasParenGroup = true;
+      }
+    } else {
+      return -1;
+    }
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "?") {
+      cursor += 1;
+    }
+    if (wasParenGroup && tokens[cursor]?.type === "Punct" && tokens[cursor].value === "->") {
+      cursor += 1;
+      continue;
+    }
+    return cursor;
+  }
+  return -1;
+}
+function isNonLambdaBraceBlock(tokens, openBraceIdx, declBodyBraces) {
+  if (declBodyBraces.has(openBraceIdx)) return true;
+  const prev = tokens[openBraceIdx - 1];
+  if (!prev) return true;
+  if (prev.type === "Keyword" && (prev.value === "when" || prev.value === "try" || prev.value === "else" || prev.value === "finally" || prev.value === "do")) {
+    return true;
+  }
+  if (prev.type === "Punct" && prev.value === ")") {
+    const openParen = findMatchingBackward2(tokens, openBraceIdx - 1, "(", ")");
+    if (openParen !== -1) {
+      const beforeParen = tokens[openParen - 1];
+      if (beforeParen?.type === "Keyword" && (beforeParen.value === "when" || beforeParen.value === "if" || beforeParen.value === "for" || beforeParen.value === "while" || beforeParen.value === "catch")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+function parseLambdaHeaderParams(tokens, openBraceIdx, closeBraceIdx) {
+  let cursor = openBraceIdx + 1;
+  if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "->") {
+    return { arrowIdx: cursor, names: [] };
+  }
+  const names = [];
+  while (cursor < closeBraceIdx) {
+    while (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "@") {
+      cursor += 1;
+      while (cursor < closeBraceIdx && (tokens[cursor]?.type === "Identifier" || tokens[cursor]?.value === ".")) {
+        cursor += 1;
+      }
+      if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "(") {
+        const closeAnn = findMatchingForward(tokens, cursor, "(", ")");
+        if (closeAnn === -1 || closeAnn >= closeBraceIdx) return null;
+        cursor = closeAnn + 1;
+      }
+    }
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "(") {
+      const closeDestruct = findMatchingForward(tokens, cursor, "(", ")");
+      if (closeDestruct === -1 || closeDestruct >= closeBraceIdx) return null;
+      const inner = parseDestructuringParamNames(tokens, cursor + 1, closeDestruct);
+      if (!inner) return null;
+      names.push(...inner);
+      cursor = closeDestruct + 1;
+    } else if (tokens[cursor]?.type === "Identifier") {
+      if (tokens[cursor].value !== "_") {
+        names.push(tokens[cursor].value);
+      }
+      cursor += 1;
+    } else {
+      return null;
+    }
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === ":") {
+      cursor = skipKotlinTypeInLambdaParam(tokens, cursor + 1, closeBraceIdx);
+      if (cursor === -1) return null;
+    }
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === ",") {
+      cursor += 1;
+      if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "->") {
+        return { arrowIdx: cursor, names };
+      }
+      continue;
+    }
+    if (tokens[cursor]?.type === "Punct" && tokens[cursor].value === "->") {
+      return { arrowIdx: cursor, names };
+    }
+    return null;
+  }
+  return null;
+}
+function collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings) {
+  const declBodyBraces = /* @__PURE__ */ new Set();
+  for (const d of declarations) {
+    if (d.startTokIdx >= fn.startTokIdx && d.endTokIdx <= fn.endTokIdx) {
+      if (tokens[d.endTokIdx]?.value === "}") {
+        const openB = findMatchingBackward2(tokens, d.endTokIdx, "{", "}");
+        if (openB !== -1) declBodyBraces.add(openB);
+      }
+      if (d.kind === "fun" && d !== fn && d.paramRange) {
+        const paramSlice = tokens.slice(d.paramRange[0] + 1, d.paramRange[1]);
+        let pDepth = 0;
+        for (let i = 0; i < paramSlice.length; i += 1) {
+          const pt = paramSlice[i];
+          if (pt.type === "Punct" && (pt.value === "(" || pt.value === "<")) pDepth += 1;
+          else if (pt.type === "Punct" && (pt.value === ")" || pt.value === ">")) pDepth = Math.max(0, pDepth - 1);
+          else if (pDepth === 0 && pt.type === "Identifier" && paramSlice[i + 1]?.value === ":") {
+            scopedBindings.push({
+              name: pt.value,
+              kind: "other",
+              declStartIdx: d.paramRange[0],
+              declEndIdx: d.paramRange[1],
+              rhsStartIdx: -1,
+              scopeStartIdx: d.startTokIdx,
+              scopeEndIdx: d.endTokIdx
+            });
+          }
+        }
+      }
+    }
+  }
+  for (let i = fn.startTokIdx + 1; i <= fn.endTokIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === "Punct" && t.value === "{" && !isNonLambdaBraceBlock(tokens, i, declBodyBraces)) {
+      const closeBrace = findMatchingForward(tokens, i, "{", "}");
+      if (closeBrace !== -1 && closeBrace <= fn.endTokIdx) {
+        const header = parseLambdaHeaderParams(tokens, i, closeBrace);
+        if (header && header.names.length > 0) {
+          for (const name of header.names) {
+            scopedBindings.push({
+              name,
+              kind: "other",
+              declStartIdx: header.arrowIdx,
+              declEndIdx: header.arrowIdx,
+              rhsStartIdx: -1,
+              scopeStartIdx: i,
+              scopeEndIdx: closeBrace
+            });
+          }
+        }
+      }
+      continue;
+    }
+    if (t.type === "Keyword" && (t.value === "val" || t.value === "var") && tokens[i + 1]?.value === "(") {
+      const closeDestruct = findMatchingForward(tokens, i + 1, "(", ")");
+      if (closeDestruct !== -1 && closeDestruct <= fn.endTokIdx) {
+        const names = parseDestructuringParamNames(tokens, i + 2, closeDestruct);
+        if (names && names.length > 0) {
+          const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, i, fn.startTokIdx, fn.endTokIdx);
+          const matchingDecl = declarations.find((d) => d.startTokIdx === i);
+          const declEndIdx = matchingDecl ? matchingDecl.endTokIdx : closeDestruct;
+          for (const name of names) {
+            scopedBindings.push({
+              name,
+              kind: "other",
+              declStartIdx: i,
+              declEndIdx,
+              rhsStartIdx: -1,
+              scopeStartIdx,
+              scopeEndIdx
+            });
+          }
+        }
+      }
+      continue;
+    }
+    if (t.type === "Keyword" && t.value === "for" && tokens[i + 1]?.value === "(") {
+      const closeForParen = findMatchingForward(tokens, i + 1, "(", ")");
+      if (closeForParen !== -1 && closeForParen <= fn.endTokIdx) {
+        let inIdx = -1;
+        let pDepth = 0;
+        for (let k = i + 2; k < closeForParen; k += 1) {
+          if (tokens[k].type === "Punct" && (tokens[k].value === "(" || tokens[k].value === "<")) pDepth += 1;
+          else if (tokens[k].type === "Punct" && (tokens[k].value === ")" || tokens[k].value === ">")) pDepth = Math.max(0, pDepth - 1);
+          else if (pDepth === 0 && tokens[k].type === "Keyword" && tokens[k].value === "in") {
+            inIdx = k;
+            break;
+          }
+        }
+        if (inIdx !== -1) {
+          let loopNames = null;
+          if (tokens[i + 2]?.value === "(") {
+            const closeInner = findMatchingForward(tokens, i + 2, "(", ")");
+            if (closeInner !== -1 && closeInner < inIdx) {
+              loopNames = parseDestructuringParamNames(tokens, i + 3, closeInner);
+            }
+          } else {
+            loopNames = parseDestructuringParamNames(tokens, i + 2, inIdx);
+          }
+          if (loopNames && loopNames.length > 0) {
+            const bodyStart = closeForParen + 1;
+            const bodyEnd = tokens[bodyStart]?.value === "{" ? findMatchingForward(tokens, bodyStart, "{", "}") : Math.min(fn.endTokIdx, bodyStart + 25);
+            if (bodyEnd !== -1) {
+              for (const name of loopNames) {
+                scopedBindings.push({
+                  name,
+                  kind: "other",
+                  declStartIdx: i + 1,
+                  declEndIdx: closeForParen,
+                  rhsStartIdx: -1,
+                  scopeStartIdx: bodyStart,
+                  scopeEndIdx: bodyEnd
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 function checkF001AndF008(kf, rawFindings, rawCandidates) {
   const { tokens, declarations, calls } = kf;
@@ -2541,6 +2823,8 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
         scopeEndIdx
       });
     }
+    if (!hasAnyAnimated) continue;
+    collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings);
     for (const b of scopedBindings) {
       if (b.kind === "other" && b.rhsStartIdx !== -1) {
         const rhsCalls = calls.filter((c) => c.nameTokIdx >= b.rhsStartIdx && c.endTokIdx <= b.declEndIdx);
@@ -2558,7 +2842,6 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
         }
       }
     }
-    if (!hasAnyAnimated) continue;
     const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
     for (const c of fnCalls) {
       if (!c.hasParens || c.args.length === 0) continue;
@@ -3931,6 +4214,9 @@ function writeConfigObject(cwd, nextObj, { local = false } = {}) {
 function readEditableConfigObject(cwd, { local = false } = {}) {
   const targetPath = local ? getLocalConfigPath(cwd) : getSharedConfigPath(cwd);
   const raw = readRawJson(targetPath);
+  if (raw.malformed) {
+    throw new Error(`Refusing to overwrite malformed or unreadable config file "${targetPath}".`);
+  }
   return raw.data ? { ...raw.data } : {};
 }
 function ensureLocalConfigGitExclude(cwd) {
@@ -8381,19 +8667,22 @@ function defaultIo6() {
 import fs10 from "node:fs";
 import path11 from "node:path";
 var SUPPORTED_PROVIDERS = ["claude", "codex", "cursor", "copilot", "jetski"];
-var HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|reset> [options]
+var HOOKS_USAGE = `Usage: android-ux hooks <status|on|off|install|uninstall|reset> [options]
 
-Inspect or toggle non-blocking Android UX context hooks.
+Inspect, wire, or toggle non-blocking Android UX context hooks.
 
 Subcommands:
   status [--json]
       Show hook enablement (.android-ux/config*.json), active harness manifests, and OS session cache count.
 
-  on [--local|--shared] [--providers <list>] [--scope project|global] [--json]
-      Re-enable hooks in config and wire hook manifests for installed/selected providers.
+  on | install [--local|--shared] [--providers <list>] [--scope project|global] [--json]
+      Enable hooks in config and wire hook manifests for installed/selected providers.
 
   off [--local|--shared] [--json]
       Disable hooks for this repo (defaults to --local via .android-ux/config.local.json + <gitdir>/info/exclude).
+
+  uninstall [--providers <list>] [--scope project|global] [--json]
+      Remove Android UX hook entries from harness manifests while preserving unrelated user hooks and settings.
 
   reset [--json]
       Clear OS user-cache session dedupe state for this project.
@@ -8582,13 +8871,94 @@ function installProviderHookManifest(info) {
   return true;
 }
 function readExistingJsonObject(filePath) {
-  if (!fs10.existsSync(filePath)) return {};
+  let raw;
   try {
-    const parsed = JSON.parse(fs10.readFileSync(filePath, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
+    raw = fs10.readFileSync(filePath, "utf8");
+  } catch (err) {
+    if (err && err.code === "ENOENT") return {};
+    throw new Error(`Refusing to overwrite unreadable manifest "${filePath}": ${err?.message || String(err)}`);
   }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Refusing to overwrite malformed JSON manifest "${filePath}": ${err?.message || String(err)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Refusing to overwrite manifest "${filePath}": top-level JSON value must be an object.`);
+  }
+  return parsed;
+}
+function uninstallProviderHooks(info) {
+  if (!info || !info.manifestPath) return false;
+  let raw;
+  try {
+    raw = fs10.readFileSync(info.manifestPath, "utf8");
+  } catch (err) {
+    if (err && err.code === "ENOENT") return false;
+    throw new Error(`Refusing to modify unreadable manifest "${info.manifestPath}": ${err?.message || String(err)}`);
+  }
+  let existing;
+  try {
+    existing = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Refusing to modify malformed JSON manifest "${info.manifestPath}": ${err?.message || String(err)}`);
+  }
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    throw new Error(`Refusing to modify manifest "${info.manifestPath}": top-level JSON value must be an object.`);
+  }
+  let next;
+  if (info.provider === "claude" || info.provider === "codex") {
+    next = stripAndroidUxEntriesFromClaudeOrCodex(existing);
+    if (next.hooks && typeof next.hooks === "object" && Object.keys(next.hooks).length === 0) {
+      delete next.hooks;
+    }
+  } else if (info.provider === "cursor") {
+    next = { ...existing };
+    if (next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks)) {
+      next.hooks = { ...next.hooks };
+      for (const [k, list] of Object.entries(next.hooks)) {
+        if (Array.isArray(list)) {
+          next.hooks[k] = list.filter((h) => !String(h?.command || "").includes("android-ux"));
+          if (next.hooks[k].length === 0) delete next.hooks[k];
+        }
+      }
+      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+    }
+  } else if (info.provider === "copilot") {
+    next = { ...existing };
+    if (next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks)) {
+      next.hooks = { ...next.hooks };
+      for (const [k, list] of Object.entries(next.hooks)) {
+        if (Array.isArray(list)) {
+          next.hooks[k] = list.filter(
+            (h) => !String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
+          );
+          if (next.hooks[k].length === 0) delete next.hooks[k];
+        }
+      }
+      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+    }
+    const remainingKeys = Object.keys(next).filter((k) => k !== "version");
+    if (remainingKeys.length === 0) {
+      fs10.unlinkSync(info.manifestPath);
+      return true;
+    }
+  } else if (info.provider === "jetski") {
+    if (!Object.prototype.hasOwnProperty.call(existing, "android-ux")) return false;
+    next = { ...existing };
+    delete next["android-ux"];
+  } else {
+    return false;
+  }
+  const serialized = `${JSON.stringify(next, null, 2)}
+`;
+  if (serialized === `${JSON.stringify(existing, null, 2)}
+`) {
+    return false;
+  }
+  fs10.writeFileSync(info.manifestPath, serialized, "utf8");
+  return true;
 }
 function stripAndroidUxEntriesFromClaudeOrCodex(obj) {
   const clone = JSON.parse(JSON.stringify(obj || {}));
@@ -8614,14 +8984,15 @@ async function runHooksCommand(rawArgs, io = defaultIo7()) {
     return 0;
   }
   const sub = args[0] && !args[0].startsWith("--") ? args.shift().toLowerCase() : "status";
-  if (!["status", "on", "off", "reset"].includes(sub)) {
-    io.stderr.write(`Error: unknown hooks subcommand "${sub}". Valid: status, on, off, reset
+  if (!["status", "on", "off", "install", "uninstall", "reset"].includes(sub)) {
+    io.stderr.write(`Error: unknown hooks subcommand "${sub}". Valid: status, on, off, install, uninstall, reset
 `);
     return 1;
   }
   if (sub === "status") return handleHooksStatus(args, io);
-  if (sub === "on") return handleHooksToggle(args, io, true);
+  if (sub === "on" || sub === "install") return handleHooksToggle(args, io, true);
   if (sub === "off") return handleHooksToggle(args, io, false);
+  if (sub === "uninstall") return handleHooksUninstall(args, io);
   return handleHooksReset(args, io);
 }
 function handleHooksStatus(args, io) {
@@ -8678,12 +9049,18 @@ function handleHooksToggle(args, io, enable) {
     } else if (a === "--providers" || a.startsWith("--providers=")) {
       const v = a.includes("=") ? a.slice("--providers=".length) : args[++i];
       for (const p of String(v || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+        if (p === "all") {
+          for (const sp of SUPPORTED_PROVIDERS) {
+            if (!requestedProviders.includes(sp)) requestedProviders.push(sp);
+          }
+          continue;
+        }
         if (!SUPPORTED_PROVIDERS.includes(p)) {
-          io.stderr.write(`Error: unknown provider "${p}". Valid: ${SUPPORTED_PROVIDERS.join(", ")}
+          io.stderr.write(`Error: unknown provider "${p}". Valid: all, ${SUPPORTED_PROVIDERS.join(", ")}
 `);
           return 1;
         }
-        requestedProviders.push(p);
+        if (!requestedProviders.includes(p)) requestedProviders.push(p);
       }
     } else {
       io.stderr.write(`Error: unknown hooks option "${a}"
@@ -8691,56 +9068,137 @@ function handleHooksToggle(args, io, enable) {
       return 1;
     }
   }
-  const targetCfgPath = local ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
-  const rawObj = readEditableConfigObject(io.cwd, { local });
-  if (!enable) {
-    rawObj.hook = { ...rawObj.hook || {}, enabled: false };
-    writeConfigObject(io.cwd, rawObj, { local });
+  try {
+    const targetCfgPath = local ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
+    if (!enable) {
+      const rawObj = readEditableConfigObject(io.cwd, { local });
+      rawObj.hook = { ...rawObj.hook || {}, enabled: false };
+      writeConfigObject(io.cwd, rawObj, { local });
+      if (json) {
+        io.stdout.write(`${JSON.stringify(createJsonEnvelope("hooks.off", {
+          enabled: false,
+          configFile: normalizePosixPath(path11.relative(io.cwd, targetCfgPath))
+        }), null, 2)}
+`);
+      } else {
+        io.stdout.write(`Disabled Android UX hooks in ${normalizePosixPath(path11.relative(io.cwd, targetCfgPath))}.
+`);
+      }
+      return 0;
+    }
+    const providersToWire = requestedProviders.length > 0 ? requestedProviders : SUPPORTED_PROVIDERS.filter((prov) => {
+      const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+      return info && fs10.existsSync(path11.join(info.skillsDir, "animate-compose"));
+    });
+    const resolvedTargets = [];
+    for (const prov of providersToWire) {
+      const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+      if (info) {
+        readExistingJsonObject(info.manifestPath);
+        resolvedTargets.push(info);
+      }
+    }
+    for (const isLoc of [true, false]) {
+      const p = isLoc ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
+      if (!fs10.existsSync(p)) continue;
+      const editable = readEditableConfigObject(io.cwd, { local: isLoc });
+      if (editable.hook && editable.hook.enabled === false) {
+        editable.hook.enabled = true;
+        writeConfigObject(io.cwd, editable, { local: isLoc });
+      }
+    }
+    const wiredManifests = [];
+    for (const info of resolvedTargets) {
+      if (installProviderHookManifest(info)) {
+        wiredManifests.push(normalizePosixPath(path11.relative(io.cwd, info.manifestPath) || info.manifestPath));
+      }
+    }
     if (json) {
-      io.stdout.write(`${JSON.stringify(createJsonEnvelope("hooks.off", {
-        enabled: false,
-        configFile: normalizePosixPath(path11.relative(io.cwd, targetCfgPath))
+      io.stdout.write(`${JSON.stringify(createJsonEnvelope("hooks.on", {
+        enabled: true,
+        wiredManifests
       }), null, 2)}
 `);
     } else {
-      io.stdout.write(`Disabled Android UX hooks in ${normalizePosixPath(path11.relative(io.cwd, targetCfgPath))}.
-`);
+      io.stdout.write(
+        wiredManifests.length > 0 ? `Enabled Android UX hooks and updated manifests: ${wiredManifests.join(", ")}
+` : "Enabled Android UX hooks (run `npx android-ux install` to install skill bundles + harness manifests).\n"
+      );
     }
     return 0;
-  }
-  for (const isLoc of [true, false]) {
-    const p = isLoc ? getLocalConfigPath(io.cwd) : getSharedConfigPath(io.cwd);
-    if (!fs10.existsSync(p)) continue;
-    const editable = readEditableConfigObject(io.cwd, { local: isLoc });
-    if (editable.hook && editable.hook.enabled === false) {
-      editable.hook.enabled = true;
-      writeConfigObject(io.cwd, editable, { local: isLoc });
-    }
-  }
-  const providersToWire = requestedProviders.length > 0 ? requestedProviders : SUPPORTED_PROVIDERS.filter((prov) => {
-    const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-    return info && fs10.existsSync(path11.join(info.skillsDir, "animate-compose"));
-  });
-  const wiredManifests = [];
-  for (const prov of providersToWire) {
-    const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
-    if (info && installProviderHookManifest(info)) {
-      wiredManifests.push(normalizePosixPath(path11.relative(io.cwd, info.manifestPath) || info.manifestPath));
-    }
-  }
-  if (json) {
-    io.stdout.write(`${JSON.stringify(createJsonEnvelope("hooks.on", {
-      enabled: true,
-      wiredManifests
-    }), null, 2)}
+  } catch (err) {
+    io.stderr.write(`Error: ${err?.message || String(err)}
 `);
-  } else {
-    io.stdout.write(
-      wiredManifests.length > 0 ? `Enabled Android UX hooks and updated manifests: ${wiredManifests.join(", ")}
-` : "Enabled Android UX hooks (run `npx android-ux install` to install skill bundles + harness manifests).\n"
-    );
+    return 1;
   }
-  return 0;
+}
+function handleHooksUninstall(args, io) {
+  let json = false;
+  let scope = "project";
+  const requestedProviders = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === "--json") json = true;
+    else if (a === "--scope" || a.startsWith("--scope=")) {
+      const v = a.includes("=") ? a.slice("--scope=".length) : args[++i];
+      if (!["project", "global"].includes(v)) {
+        io.stderr.write("Error: --scope must be project or global\n");
+        return 1;
+      }
+      scope = v;
+    } else if (a === "--providers" || a.startsWith("--providers=")) {
+      const v = a.includes("=") ? a.slice("--providers=".length) : args[++i];
+      for (const p of String(v || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+        if (p === "all") {
+          for (const sp of SUPPORTED_PROVIDERS) {
+            if (!requestedProviders.includes(sp)) requestedProviders.push(sp);
+          }
+          continue;
+        }
+        if (!SUPPORTED_PROVIDERS.includes(p)) {
+          io.stderr.write(`Error: unknown provider "${p}". Valid: all, ${SUPPORTED_PROVIDERS.join(", ")}
+`);
+          return 1;
+        }
+        if (!requestedProviders.includes(p)) requestedProviders.push(p);
+      }
+    } else {
+      io.stderr.write(`Error: unknown hooks uninstall option "${a}"
+`);
+      return 1;
+    }
+  }
+  const providers = requestedProviders.length > 0 ? requestedProviders : SUPPORTED_PROVIDERS;
+  try {
+    const targets = [];
+    for (const prov of providers) {
+      const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
+      if (info && fs10.existsSync(info.manifestPath)) {
+        readExistingJsonObject(info.manifestPath);
+        targets.push(info);
+      }
+    }
+    const removedManifests = [];
+    for (const info of targets) {
+      if (uninstallProviderHooks(info)) {
+        removedManifests.push(normalizePosixPath(path11.relative(io.cwd, info.manifestPath) || info.manifestPath));
+      }
+    }
+    if (json) {
+      io.stdout.write(`${JSON.stringify(createJsonEnvelope("hooks.uninstall", { removedManifests }), null, 2)}
+`);
+    } else {
+      io.stdout.write(
+        removedManifests.length > 0 ? `Removed Android UX hooks from: ${removedManifests.join(", ")}
+` : "No Android UX hook entries found to remove.\n"
+      );
+    }
+    return 0;
+  } catch (err) {
+    io.stderr.write(`Error: ${err?.message || String(err)}
+`);
+    return 1;
+  }
 }
 function handleHooksReset(args, io) {
   const json = args.includes("--json");
@@ -8766,6 +9224,30 @@ function defaultIo7() {
 import fs11 from "node:fs";
 import path12 from "node:path";
 import { fileURLToPath } from "node:url";
+var ANDROID_UX_SKILL_NAMES = /* @__PURE__ */ new Set([
+  "animate-compose",
+  "improve-android-motion",
+  "optimize-android-motion",
+  "review-android-motion"
+]);
+function isOwnedAndroidUxSkillDir(skillsRoot, skillName) {
+  if (!ANDROID_UX_SKILL_NAMES.has(skillName)) return false;
+  try {
+    const skillMd = path12.join(skillsRoot, skillName, "SKILL.md");
+    const bundledCli = path12.join(skillsRoot, skillName, "scripts", "android-ux.mjs");
+    return fs11.existsSync(skillMd) && fs11.statSync(skillMd).isFile() && fs11.existsSync(bundledCli) && fs11.statSync(bundledCli).isFile();
+  } catch {
+    return false;
+  }
+}
+function discoverOwnedAndroidUxSkills(skillsRoot) {
+  if (!skillsRoot) return [];
+  try {
+    return fs11.readdirSync(skillsRoot).filter((name) => isOwnedAndroidUxSkillDir(skillsRoot, name)).sort();
+  } catch {
+    return [];
+  }
+}
 var INSTALL_USAGE = `Usage:
   android-ux install [options]
   android-ux update [options]
@@ -8791,8 +9273,7 @@ function locatePackagedSkillsRoot() {
   for (const dir of candidates) {
     try {
       if (fs11.existsSync(dir) && fs11.statSync(dir).isDirectory()) {
-        const entries = fs11.readdirSync(dir);
-        if (entries.some((name) => fs11.existsSync(path12.join(dir, name, "SKILL.md")))) {
+        if (discoverOwnedAndroidUxSkills(dir).length > 0) {
           return dir;
         }
       }
@@ -8917,10 +9398,11 @@ async function runInstallCommand(rawArgs, io = defaultIo8()) {
     io.stderr.write("Error: could not locate packaged skills/ directory to install.\n");
     return 1;
   }
-  const skillNames = fs11.readdirSync(skillsRoot).filter((name) => {
-    const full = path12.join(skillsRoot, name, "SKILL.md");
-    return fs11.existsSync(full) && fs11.statSync(full).isFile();
-  }).sort();
+  const skillNames = discoverOwnedAndroidUxSkills(skillsRoot);
+  if (skillNames.length === 0) {
+    io.stderr.write("Error: no owned Android UX skill bundles found to install.\n");
+    return 1;
+  }
   let providers = requestedProviders;
   if (providers.length === 0) {
     if (verb === "update") {
@@ -8937,6 +9419,7 @@ async function runInstallCommand(rawArgs, io = defaultIo8()) {
   }
   const installed = [];
   try {
+    const resolvedProviders = [];
     for (const prov of providers) {
       const info = resolveProviderPaths(prov, {
         cwd: io.cwd,
@@ -8945,6 +9428,12 @@ async function runInstallCommand(rawArgs, io = defaultIo8()) {
         platform: io.platform || process.platform
       });
       if (!info) continue;
+      if (withHooks) {
+        readExistingJsonObject(info.manifestPath);
+      }
+      resolvedProviders.push({ prov, info });
+    }
+    for (const { prov, info } of resolvedProviders) {
       for (const skillName of skillNames) {
         const srcDir = path12.join(skillsRoot, skillName);
         const dstDir = path12.join(info.skillsDir, skillName);

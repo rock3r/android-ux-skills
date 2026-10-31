@@ -7,7 +7,42 @@ import {
   SUPPORTED_PROVIDERS,
   resolveProviderPaths,
   installProviderHookManifest,
+  readExistingJsonObject,
 } from './hooks.mjs';
+
+export const ANDROID_UX_SKILL_NAMES = new Set([
+  'animate-compose',
+  'improve-android-motion',
+  'optimize-android-motion',
+  'review-android-motion',
+]);
+
+export function isOwnedAndroidUxSkillDir(skillsRoot, skillName) {
+  if (!ANDROID_UX_SKILL_NAMES.has(skillName)) return false;
+  try {
+    const skillMd = path.join(skillsRoot, skillName, 'SKILL.md');
+    const bundledCli = path.join(skillsRoot, skillName, 'scripts', 'android-ux.mjs');
+    return (
+      fs.existsSync(skillMd) &&
+      fs.statSync(skillMd).isFile() &&
+      fs.existsSync(bundledCli) &&
+      fs.statSync(bundledCli).isFile()
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function discoverOwnedAndroidUxSkills(skillsRoot) {
+  if (!skillsRoot) return [];
+  try {
+    return fs.readdirSync(skillsRoot)
+      .filter((name) => isOwnedAndroidUxSkillDir(skillsRoot, name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
 
 const INSTALL_USAGE = `Usage:
   android-ux install [options]
@@ -33,8 +68,7 @@ export function locatePackagedSkillsRoot() {
   for (const dir of candidates) {
     try {
       if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
-        const entries = fs.readdirSync(dir);
-        if (entries.some((name) => fs.existsSync(path.join(dir, name, 'SKILL.md')))) {
+        if (discoverOwnedAndroidUxSkills(dir).length > 0) {
           return dir;
         }
       }
@@ -171,12 +205,11 @@ export async function runInstallCommand(rawArgs, io = defaultIo()) {
     return 1;
   }
 
-  const skillNames = fs.readdirSync(skillsRoot)
-    .filter((name) => {
-      const full = path.join(skillsRoot, name, 'SKILL.md');
-      return fs.existsSync(full) && fs.statSync(full).isFile();
-    })
-    .sort();
+  const skillNames = discoverOwnedAndroidUxSkills(skillsRoot);
+  if (skillNames.length === 0) {
+    io.stderr.write('Error: no owned Android UX skill bundles found to install.\n');
+    return 1;
+  }
 
     let providers = requestedProviders;
     if (providers.length === 0) {
@@ -195,6 +228,7 @@ export async function runInstallCommand(rawArgs, io = defaultIo()) {
 
     const installed = [];
     try {
+      const resolvedProviders = [];
       for (const prov of providers) {
         const info = resolveProviderPaths(prov, {
           cwd: io.cwd,
@@ -203,7 +237,13 @@ export async function runInstallCommand(rawArgs, io = defaultIo()) {
           platform: io.platform || process.platform,
         });
         if (!info) continue;
+        if (withHooks) {
+          readExistingJsonObject(info.manifestPath);
+        }
+        resolvedProviders.push({ prov, info });
+      }
 
+      for (const { prov, info } of resolvedProviders) {
         for (const skillName of skillNames) {
           const srcDir = path.join(skillsRoot, skillName);
           const dstDir = path.join(info.skillsDir, skillName);

@@ -525,11 +525,331 @@ function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
   for (const b of scopedBindings) {
     if (b.name !== varName) continue;
     if (atTokIdx <= b.declEndIdx || atTokIdx > b.scopeEndIdx || atTokIdx < b.scopeStartIdx) continue;
-    if (!best || b.scopeStartIdx >= best.scopeStartIdx) {
+    if (
+      !best ||
+      b.scopeStartIdx > best.scopeStartIdx ||
+      (b.scopeStartIdx === best.scopeStartIdx && b.declEndIdx >= best.declEndIdx)
+    ) {
       best = b;
     }
   }
   return best ? best.kind : null;
+}
+
+function findMatchingBackward(tokens, closeIdx, openSym, closeSym) {
+  let depth = 0;
+  for (let i = closeIdx; i >= 0; i -= 1) {
+    const t = tokens[i];
+    if (t.type === 'Punct') {
+      if (t.value === closeSym) depth += 1;
+      else if (t.value === openSym) {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function parseDestructuringParamNames(tokens, startIdx, closeParenIdx) {
+  const names = [];
+  let cursor = startIdx;
+  while (cursor < closeParenIdx) {
+    while (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '@') {
+      cursor += 1;
+      while (cursor < closeParenIdx && (tokens[cursor]?.type === 'Identifier' || tokens[cursor]?.value === '.')) {
+        cursor += 1;
+      }
+      if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '(') {
+        const closeAnn = findMatchingForward(tokens, cursor, '(', ')');
+        if (closeAnn === -1 || closeAnn >= closeParenIdx) return null;
+        cursor = closeAnn + 1;
+      }
+    }
+    if (tokens[cursor]?.type !== 'Identifier') return null;
+    if (tokens[cursor].value !== '_') {
+      names.push(tokens[cursor].value);
+    }
+    cursor += 1;
+
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === ':') {
+      cursor = skipKotlinTypeInLambdaParam(tokens, cursor + 1, closeParenIdx);
+      if (cursor === -1) return null;
+    }
+    if (cursor === closeParenIdx) break;
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === ',') {
+      cursor += 1;
+      if (cursor === closeParenIdx) break;
+      continue;
+    }
+    return null;
+  }
+  return names;
+}
+
+function skipKotlinTypeInLambdaParam(tokens, startIdx, limitIdx) {
+  let cursor = startIdx;
+  while (cursor < limitIdx) {
+    if (tokens[cursor]?.value === 'suspend') {
+      cursor += 1;
+    }
+    let wasParenGroup = false;
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '(') {
+      const closeP = findMatchingForward(tokens, cursor, '(', ')');
+      if (closeP === -1 || closeP >= limitIdx) return -1;
+      cursor = closeP + 1;
+      wasParenGroup = true;
+    } else if (tokens[cursor]?.type === 'Identifier') {
+      cursor += 1;
+      while (cursor < limitIdx) {
+        if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '.' && tokens[cursor + 1]?.type === 'Identifier') {
+          cursor += 2;
+        } else if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '<') {
+          const closeAngle = findMatchingForward(tokens, cursor, '<', '>');
+          if (closeAngle === -1 || closeAngle >= limitIdx) return -1;
+          cursor = closeAngle + 1;
+        } else {
+          break;
+        }
+      }
+      // Receiver function type `Scope.(Int) -> Unit`
+      if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '.' && tokens[cursor + 1]?.value === '(') {
+        const closeRecvP = findMatchingForward(tokens, cursor + 1, '(', ')');
+        if (closeRecvP === -1 || closeRecvP >= limitIdx) return -1;
+        cursor = closeRecvP + 1;
+        wasParenGroup = true;
+      }
+    } else {
+      return -1;
+    }
+
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '?') {
+      cursor += 1;
+    }
+
+    // Only consume `->` as part of a function type `(A) -> B` if the preceding atom was a `( ... )` parameter type list!
+    if (wasParenGroup && tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '->') {
+      cursor += 1;
+      continue;
+    }
+    return cursor;
+  }
+  return -1;
+}
+
+function isNonLambdaBraceBlock(tokens, openBraceIdx, declBodyBraces) {
+  if (declBodyBraces.has(openBraceIdx)) return true;
+  const prev = tokens[openBraceIdx - 1];
+  if (!prev) return true;
+  if (
+    prev.type === 'Keyword' &&
+    (prev.value === 'when' || prev.value === 'try' || prev.value === 'else' || prev.value === 'finally' || prev.value === 'do')
+  ) {
+    return true;
+  }
+  if (prev.type === 'Punct' && prev.value === ')') {
+    const openParen = findMatchingBackward(tokens, openBraceIdx - 1, '(', ')');
+    if (openParen !== -1) {
+      const beforeParen = tokens[openParen - 1];
+      if (
+        beforeParen?.type === 'Keyword' &&
+        (beforeParen.value === 'when' ||
+          beforeParen.value === 'if' ||
+          beforeParen.value === 'for' ||
+          beforeParen.value === 'while' ||
+          beforeParen.value === 'catch')
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function parseLambdaHeaderParams(tokens, openBraceIdx, closeBraceIdx) {
+  let cursor = openBraceIdx + 1;
+  if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '->') {
+    return { arrowIdx: cursor, names: [] };
+  }
+  const names = [];
+  while (cursor < closeBraceIdx) {
+    while (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '@') {
+      cursor += 1;
+      while (cursor < closeBraceIdx && (tokens[cursor]?.type === 'Identifier' || tokens[cursor]?.value === '.')) {
+        cursor += 1;
+      }
+      if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '(') {
+        const closeAnn = findMatchingForward(tokens, cursor, '(', ')');
+        if (closeAnn === -1 || closeAnn >= closeBraceIdx) return null;
+        cursor = closeAnn + 1;
+      }
+    }
+
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '(') {
+      const closeDestruct = findMatchingForward(tokens, cursor, '(', ')');
+      if (closeDestruct === -1 || closeDestruct >= closeBraceIdx) return null;
+      const inner = parseDestructuringParamNames(tokens, cursor + 1, closeDestruct);
+      if (!inner) return null;
+      names.push(...inner);
+      cursor = closeDestruct + 1;
+    } else if (tokens[cursor]?.type === 'Identifier') {
+      if (tokens[cursor].value !== '_') {
+        names.push(tokens[cursor].value);
+      }
+      cursor += 1;
+    } else {
+      return null;
+    }
+
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === ':') {
+      cursor = skipKotlinTypeInLambdaParam(tokens, cursor + 1, closeBraceIdx);
+      if (cursor === -1) return null;
+    }
+
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === ',') {
+      cursor += 1;
+      if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '->') {
+        return { arrowIdx: cursor, names };
+      }
+      continue;
+    }
+    if (tokens[cursor]?.type === 'Punct' && tokens[cursor].value === '->') {
+      return { arrowIdx: cursor, names };
+    }
+    return null;
+  }
+  return null;
+}
+
+function collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings) {
+  const declBodyBraces = new Set();
+  for (const d of declarations) {
+    if (d.startTokIdx >= fn.startTokIdx && d.endTokIdx <= fn.endTokIdx) {
+      if (tokens[d.endTokIdx]?.value === '}') {
+        const openB = findMatchingBackward(tokens, d.endTokIdx, '{', '}');
+        if (openB !== -1) declBodyBraces.add(openB);
+      }
+      // Nested local `fun` parameters shadow outer animated bindings inside that nested `fun`
+      if (d.kind === 'fun' && d !== fn && d.paramRange) {
+        const paramSlice = tokens.slice(d.paramRange[0] + 1, d.paramRange[1]);
+        let pDepth = 0;
+        for (let i = 0; i < paramSlice.length; i += 1) {
+          const pt = paramSlice[i];
+          if (pt.type === 'Punct' && (pt.value === '(' || pt.value === '<')) pDepth += 1;
+          else if (pt.type === 'Punct' && (pt.value === ')' || pt.value === '>')) pDepth = Math.max(0, pDepth - 1);
+          else if (pDepth === 0 && pt.type === 'Identifier' && paramSlice[i + 1]?.value === ':') {
+            scopedBindings.push({
+              name: pt.value,
+              kind: 'other',
+              declStartIdx: d.paramRange[0],
+              declEndIdx: d.paramRange[1],
+              rhsStartIdx: -1,
+              scopeStartIdx: d.startTokIdx,
+              scopeEndIdx: d.endTokIdx,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = fn.startTokIdx + 1; i <= fn.endTokIdx; i += 1) {
+    const t = tokens[i];
+
+    // 1. Lambda parameters `{ x -> ... }`, `{ (x, y) -> ... }`, `{ x: Float -> ... }`
+    if (t.type === 'Punct' && t.value === '{' && !isNonLambdaBraceBlock(tokens, i, declBodyBraces)) {
+      const closeBrace = findMatchingForward(tokens, i, '{', '}');
+      if (closeBrace !== -1 && closeBrace <= fn.endTokIdx) {
+        const header = parseLambdaHeaderParams(tokens, i, closeBrace);
+        if (header && header.names.length > 0) {
+          for (const name of header.names) {
+            scopedBindings.push({
+              name,
+              kind: 'other',
+              declStartIdx: header.arrowIdx,
+              declEndIdx: header.arrowIdx,
+              rhsStartIdx: -1,
+              scopeStartIdx: i,
+              scopeEndIdx: closeBrace,
+            });
+          }
+        }
+      }
+      continue;
+    }
+
+    // 2. Destructured `val (a, b) = ...` / `var (a, b) = ...`
+    if (t.type === 'Keyword' && (t.value === 'val' || t.value === 'var') && tokens[i + 1]?.value === '(') {
+      const closeDestruct = findMatchingForward(tokens, i + 1, '(', ')');
+      if (closeDestruct !== -1 && closeDestruct <= fn.endTokIdx) {
+        const names = parseDestructuringParamNames(tokens, i + 2, closeDestruct);
+        if (names && names.length > 0) {
+          const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, i, fn.startTokIdx, fn.endTokIdx);
+          const matchingDecl = declarations.find((d) => d.startTokIdx === i);
+          const declEndIdx = matchingDecl ? matchingDecl.endTokIdx : closeDestruct;
+          for (const name of names) {
+            scopedBindings.push({
+              name,
+              kind: 'other',
+              declStartIdx: i,
+              declEndIdx,
+              rhsStartIdx: -1,
+              scopeStartIdx,
+              scopeEndIdx,
+            });
+          }
+        }
+      }
+      continue;
+    }
+
+    // 3. `for (x in ...)` / `for ((x, y) in ...)` loop variables
+    if (t.type === 'Keyword' && t.value === 'for' && tokens[i + 1]?.value === '(') {
+      const closeForParen = findMatchingForward(tokens, i + 1, '(', ')');
+      if (closeForParen !== -1 && closeForParen <= fn.endTokIdx) {
+        let inIdx = -1;
+        let pDepth = 0;
+        for (let k = i + 2; k < closeForParen; k += 1) {
+          if (tokens[k].type === 'Punct' && (tokens[k].value === '(' || tokens[k].value === '<')) pDepth += 1;
+          else if (tokens[k].type === 'Punct' && (tokens[k].value === ')' || tokens[k].value === '>')) pDepth = Math.max(0, pDepth - 1);
+          else if (pDepth === 0 && tokens[k].type === 'Keyword' && tokens[k].value === 'in') {
+            inIdx = k;
+            break;
+          }
+        }
+        if (inIdx !== -1) {
+          let loopNames = null;
+          if (tokens[i + 2]?.value === '(') {
+            const closeInner = findMatchingForward(tokens, i + 2, '(', ')');
+            if (closeInner !== -1 && closeInner < inIdx) {
+              loopNames = parseDestructuringParamNames(tokens, i + 3, closeInner);
+            }
+          } else {
+            loopNames = parseDestructuringParamNames(tokens, i + 2, inIdx);
+          }
+          if (loopNames && loopNames.length > 0) {
+            const bodyStart = closeForParen + 1;
+            const bodyEnd = tokens[bodyStart]?.value === '{'
+              ? findMatchingForward(tokens, bodyStart, '{', '}')
+              : Math.min(fn.endTokIdx, bodyStart + 25);
+            if (bodyEnd !== -1) {
+              for (const name of loopNames) {
+                scopedBindings.push({
+                  name,
+                  kind: 'other',
+                  declStartIdx: i + 1,
+                  declEndIdx: closeForParen,
+                  rhsStartIdx: -1,
+                  scopeStartIdx: bodyStart,
+                  scopeEndIdx: bodyEnd,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 function checkF001AndF008(kf, rawFindings, rawCandidates) {
@@ -578,6 +898,10 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
       });
     }
 
+    if (!hasAnyAnimated) continue;
+
+    collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings);
+
     // Second pass over local vals for `lerp(..., <frameVar>)`
     for (const b of scopedBindings) {
       if (b.kind === 'other' && b.rhsStartIdx !== -1) {
@@ -599,8 +923,6 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
         }
       }
     }
-
-    if (!hasAnyAnimated) continue;
 
     const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
     for (const c of fnCalls) {
