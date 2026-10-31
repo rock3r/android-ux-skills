@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ENVELOPE_PREFIX } from '../version.mjs';
 import {
   readProjectSessionCache,
@@ -28,6 +29,106 @@ function isTruthyEnv(val) {
   return s === '1' || s === 'true' || s === 'yes' || (/^\d+$/.test(s) && Number(s) > 0);
 }
 
+function resolveWorkspaceEntry(entry) {
+  if (typeof entry !== 'string') return '';
+  const trimmed = entry.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('file://')) {
+    try {
+      return path.resolve(fileURLToPath(trimmed));
+    } catch {
+      return '';
+    }
+  }
+  return path.resolve(trimmed);
+}
+
+function normalizeWorkspaceRoots(rawRoots, fallbackRoot) {
+  const resolved = [];
+  if (Array.isArray(rawRoots)) {
+    for (const entry of rawRoots) {
+      const r = resolveWorkspaceEntry(entry);
+      if (r && !resolved.includes(r)) resolved.push(r);
+    }
+  }
+  if (resolved.length === 0) {
+    resolved.push(path.resolve(fallbackRoot));
+  }
+  return resolved;
+}
+
+function resolveCandidatePathAgainstRoots(candidate, roots, defaultBase) {
+  if (typeof candidate !== 'string') return '';
+  const trimmed = candidate.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('file://')) {
+    try {
+      return path.resolve(fileURLToPath(trimmed));
+    } catch {
+      return '';
+    }
+  }
+  if (path.isAbsolute(trimmed)) {
+    return path.resolve(trimmed);
+  }
+  const primary = path.resolve(defaultBase, trimmed);
+  if (fs.existsSync(primary)) return primary;
+  for (const root of roots || []) {
+    const alt = path.resolve(root, trimmed);
+    if (fs.existsSync(alt)) return alt;
+  }
+  return primary;
+}
+
+export function findOwningWorkspaceRoot(filePath, roots) {
+  if (!filePath || !Array.isArray(roots) || roots.length === 0) return null;
+  const resolvedFile = path.resolve(filePath);
+
+  let bestLexicalRoot = null;
+  for (const r of roots) {
+    const resolvedRoot = path.resolve(r);
+    const rel = path.relative(resolvedRoot, resolvedFile);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      if (!bestLexicalRoot || resolvedRoot.length > bestLexicalRoot.length) {
+        bestLexicalRoot = resolvedRoot;
+      }
+    }
+  }
+  if (bestLexicalRoot) {
+    return { root: bestLexicalRoot, absFile: resolvedFile };
+  }
+
+  // Symlinked root fallback (e.g. /var/folders vs /private/var/folders on macOS)
+  try {
+    const realFile = fs.realpathSync(resolvedFile);
+    let bestRealMatch = null;
+    for (const r of roots) {
+      const resolvedRoot = path.resolve(r);
+      try {
+        const realRoot = fs.realpathSync(resolvedRoot);
+        const realRel = path.relative(realRoot, realFile);
+        if (realRel && !realRel.startsWith('..') && !path.isAbsolute(realRel)) {
+          if (!bestRealMatch || realRoot.length > bestRealMatch.realRoot.length) {
+            bestRealMatch = { resolvedRoot, realRoot, realRel };
+          }
+        }
+      } catch {
+        // Ignore unreadable workspace root.
+      }
+    }
+    if (bestRealMatch) {
+      return {
+        root: bestRealMatch.resolvedRoot,
+        absFile: path.join(bestRealMatch.resolvedRoot, bestRealMatch.realRel),
+      };
+    }
+  } catch {
+    // Target does not exist on disk; fail closed for root ownership.
+  }
+
+  return null;
+}
+
 /**
  * Normalize stdin payload from Claude Code, Codex, Cursor, GitHub Copilot, or Antigravity/Jetski.
  */
@@ -38,20 +139,22 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
 
   const forcedHarness = String(env.ANDROID_UX_HOOK_HARNESS || '').trim().toLowerCase();
 
-  // 1. Antigravity / Jetski native plugin payloads (camelCase: conversationId, workspacePaths, toolCall, invocationNum, terminationReason)
+  // 1. Antigravity / Jetski native plugin payloads (camelCase: conversationId, workspacePaths, workspaceUris, toolCall, invocationNum, terminationReason)
   const isJetski =
     forcedHarness === 'jetski' ||
     forcedHarness === 'antigravity' ||
     typeof raw.conversationId === 'string' ||
     Array.isArray(raw.workspacePaths) ||
+    Array.isArray(raw.workspaceUris) ||
     typeof raw.invocationNum === 'number' ||
     typeof raw.terminationReason === 'string' ||
     (raw.toolCall && typeof raw.toolCall === 'object');
 
   if (isJetski) {
-    const roots = Array.isArray(raw.workspacePaths) && raw.workspacePaths.length > 0
-      ? raw.workspacePaths.map((p) => path.resolve(p))
-      : [path.resolve(cwd)];
+    const rawRoots = Array.isArray(raw.workspacePaths) && raw.workspacePaths.length > 0
+      ? raw.workspacePaths
+      : raw.workspaceUris;
+    const roots = normalizeWorkspaceRoots(rawRoots, cwd);
     const sessionId = String(raw.conversationId || 'jetski-session');
 
     if (typeof raw.terminationReason === 'string') {
@@ -67,16 +170,20 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
     if (raw.toolCall && typeof raw.toolCall === 'object') {
       const toolName = String(raw.toolCall.name || '');
       const args = raw.toolCall.args && typeof raw.toolCall.args === 'object' ? raw.toolCall.args : {};
-      const files = [];
+      const rawCandidates = [];
       for (const candidate of [args.Path, args.NotebookPath, args.file_path, args.path]) {
-        if (typeof candidate === 'string' && candidate.trim()) files.push(candidate.trim());
+        if (typeof candidate === 'string' && candidate.trim()) rawCandidates.push(candidate.trim());
       }
+      const files = Array.from(
+        new Set(rawCandidates.map((c) => resolveCandidatePathAgainstRoots(c, roots, roots[0])).filter(Boolean))
+      );
+      const primaryOwner = files.length > 0 ? findOwningWorkspaceRoot(files[0], roots) : null;
       const toolUseId = raw.stepIdx != null ? `jetski-step-${raw.stepIdx}` : null;
       return {
         kind: 'jetski-post-tool-use',
         harness: 'jetski',
         sessionId,
-        projectRoot: roots[0],
+        projectRoot: primaryOwner ? primaryOwner.root : roots[0],
         roots,
         toolName,
         toolUseId,
@@ -99,11 +206,13 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
   const eventName = String(raw.hook_event_name || raw.hookEventName || '');
   if (eventName === 'Stop') {
     const harness = forcedHarness || 'claude';
+    const projectRoot = path.resolve(raw.cwd || cwd);
     return {
       kind: 'stop',
       harness,
       sessionId: String(raw.session_id || raw.sessionId || 'default-session'),
-      projectRoot: path.resolve(raw.cwd || cwd),
+      projectRoot,
+      roots: [projectRoot],
       stopHookActive: raw.stop_hook_active === true,
     };
   }
@@ -119,21 +228,21 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
     Array.isArray(raw.workspace_roots);
 
   if (isCursor) {
-    const projectRoot = path.resolve(
-      (Array.isArray(raw.workspace_roots) && raw.workspace_roots[0]) ||
-        env.CURSOR_PROJECT_DIR ||
-        raw.cwd ||
-        cwd
-    );
+    const fallbackRoot = path.resolve(env.CURSOR_PROJECT_DIR || raw.cwd || cwd);
+    const roots = normalizeWorkspaceRoots(raw.workspace_roots, fallbackRoot);
+    const defaultBase = path.resolve(raw.cwd || env.CURSOR_PROJECT_DIR || roots[0]);
     const toolName = String(raw.tool_name || '');
+    const files = extractTargetFilesFromEvent(raw, defaultBase, roots);
+    const primaryOwner = files.length > 0 ? findOwningWorkspaceRoot(files[0], roots) : null;
     return {
       kind: 'post-tool-use',
       harness: 'cursor',
       sessionId: String(raw.conversation_id || raw.session_id || 'cursor-session'),
-      projectRoot,
+      projectRoot: primaryOwner ? primaryOwner.root : roots[0],
+      roots,
       toolName,
       toolUseId: raw.tool_use_id || raw.generation_id || null,
-      files: extractTargetFilesFromEvent(raw, projectRoot),
+      files,
       preimage: resolvePreimageInfo(toolName, raw),
     };
   }
@@ -147,15 +256,17 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
 
   if (isCopilot) {
     const projectRoot = path.resolve(raw.cwd || cwd);
+    const roots = [projectRoot];
     const toolName = String(raw.toolName || raw.tool_name || '');
     return {
       kind: 'post-tool-use',
       harness: 'copilot',
       sessionId: String(raw.sessionId || raw.session_id || 'copilot-session'),
       projectRoot,
+      roots,
       toolName,
       toolUseId: raw.toolUseId || raw.tool_use_id || (raw.timestamp ? `copilot-${raw.timestamp}` : null),
-      files: extractTargetFilesFromEvent(raw, projectRoot),
+      files: extractTargetFilesFromEvent(raw, projectRoot, roots),
       preimage: resolvePreimageInfo(toolName, raw),
     };
   }
@@ -163,20 +274,22 @@ export function normalizeHookPayload(raw, { cwd = process.cwd(), env = process.e
   // 5. Claude Code / Codex `PostToolUse`
   const harness = forcedHarness || 'claude';
   const projectRoot = path.resolve(raw.cwd || cwd);
+  const roots = [projectRoot];
   const toolName = String(raw.tool_name || raw.toolName || '');
   return {
     kind: 'post-tool-use',
     harness,
     sessionId: String(raw.session_id || raw.sessionId || 'claude-session'),
     projectRoot,
+    roots,
     toolName,
     toolUseId: raw.tool_use_id || raw.toolUseId || raw.tool_call_id || null,
-    files: extractTargetFilesFromEvent(raw, projectRoot),
+    files: extractTargetFilesFromEvent(raw, projectRoot, roots),
     preimage: resolvePreimageInfo(toolName, raw),
   };
 }
 
-function extractTargetFilesFromEvent(raw, projectRoot) {
+function extractTargetFilesFromEvent(raw, projectRoot, roots = [projectRoot]) {
   const candidates = [];
   const ti = raw.tool_input && typeof raw.tool_input === 'object' ? raw.tool_input : {};
 
@@ -223,7 +336,9 @@ function extractTargetFilesFromEvent(raw, projectRoot) {
     }
   }
 
-  return Array.from(new Set(candidates.map((p) => path.resolve(projectRoot, p))));
+  return Array.from(
+    new Set(candidates.map((p) => resolveCandidatePathAgainstRoots(p, roots, projectRoot)).filter(Boolean))
+  );
 }
 
 export function parseApplyPatchPaths(patchText) {
@@ -606,137 +721,185 @@ export function executeHookPayload(stdinText, { cwd = process.cwd(), env = proce
       return { exitCode: 0, payload: {}, skipped: 'tool-failed' };
     }
 
-    const projectRoot = event.projectRoot;
-    const config = readProjectConfig(projectRoot);
-    if (config.hook.enabled === false) {
-      return { exitCode: 0, payload: {}, skipped: 'config-disabled' };
+    const candidateRoots = normalizeWorkspaceRoots(event.roots, event.projectRoot);
+    const filesByRoot = new Map();
+    for (const rawFile of event.files || []) {
+      const match = findOwningWorkspaceRoot(rawFile, candidateRoots);
+      if (!match) continue;
+      if (!filesByRoot.has(match.root)) {
+        filesByRoot.set(match.root, []);
+      }
+      const list = filesByRoot.get(match.root);
+      if (!list.includes(match.absFile)) {
+        list.push(match.absFile);
+      }
     }
 
-    const scannableFiles = (event.files || []).filter((f) => isScannableInsideProject(f, projectRoot, config));
-    if (scannableFiles.length === 0) {
+    if (filesByRoot.size === 0) {
+      const defaultCfg = readProjectConfig(event.projectRoot);
+      if (defaultCfg.hook.enabled === false) {
+        return { exitCode: 0, payload: {}, skipped: 'config-disabled' };
+      }
       return { exitCode: 0, payload: {}, skipped: 'no-scannable-file' };
     }
 
-    // Atomic O_EXCL deduplication across overlapping project + user/plugin manifests
-    if (event.toolUseId) {
-      const claimed = claimHookEvent(event.sessionId, event.toolUseId, projectRoot, scannableFiles, env, platform, nowMs);
-      if (!claimed) {
-        return { exitCode: 0, payload: {}, skipped: 'duplicate-event' };
-      }
-    }
+    let sawConfigDisabled = false;
+    let sawScannableFile = false;
+    let sawDuplicateEvent = false;
+    let processedAnyRoot = false;
+    const emittedMessages = [];
 
-    const cache = readProjectSessionCache(projectRoot, env, platform, nowMs);
-    if (!cache.sessions[event.sessionId]) {
-      cache.sessions[event.sessionId] = {
-        updatedAt: nowMs,
-        files: {},
-        pendingJetskiMessages: [],
-      };
-    }
-    const sess = cache.sessions[event.sessionId];
-    sess.updatedAt = nowMs;
-
-    // Harnesses without a `Stop` hook (Cursor, Copilot, Jetski) check Tier 1 + Tier 2 immediately
-    const useImmediateTierOnly =
-      config.hook.perEditRules !== 'all' &&
-      (event.harness === 'claude' || event.harness === 'codex');
-
-    const freshGroups = [];
-    let suppressionNoticeFile = null;
-    let cacheShouldPersist = false;
-
-    for (const absFile of scannableFiles) {
-      if (!sess.files[absFile]) {
-        let baselineStatus = event.preimage?.status || 'unavailable';
-        let baselineContent = event.preimage?.originalContent ?? null;
-        if (baselineStatus === 'unavailable') {
-          const headContent = tryReadGitHeadPreimage(absFile, projectRoot, env);
-          if (headContent !== null) {
-            baselineStatus = 'captured';
-            baselineContent = headContent;
-          }
-        }
-        const baselineKeys =
-          baselineStatus === 'captured' && baselineContent !== null
-            ? computeBaselineKeysForContent(baselineContent, absFile, projectRoot)
-            : [];
-        sess.files[absFile] = {
-          editCount: 0,
-          baselineStatus,
-          baselineKeys,
-          reportedKeys: [],
-        };
-      }
-
-      const fileState = sess.files[absFile];
-      fileState.editCount = (fileState.editCount || 0) + 1;
-      cacheShouldPersist = true;
-
-      if (fileState.editCount > EDIT_CAP_PER_FILE) {
-        if (fileState.editCount === EDIT_CAP_PER_FILE + 1 && !suppressionNoticeFile) {
-          suppressionNoticeFile = absFile;
-        }
+    for (const [projectRoot, rootCandidateFiles] of filesByRoot.entries()) {
+      const config = readProjectConfig(projectRoot);
+      if (config.hook.enabled === false) {
+        sawConfigDisabled = true;
         continue;
       }
 
-      const scanRes = runStaticScan({
-        targets: [absFile],
-        cwd: projectRoot,
-      });
+      const scannableFiles = rootCandidateFiles.filter((f) => isScannableInsideProject(f, projectRoot, config));
+      if (scannableFiles.length === 0) {
+        continue;
+      }
+      sawScannableFile = true;
 
-      const liveFindings = (scanRes.findings || []).filter(isPrimaryHookFinding);
-      const liveFingerprints = computeFindingFingerprints(liveFindings);
-      const baselineSet = new Set(fileState.baselineKeys || []);
-      const reportedSet = new Set(fileState.reportedKeys || []);
+      // Atomic O_EXCL deduplication across overlapping project + user/plugin manifests
+      if (event.toolUseId) {
+        const claimed = claimHookEvent(event.sessionId, event.toolUseId, projectRoot, scannableFiles, env, platform, nowMs);
+        if (!claimed) {
+          sawDuplicateEvent = true;
+          continue;
+        }
+      }
+      processedAnyRoot = true;
 
-      const immediateFresh = [];
-      const newlyReportedKeys = [];
+      const cache = readProjectSessionCache(projectRoot, env, platform, nowMs);
+      if (!cache.sessions[event.sessionId]) {
+        cache.sessions[event.sessionId] = {
+          updatedAt: nowMs,
+          files: {},
+          pendingJetskiMessages: [],
+        };
+      }
+      const sess = cache.sessions[event.sessionId];
+      sess.updatedAt = nowMs;
 
-      for (let idx = 0; idx < liveFindings.length; idx += 1) {
-        const f = liveFindings[idx];
-        const fp = liveFingerprints[idx];
-        const ruleMeta = findRuleById(f.rule);
-        const isImmediate = !useImmediateTierOnly || ruleMeta?.hookTier === 'immediate';
-        if (!isImmediate) continue;
+      // Harnesses without a `Stop` hook (Cursor, Copilot, Jetski) check Tier 1 + Tier 2 immediately
+      const useImmediateTierOnly =
+        config.hook.perEditRules !== 'all' &&
+        (event.harness === 'claude' || event.harness === 'codex');
 
-        newlyReportedKeys.push(fp);
-        if (reportedSet.has(fp)) continue;
-        if (fileState.baselineStatus === 'captured' && baselineSet.has(fp)) continue;
-        immediateFresh.push(f);
+      const freshGroups = [];
+      let suppressionNoticeFile = null;
+      let cacheShouldPersist = false;
+
+      for (const absFile of scannableFiles) {
+        if (!sess.files[absFile]) {
+          let baselineStatus = event.preimage?.status || 'unavailable';
+          let baselineContent = event.preimage?.originalContent ?? null;
+          if (baselineStatus === 'unavailable') {
+            const headContent = tryReadGitHeadPreimage(absFile, projectRoot, env);
+            if (headContent !== null) {
+              baselineStatus = 'captured';
+              baselineContent = headContent;
+            }
+          }
+          const baselineKeys =
+            baselineStatus === 'captured' && baselineContent !== null
+              ? computeBaselineKeysForContent(baselineContent, absFile, projectRoot)
+              : [];
+          sess.files[absFile] = {
+            editCount: 0,
+            baselineStatus,
+            baselineKeys,
+            reportedKeys: [],
+          };
+        }
+
+        const fileState = sess.files[absFile];
+        fileState.editCount = (fileState.editCount || 0) + 1;
+        cacheShouldPersist = true;
+
+        if (fileState.editCount > EDIT_CAP_PER_FILE) {
+          if (fileState.editCount === EDIT_CAP_PER_FILE + 1 && !suppressionNoticeFile) {
+            suppressionNoticeFile = absFile;
+          }
+          continue;
+        }
+
+        const scanRes = runStaticScan({
+          targets: [absFile],
+          cwd: projectRoot,
+        });
+
+        const liveFindings = (scanRes.findings || []).filter(isPrimaryHookFinding);
+        const liveFingerprints = computeFindingFingerprints(liveFindings);
+        const baselineSet = new Set(fileState.baselineKeys || []);
+        const reportedSet = new Set(fileState.reportedKeys || []);
+
+        const immediateFresh = [];
+        const newlyReportedKeys = [];
+
+        for (let idx = 0; idx < liveFindings.length; idx += 1) {
+          const f = liveFindings[idx];
+          const fp = liveFingerprints[idx];
+          const ruleMeta = findRuleById(f.rule);
+          const isImmediate = !useImmediateTierOnly || ruleMeta?.hookTier === 'immediate';
+          if (!isImmediate) continue;
+
+          newlyReportedKeys.push(fp);
+          if (reportedSet.has(fp)) continue;
+          if (fileState.baselineStatus === 'captured' && baselineSet.has(fp)) continue;
+          immediateFresh.push(f);
+        }
+
+        fileState.reportedKeys = Array.from(new Set([...reportedSet, ...newlyReportedKeys]));
+        if (immediateFresh.length > 0) {
+          freshGroups.push({ filePath: absFile, findings: immediateFresh });
+        }
       }
 
-      fileState.reportedKeys = Array.from(new Set([...reportedSet, ...newlyReportedKeys]));
-      if (immediateFresh.length > 0) {
-        freshGroups.push({ filePath: absFile, findings: immediateFresh });
+      let rootMessageText = '';
+      if (freshGroups.length > 0) {
+        rootMessageText = renderHookFindingsMessage(freshGroups, {
+          cwd: projectRoot,
+          maxFindings: config.hook.limits?.maxFindings ?? 5,
+          maxChars: event.harness === 'cursor'
+            ? Math.min(config.hook.limits?.maxChars ?? 8000, CURSOR_MAX_CHARS)
+            : (config.hook.limits?.maxChars ?? 8000),
+          isStopPass: false,
+        });
+      } else if (suppressionNoticeFile && !config.hook.quiet && !isTruthyEnv(env.ANDROID_UX_HOOK_QUIET)) {
+        const rel = normalizePosixPath(path.relative(projectRoot, suppressionNoticeFile)) || path.basename(suppressionNoticeFile);
+        rootMessageText = `${ENVELOPE_PREFIX} Per-edit UX reminders paused for ${rel} after ${EDIT_CAP_PER_FILE} edits in this session (run \`npx android-ux detect ${rel}\` when ready).`;
+      }
+
+      if (event.harness === 'jetski' && rootMessageText) {
+        sess.pendingJetskiMessages = sess.pendingJetskiMessages || [];
+        sess.pendingJetskiMessages.push(rootMessageText);
+        cacheShouldPersist = true;
+      }
+
+      if (cacheShouldPersist) {
+        writeProjectSessionCache(projectRoot, cache, env, platform, nowMs);
+        recordSessionRoot(event.sessionId, projectRoot, env, platform, nowMs);
+      }
+
+      if (rootMessageText) {
+        emittedMessages.push(rootMessageText);
       }
     }
 
-    let messageText = '';
-    if (freshGroups.length > 0) {
-      messageText = renderHookFindingsMessage(freshGroups, {
-        cwd: projectRoot,
-        maxFindings: config.hook.limits?.maxFindings ?? 5,
-        maxChars: event.harness === 'cursor'
-          ? Math.min(config.hook.limits?.maxChars ?? 8000, CURSOR_MAX_CHARS)
-          : (config.hook.limits?.maxChars ?? 8000),
-        isStopPass: false,
-      });
-    } else if (suppressionNoticeFile && !config.hook.quiet && !isTruthyEnv(env.ANDROID_UX_HOOK_QUIET)) {
-      const rel = normalizePosixPath(path.relative(projectRoot, suppressionNoticeFile)) || path.basename(suppressionNoticeFile);
-      messageText = `${ENVELOPE_PREFIX} Per-edit UX reminders paused for ${rel} after ${EDIT_CAP_PER_FILE} edits in this session (run \`npx android-ux detect ${rel}\` when ready).`;
+    if (!processedAnyRoot) {
+      if (sawDuplicateEvent) {
+        return { exitCode: 0, payload: {}, skipped: 'duplicate-event' };
+      }
+      if (!sawScannableFile && sawConfigDisabled) {
+        return { exitCode: 0, payload: {}, skipped: 'config-disabled' };
+      }
+      return { exitCode: 0, payload: {}, skipped: 'no-scannable-file' };
     }
 
-    if (event.harness === 'jetski' && messageText) {
-      sess.pendingJetskiMessages = sess.pendingJetskiMessages || [];
-      sess.pendingJetskiMessages.push(messageText);
-      cacheShouldPersist = true;
-    }
-
-    if (cacheShouldPersist) {
-      writeProjectSessionCache(projectRoot, cache, env, platform, nowMs);
-      recordSessionRoot(event.sessionId, projectRoot, env, platform, nowMs);
-    }
-
+    const messageText = emittedMessages.join('\n\n');
     if (!messageText || event.harness === 'jetski') {
       return { exitCode: 0, payload: {}, emitted: false };
     }

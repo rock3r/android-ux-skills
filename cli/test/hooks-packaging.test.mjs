@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { executeHookPayload, runCli } from '../src/index.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -664,6 +664,149 @@ test('PR review regressions: malformed manifest preservation (hooks install/unin
     assert.deepEqual(JSON.parse(fs.readFileSync(codexNarrowPath, 'utf8')), seedClaudeOrCodex);
     assert.deepEqual(JSON.parse(fs.readFileSync(cursorNarrowPath, 'utf8')), seedCursor);
     assert.deepEqual(JSON.parse(fs.readFileSync(copilotNarrowPath, 'utf8')), seedCopilot);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('multi-root workspaces: Jetski workspacePaths/workspaceUris and Cursor workspace_roots resolve owning root config, session cache, and boundary prefixes', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aux-multiroot-'));
+  try {
+    const env = { ...process.env, XDG_CACHE_HOME: path.join(tmpDir, 'cache') };
+    const rootA = path.join(tmpDir, 'repo');
+    const rootB = path.join(tmpDir, 'repo-two');
+    const outsideSibling = path.join(tmpDir, 'repo-three');
+    fs.mkdirSync(rootA, { recursive: true });
+    fs.mkdirSync(rootB, { recursive: true });
+    fs.mkdirSync(outsideSibling, { recursive: true });
+
+    // Disable hooks in rootA (`roots[0]`), keep enabled in rootB (`roots[1]`)!
+    fs.mkdirSync(path.join(rootA, '.android-ux'), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootA, '.android-ux', 'config.json'),
+      JSON.stringify({ hook: { enabled: false } }, null, 2),
+      'utf8'
+    );
+
+    const badKotlin = `package multi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+@Composable fun Feature(active: Boolean) {
+    val a by animateFloatAsState(if (active) 1f else 0f)
+    Box(Modifier.alpha(a))
+}
+`;
+    const fileInA = path.join(rootA, 'FeatureA.kt');
+    const fileInB = path.join(rootB, 'FeatureB.kt');
+    const fileInOutside = path.join(outsideSibling, 'Outside.kt');
+    fs.writeFileSync(fileInA, badKotlin, 'utf8');
+    fs.writeFileSync(fileInB, badKotlin, 'utf8');
+    fs.writeFileSync(fileInOutside, badKotlin, 'utf8');
+
+    // 0. Sanity: editing `fileInA` inside disabled `rootA` is skipped as `config-disabled`
+    const disabledRootARes = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-0',
+        workspacePaths: [rootA, rootB],
+        stepIdx: 1,
+        toolCall: { name: 'edit_file', args: { Path: fileInA } },
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(disabledRootARes.skipped, 'config-disabled');
+
+    // 1. Prefix-collision check: `/repo-three/Outside.kt` must NOT match `/repo` (`[rootA]`)
+    const prefixCollisionRes = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-1',
+        workspacePaths: [rootA],
+        stepIdx: 1,
+        toolCall: { name: 'edit_file', args: { Path: fileInOutside } },
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(prefixCollisionRes.skipped, 'config-disabled');
+
+    // Also when rootA is enabled, `/repo-two/FeatureB.kt` must not match `[rootA]` via naive startsWith('/repo')
+    const rootC = path.join(tmpDir, 'app');
+    const rootCSibling = path.join(tmpDir, 'app-extra');
+    fs.mkdirSync(rootC, { recursive: true });
+    fs.mkdirSync(rootCSibling, { recursive: true });
+    const siblingFile = path.join(rootCSibling, 'Sib.kt');
+    fs.writeFileSync(siblingFile, badKotlin, 'utf8');
+    const sibRes = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-sib',
+        workspacePaths: [rootC],
+        stepIdx: 1,
+        toolCall: { name: 'edit_file', args: { Path: siblingFile } },
+      }),
+      { cwd: rootC, env, platform: 'linux' }
+    );
+    assert.equal(sibRes.skipped, 'no-scannable-file', 'Sibling directory sharing string prefix must not match root');
+
+    // 2. Multi-root Jetski `workspacePaths: [rootA, rootB]`: editing `fileInB` uses `rootB` (enabled), NOT `rootA` (disabled)!
+    const jetPost = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-jet',
+        workspacePaths: [rootA, rootB],
+        stepIdx: 2,
+        toolCall: { name: 'edit_file', args: { Path: fileInB } },
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(jetPost.skipped, undefined, 'Edit in roots[1] must not be skipped as no-scannable-file or config-disabled');
+    assert.deepEqual(jetPost.payload, {});
+
+    const jetPre = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-jet',
+        workspacePaths: [rootA, rootB],
+        invocationNum: 2,
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(jetPre.emitted, true, 'PreInvocation must flush findings queued under roots[1]');
+    assert.match(jetPre.payload.injectSteps[0].ephemeralMessage, /FeatureB\.kt.*\[F-001\]/);
+
+    // 3. Multi-root Jetski `workspaceUris` (`file://` URIs) also resolves `roots[1]`
+    const file2InB = path.join(rootB, 'SecondB.kt');
+    fs.writeFileSync(file2InB, badKotlin, 'utf8');
+    executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-uri',
+        workspaceUris: [pathToFileURL(rootA).href, pathToFileURL(rootB).href],
+        stepIdx: 5,
+        toolCall: { name: 'write_file', args: { Path: file2InB } },
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    const jetUriPre = executeHookPayload(
+      JSON.stringify({
+        conversationId: 'mr-uri',
+        workspaceUris: [pathToFileURL(rootA).href, pathToFileURL(rootB).href],
+        invocationNum: 2,
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(jetUriPre.emitted, true);
+    assert.match(jetUriPre.payload.injectSteps[0].ephemeralMessage, /SecondB\.kt.*\[F-001\]/);
+
+    // 4. Multi-root Cursor `workspace_roots: [rootA, rootB]` resolves `roots[1]` immediately
+    const cursorMulti = executeHookPayload(
+      JSON.stringify({
+        conversation_id: 'mr-cur',
+        workspace_roots: [rootA, rootB],
+        tool_name: 'edit_file',
+        tool_use_id: 'cur-mr-1',
+        file_path: fileInB,
+      }),
+      { cwd: rootA, env, platform: 'linux' }
+    );
+    assert.equal(cursorMulti.emitted, true, 'Cursor multi-root edit in workspace_roots[1] must emit findings');
+    assert.match(cursorMulti.payload.additional_context, /FeatureB\.kt.*\[F-001\]/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

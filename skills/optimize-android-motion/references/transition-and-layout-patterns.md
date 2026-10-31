@@ -53,19 +53,29 @@ Prefer grouping related transition or layout tracking into a single `@Stable` **
 holder** class remembered once (`remember(transition) { ... }`) and passing that holder to
 children and modifiers — for example:
 
-- **Use plain fields for synchronous pass-through state:** Values computed synchronously
-  during composition and consumed downstream in the same pass (such as active enter/exit
-  configs, previous targets, or layout-phase room metrics) can live as plain properties on
-  the state holder updated via a single `tracker.update(...)` call, avoiding
-  `mutableStateOf` and `remember` overhead per field.
-- **Gate effects behind plain booleans on the holder:** Only enter a `LaunchedEffect` when
-  the state holder indicates work is needed (for example,
+- **Keep child-observed state snapshot-backed, and restrict plain fields to same-pass or
+  independently invalidated scopes:** Because a remembered `@Stable` holder's reference
+  does not change across recompositions, updating plain (non-snapshot) properties in a
+  parent does **not** invalidate a separately skippable child composable that only receives
+  the holder — Compose can skip the child and leave it reading stale values. Keep any
+  mutable property read during composition by a separately skippable child backed by
+  snapshot state (`mutableStateOf`, `derivedStateOf`, or `Transition` state). Reserve plain
+  fields updated via `tracker.update(...)` for consumers whose execution or invalidation is
+  already guaranteed without observing that field — such as code running later in the
+  **same** non-skipped composition scope, or phase lambdas (`Modifier.layout`,
+  `graphicsLayer`, `drawBehind`) that independently subscribe to an underlying animated
+  `State` on that pass.
+- **Gate effects behind observable or same-scope booleans on the holder:** Only enter a
+  `LaunchedEffect` when the state holder indicates work is needed (for example,
   `if (tracker.needsCatchup) LaunchedEffect(tracker) { ... }`) rather than registering idle
-  effect groups on every instance.
-- **Read animated state in leaf scopes:** Expose animated values as properties or methods
-  on the state holder and read them inside leaf composables, `Modifier.layout`, or
-  `graphicsLayer` blocks so the root composable neither recomposes nor allocates
-  per-property lambdas.
+  effect groups on every instance. If that check lives inside a separately skippable child
+  composable that receives only `tracker`, back `needsCatchup` with snapshot state so
+  flipping it invalidates the reader and starts the effect.
+- **Read snapshot-backed animated state in leaf scopes:** Expose animated values (backed by
+  `Transition.animate*`, `Animatable`, or primitive `mutableFloatStateOf` /
+  `mutableIntStateOf`) as properties or methods on the state holder and read them inside
+  leaf composables, `Modifier.layout`, or `graphicsLayer` blocks so the root composable
+  neither recomposes nor allocates per-property lambdas.
 
 Avoid mutating `UiState` fields that trigger wide recompositions at the start or end of a
 heavy animation, and coalesce coupled state changes into the same frame — for example:
