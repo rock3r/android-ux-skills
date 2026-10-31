@@ -536,6 +536,71 @@ test('PR review regressions: malformed manifest preservation (hooks install/unin
       fs.readFileSync(path.join(singleTargetProj, '.claude', 'settings.local.json'), 'utf8')
     );
     assert.match(rewiredManifest.hooks.PostToolUse[0].hooks[0].command, /review-android-motion\/scripts\/android-ux/);
+
+    // 4. Copilot `.github/hooks/android-ux.json`: `hooks install`, `install`, and `hooks uninstall`
+    //    must preserve pre-existing custom `sessionStart` and `postToolUse` entries (and top-level fields),
+    //    and reject malformed non-object `hooks` fields without overwriting!
+    const copilotProj = path.join(tmpDir, 'copilot-merge-proj');
+    const copilotManifestPath = path.join(copilotProj, '.github', 'hooks', 'android-ux.json');
+    fs.mkdirSync(path.dirname(copilotManifestPath), { recursive: true });
+
+    const malformedHooksField = '{\n  "version": 1,\n  "hooks": ["bad-array"]\n}\n';
+    fs.writeFileSync(copilotManifestPath, malformedHooksField, 'utf8');
+    const badCopilotInstall = await runCmd(['hooks', 'install', '--providers', 'copilot'], copilotProj);
+    assert.equal(badCopilotInstall.code, 1, 'hooks install must refuse non-object hooks field');
+    assert.match(badCopilotInstall.stderr, /"hooks" field must be a JSON object/);
+    assert.equal(fs.readFileSync(copilotManifestPath, 'utf8'), malformedHooksField);
+
+    const existingCopilotManifest = {
+      version: 1,
+      customNote: 'keep-me',
+      hooks: {
+        sessionStart: [
+          { type: 'command', bash: 'echo custom-session-start', timeoutSec: 5 },
+        ],
+        postToolUse: [
+          { type: 'command', matcher: 'bash', bash: 'echo custom-post-tool', timeoutSec: 5 },
+        ],
+      },
+    };
+    fs.writeFileSync(copilotManifestPath, `${JSON.stringify(existingCopilotManifest, null, 2)}\n`, 'utf8');
+
+    assert.equal((await runCmd(['hooks', 'install', '--providers', 'copilot'], copilotProj)).code, 0);
+    const afterHooksInstall = JSON.parse(fs.readFileSync(copilotManifestPath, 'utf8'));
+    assert.equal(afterHooksInstall.customNote, 'keep-me');
+    assert.deepEqual(
+      afterHooksInstall.hooks.sessionStart,
+      existingCopilotManifest.hooks.sessionStart,
+      'hooks install --providers copilot must preserve custom sessionStart hooks'
+    );
+    assert.equal(
+      afterHooksInstall.hooks.postToolUse.length,
+      2,
+      `Expected custom + android-ux postToolUse entries, got: ${JSON.stringify(afterHooksInstall.hooks.postToolUse)}`
+    );
+    assert.deepEqual(afterHooksInstall.hooks.postToolUse[0], existingCopilotManifest.hooks.postToolUse[0]);
+    assert.match(afterHooksInstall.hooks.postToolUse[1].bash, /android-ux.*hook/);
+
+    // Full `install --providers copilot` must idempotently replace only the android-ux entry and activate hooks status
+    assert.equal((await runCmd(['install', '--providers', 'copilot'], copilotProj)).code, 0);
+    const afterFullInstall = JSON.parse(fs.readFileSync(copilotManifestPath, 'utf8'));
+    assert.deepEqual(afterFullInstall.hooks.sessionStart, existingCopilotManifest.hooks.sessionStart);
+    assert.equal(afterFullInstall.hooks.postToolUse.length, 2, 'Idempotent install must not duplicate android-ux hook');
+    assert.deepEqual(afterFullInstall.hooks.postToolUse[0], existingCopilotManifest.hooks.postToolUse[0]);
+    const copilotStatusActive = JSON.parse((await runCmd(['hooks', 'status', '--json'], copilotProj)).stdout);
+    assert.equal(copilotStatusActive.active, true, 'hooks status must detect active Copilot hook manifest');
+
+    // `hooks uninstall --providers copilot` must keep the file on disk and retain both custom entries!
+    assert.equal((await runCmd(['hooks', 'uninstall', '--providers', 'copilot'], copilotProj)).code, 0);
+    assert.equal(fs.existsSync(copilotManifestPath), true, 'Copilot manifest with custom hooks must NOT be deleted on uninstall');
+    const afterCopilotUninstall = JSON.parse(fs.readFileSync(copilotManifestPath, 'utf8'));
+    assert.deepEqual(
+      afterCopilotUninstall,
+      existingCopilotManifest,
+      'hooks uninstall --providers copilot must restore custom sessionStart, postToolUse, and top-level keys intact'
+    );
+    const copilotStatusInactive = JSON.parse((await runCmd(['hooks', 'status', '--json'], copilotProj)).stdout);
+    assert.equal(copilotStatusInactive.active, false, 'hooks status must report inactive after uninstalling android-ux entry');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

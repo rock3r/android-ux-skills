@@ -239,7 +239,7 @@ export async function runInstallCommand(rawArgs, io = defaultIo()) {
         });
         if (!info) continue;
         if (withHooks) {
-          readExistingJsonObject(info.manifestPath);
+          readExistingJsonObject(info.manifestPath, info.provider);
         }
         resolvedProviders.push({ prov, info });
       }

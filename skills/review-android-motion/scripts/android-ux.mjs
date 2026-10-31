@@ -9745,12 +9745,37 @@ function resolveProviderPaths(provider, { cwd, scope = "project", env = process.
 function posixSingleQuote(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
+function formatCopilotBashLauncher(launcherPosix) {
+  const prefix = "$(git rev-parse --show-toplevel)/";
+  const raw = String(launcherPosix || "");
+  if (raw.startsWith(prefix)) {
+    const suffix = raw.slice(prefix.length).replace(/[\\"`$]/g, "\\$&");
+    return `"${prefix}${suffix}"`;
+  }
+  return posixSingleQuote(raw);
+}
+function validateExistingProviderManifest(provider, existing, filePath, verb = "overwrite") {
+  if (!provider || !existing || typeof existing !== "object") return;
+  if (provider === "claude" || provider === "codex" || provider === "cursor" || provider === "copilot") {
+    if (existing.hooks !== void 0 && (!existing.hooks || typeof existing.hooks !== "object" || Array.isArray(existing.hooks))) {
+      throw new Error(`Refusing to ${verb} manifest "${filePath}": "hooks" field must be a JSON object.`);
+    }
+    if (existing.hooks && verb === "overwrite") {
+      const requiredArrayKeys = provider === "claude" || provider === "codex" ? ["PostToolUse", "Stop"] : ["postToolUse"];
+      for (const key of requiredArrayKeys) {
+        if (existing.hooks[key] !== void 0 && !Array.isArray(existing.hooks[key])) {
+          throw new Error(`Refusing to ${verb} manifest "${filePath}": "hooks.${key}" must be a JSON array.`);
+        }
+      }
+    }
+  }
+}
 function installProviderHookManifest(info) {
   if (!info || !info.manifestPath) return false;
-  const existing = readExistingJsonObject(info.manifestPath);
+  const existing = readExistingJsonObject(info.manifestPath, info.provider);
   let next;
   if (info.provider === "claude") {
-    next = stripAndroidUxEntriesFromClaudeOrCodex(existing);
+    next = stripAndroidUxEntriesFromClaudeOrCodex(existing).next;
     next.hooks = next.hooks && typeof next.hooks === "object" ? next.hooks : {};
     const quoted = posixSingleQuote(info.launcherPosix);
     const cmd = `[ ! -f ${quoted} ] || ${quoted} hook`;
@@ -9782,7 +9807,7 @@ function installProviderHookManifest(info) {
       }
     ];
   } else if (info.provider === "codex") {
-    next = stripAndroidUxEntriesFromClaudeOrCodex(existing);
+    next = stripAndroidUxEntriesFromClaudeOrCodex(existing).next;
     next.hooks = next.hooks && typeof next.hooks === "object" ? next.hooks : {};
     const quoted = posixSingleQuote(info.launcherPosix);
     const cmd = `[ ! -f ${quoted} ] || ANDROID_UX_HOOK_HARNESS=codex ${quoted} hook`;
@@ -9819,11 +9844,16 @@ function installProviderHookManifest(info) {
     ];
   } else if (info.provider === "cursor") {
     next = { version: 1, ...existing };
-    next.hooks = next.hooks && typeof next.hooks === "object" ? { ...next.hooks } : {};
+    next.hooks = next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks) ? { ...next.hooks } : {};
     for (const [k, list] of Object.entries(next.hooks)) {
       if (Array.isArray(list)) {
-        next.hooks[k] = list.filter((h) => !String(h?.command || "").includes("android-ux"));
-        if (next.hooks[k].length === 0) delete next.hooks[k];
+        const hadAndroidUx = list.some((h) => String(h?.command || "").includes("android-ux"));
+        const kept = list.filter((h) => !String(h?.command || "").includes("android-ux"));
+        if (kept.length === 0 && hadAndroidUx) {
+          delete next.hooks[k];
+        } else {
+          next.hooks[k] = kept;
+        }
       }
     }
     const quoted = posixSingleQuote(info.launcherPosix);
@@ -9837,20 +9867,34 @@ function installProviderHookManifest(info) {
       }
     ];
   } else if (info.provider === "copilot") {
-    const bashCmd = `[ ! -f "${info.launcherPosix}" ] || "${info.launcherPosix}" hook`;
-    next = {
-      version: 1,
-      hooks: {
-        postToolUse: [
-          {
-            type: "command",
-            matcher: "edit|create|apply_patch",
-            bash: bashCmd,
-            timeoutSec: 5
-          }
-        ]
+    next = { version: 1, ...existing };
+    next.hooks = next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks) ? { ...next.hooks } : {};
+    for (const [k, list] of Object.entries(next.hooks)) {
+      if (Array.isArray(list)) {
+        const hadAndroidUx = list.some(
+          (h) => String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
+        );
+        const kept = list.filter(
+          (h) => !String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
+        );
+        if (kept.length === 0 && hadAndroidUx) {
+          delete next.hooks[k];
+        } else {
+          next.hooks[k] = kept;
+        }
       }
-    };
+    }
+    const quotedLauncher = formatCopilotBashLauncher(info.launcherPosix);
+    const bashCmd = `[ ! -f ${quotedLauncher} ] || ${quotedLauncher} hook`;
+    next.hooks.postToolUse = [
+      ...Array.isArray(next.hooks.postToolUse) ? next.hooks.postToolUse : [],
+      {
+        type: "command",
+        matcher: "edit|create|apply_patch",
+        bash: bashCmd,
+        timeoutSec: 5
+      }
+    ];
   } else if (info.provider === "jetski") {
     next = { ...existing };
     const winSkill = info.launcherSkill || OWNED_SKILL_PREFERENCE[0];
@@ -9884,7 +9928,7 @@ function installProviderHookManifest(info) {
 `, "utf8");
   return true;
 }
-function readExistingJsonObject(filePath) {
+function readExistingJsonObject(filePath, provider = null) {
   let raw;
   try {
     raw = fs10.readFileSync(filePath, "utf8");
@@ -9901,6 +9945,7 @@ function readExistingJsonObject(filePath) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Refusing to overwrite manifest "${filePath}": top-level JSON value must be an object.`);
   }
+  validateExistingProviderManifest(provider, parsed, filePath, "overwrite");
   return parsed;
 }
 function uninstallProviderHooks(info) {
@@ -9921,40 +9966,56 @@ function uninstallProviderHooks(info) {
   if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
     throw new Error(`Refusing to modify manifest "${info.manifestPath}": top-level JSON value must be an object.`);
   }
+  validateExistingProviderManifest(info.provider, existing, info.manifestPath, "modify");
   let next;
   if (info.provider === "claude" || info.provider === "codex") {
-    next = stripAndroidUxEntriesFromClaudeOrCodex(existing);
-    if (next.hooks && typeof next.hooks === "object" && Object.keys(next.hooks).length === 0) {
+    const stripped = stripAndroidUxEntriesFromClaudeOrCodex(existing);
+    next = stripped.next;
+    if (stripped.hadRemoved && next.hooks && typeof next.hooks === "object" && Object.keys(next.hooks).length === 0) {
       delete next.hooks;
     }
   } else if (info.provider === "cursor") {
     next = { ...existing };
+    let hadRemoved = false;
     if (next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks)) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          next.hooks[k] = list.filter((h) => !String(h?.command || "").includes("android-ux"));
-          if (next.hooks[k].length === 0) delete next.hooks[k];
+          const hadAndroidUx = list.some((h) => String(h?.command || "").includes("android-ux"));
+          const kept = list.filter((h) => !String(h?.command || "").includes("android-ux"));
+          if (hadAndroidUx) {
+            hadRemoved = true;
+            if (kept.length === 0) delete next.hooks[k];
+            else next.hooks[k] = kept;
+          }
         }
       }
-      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+      if (hadRemoved && Object.keys(next.hooks).length === 0) delete next.hooks;
     }
   } else if (info.provider === "copilot") {
     next = { ...existing };
+    let hadRemoved = false;
     if (next.hooks && typeof next.hooks === "object" && !Array.isArray(next.hooks)) {
       next.hooks = { ...next.hooks };
       for (const [k, list] of Object.entries(next.hooks)) {
         if (Array.isArray(list)) {
-          next.hooks[k] = list.filter(
+          const hadAndroidUx = list.some(
+            (h) => String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
+          );
+          const kept = list.filter(
             (h) => !String(h?.bash || h?.powershell || h?.command || "").includes("android-ux")
           );
-          if (next.hooks[k].length === 0) delete next.hooks[k];
+          if (hadAndroidUx) {
+            hadRemoved = true;
+            if (kept.length === 0) delete next.hooks[k];
+            else next.hooks[k] = kept;
+          }
         }
       }
-      if (Object.keys(next.hooks).length === 0) delete next.hooks;
+      if (hadRemoved && Object.keys(next.hooks).length === 0) delete next.hooks;
     }
     const remainingKeys = Object.keys(next).filter((k) => k !== "version");
-    if (remainingKeys.length === 0) {
+    if (hadRemoved && remainingKeys.length === 0) {
       fs10.unlinkSync(info.manifestPath);
       return true;
     }
@@ -9976,19 +10037,32 @@ function uninstallProviderHooks(info) {
 }
 function stripAndroidUxEntriesFromClaudeOrCodex(obj) {
   const clone = JSON.parse(JSON.stringify(obj || {}));
-  if (!clone.hooks || typeof clone.hooks !== "object") return clone;
+  let hadRemoved = false;
+  if (!clone.hooks || typeof clone.hooks !== "object" || Array.isArray(clone.hooks)) {
+    return { next: clone, hadRemoved };
+  }
   for (const [evt, entries] of Object.entries(clone.hooks)) {
     if (!Array.isArray(entries)) continue;
+    let evtRemoved = false;
     clone.hooks[evt] = entries.map((entry) => {
       if (Array.isArray(entry?.hooks)) {
         const kept = entry.hooks.filter((h) => !String(h?.command || "").includes("android-ux"));
+        if (kept.length !== entry.hooks.length) {
+          evtRemoved = true;
+          hadRemoved = true;
+        }
         return kept.length > 0 ? { ...entry, hooks: kept } : null;
       }
-      return String(entry?.command || "").includes("android-ux") ? null : entry;
+      if (String(entry?.command || "").includes("android-ux")) {
+        evtRemoved = true;
+        hadRemoved = true;
+        return null;
+      }
+      return entry;
     }).filter(Boolean);
-    if (clone.hooks[evt].length === 0) delete clone.hooks[evt];
+    if (evtRemoved && clone.hooks[evt].length === 0) delete clone.hooks[evt];
   }
-  return clone;
+  return { next: clone, hadRemoved };
 }
 async function runHooksCommand(rawArgs, io = defaultIo7()) {
   const args = [...rawArgs];
@@ -10108,7 +10182,7 @@ function handleHooksToggle(args, io, enable) {
     for (const prov of providersToWire) {
       const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
       if (info) {
-        readExistingJsonObject(info.manifestPath);
+        readExistingJsonObject(info.manifestPath, info.provider);
         resolvedTargets.push(info);
       }
     }
@@ -10188,7 +10262,7 @@ function handleHooksUninstall(args, io) {
     for (const prov of providers) {
       const info = resolveProviderPaths(prov, { cwd: io.cwd, scope, env: io.env, platform: io.platform || process.platform });
       if (info && fs10.existsSync(info.manifestPath)) {
-        readExistingJsonObject(info.manifestPath);
+        readExistingJsonObject(info.manifestPath, info.provider);
         targets.push(info);
       }
     }
@@ -10444,7 +10518,7 @@ async function runInstallCommand(rawArgs, io = defaultIo8()) {
       });
       if (!info) continue;
       if (withHooks) {
-        readExistingJsonObject(info.manifestPath);
+        readExistingJsonObject(info.manifestPath, info.provider);
       }
       resolvedProviders.push({ prov, info });
     }
