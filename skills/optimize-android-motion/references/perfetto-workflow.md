@@ -137,17 +137,19 @@ done
 
 ## 3. Extract FrameTimeline, UI-thread, and RenderThread metrics
 
-Run the bundled analyzer script across the baseline and post-fix trace files. Pass
-`--window name:start:end` for each scripted interaction window (or omit `--window` to
-auto-detect interaction bursts):
+Run the bundled `android-ux trace` analyzer across the baseline and post-fix trace files
+(requires Perfetto's standalone `trace_processor_shell` v58+; verify host setup with `sh
+"$SKILL_PATH/scripts/android-ux" doctor --for trace`). Pass `--window name:start:end` for
+each scripted interaction window, or omit `--window` to auto-detect interaction bursts:
 
 ```bash
 SKILL_PATH=/path/to/skills/optimize-android-motion
-python3 "$SKILL_PATH/scripts/analyze_motion_trace.py" \
+sh "$SKILL_PATH/scripts/android-ux" trace \
   --process com.example.app.perf \
   --window "Step1_to_Step2:2.2:3.8" \
   --window "Step2_to_Step3:4.0:5.6" \
-  before_1.perfetto-trace before_2.perfetto-trace before_3.perfetto-trace
+  --compare before_1.perfetto-trace before_2.perfetto-trace before_3.perfetto-trace \
+  -- after_1.perfetto-trace after_2.perfetto-trace after_3.perfetto-trace
 ```
 
 At `120 Hz`, a frame budget is `8.33 ms`; at `60 Hz`, the budget is `16.67 ms`. Compare

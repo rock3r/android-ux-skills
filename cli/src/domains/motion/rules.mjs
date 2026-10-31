@@ -1,0 +1,2090 @@
+import path from 'node:path';
+import { getCallArg, matchInlineIgnore } from '../../scanner/kotlin-scanner.mjs';
+import { MOTION_RULE_BY_ID, MOTION_RULE_CATALOG } from './catalog.mjs';
+
+const FRAME_STATE_FACTORIES = new Set([
+  'animateDpAsState',
+  'animateFloatAsState',
+  'animateIntOffsetAsState',
+  'animateOffsetAsState',
+  'animateSizeAsState',
+  'animateIntAsState',
+  'animateRectAsState',
+  'animateValueAsState',
+]);
+
+const TRANSITION_FRAME_METHODS = new Set([
+  'animateDp',
+  'animateFloat',
+  'animateIntOffset',
+  'animateOffset',
+  'animateSize',
+  'animateInt',
+  'animateRect',
+  'animateValue',
+]);
+
+const DRAW_OR_LAYOUT_SCOPES = new Set([
+  'drawBehind',
+  'drawWithContent',
+  'drawWithCache',
+  'onDrawBehind',
+  'onDrawWithContent',
+  'Canvas',
+  'layout',
+]);
+
+const VALUE_MODIFIER_NAMES = new Set([
+  'offset',
+  'absoluteOffset',
+  'alpha',
+  'scale',
+  'rotate',
+  'graphicsLayer',
+]);
+
+const LAYOUT_SIZE_MODIFIER_NAMES = new Set([
+  'padding',
+  'paddingFromBaseline',
+  'size',
+  'sizeIn',
+  'width',
+  'widthIn',
+  'height',
+  'heightIn',
+  'requiredSize',
+  'requiredWidth',
+  'requiredHeight',
+]);
+
+const SPEC_LITERAL_NAMES = new Set(['tween', 'spring', 'keyframes']);
+
+const ANIMATION_CONSUMER_CALLS = new Set([
+  'animateDpAsState',
+  'animateFloatAsState',
+  'animateColorAsState',
+  'animateIntOffsetAsState',
+  'animateOffsetAsState',
+  'animateSizeAsState',
+  'animateIntAsState',
+  'animateRectAsState',
+  'animateValueAsState',
+  'animateDp',
+  'animateFloat',
+  'animateColor',
+  'animateIntOffset',
+  'animateOffset',
+  'animateTo',
+  'animateDecay',
+  'fadeIn',
+  'fadeOut',
+  'slideIn',
+  'slideOut',
+  'slideInHorizontally',
+  'slideOutHorizontally',
+  'slideInVertically',
+  'slideOutVertically',
+  'slideIntoContainer',
+  'slideOutOfContainer',
+  'scaleIn',
+  'scaleOut',
+  'expandIn',
+  'shrinkOut',
+  'expandHorizontally',
+  'shrinkHorizontally',
+  'expandVertically',
+  'shrinkVertically',
+  'togetherWith',
+  'AnimatedVisibility',
+  'AnimatedContent',
+  'Crossfade',
+  'NavHost',
+  'NavDisplay',
+  'composable',
+  'animateContentSize',
+  'animateItem',
+  'repeatable',
+  'infiniteRepeatable',
+]);
+
+const VIEW_BACKED_CONTAINERS = new Set([
+  'Dialog',
+  'AlertDialog',
+  'BasicAlertDialog',
+  'ModalBottomSheet',
+  'Popup',
+  'AndroidView',
+]);
+
+const DURATION_SCALE_IDENTIFIERS = new Set([
+  'MotionDurationScale',
+  'ANIMATOR_DURATION_SCALE',
+  'areAnimatorsEnabled',
+]);
+
+const ELEVATED_CONTAINERS = new Set(['Card', 'ElevatedCard', 'OutlinedCard', 'Surface']);
+
+/**
+ * Run all `motion` domain static checks across parsed Kotlin files, Lottie JSON assets,
+ * and `MOTION.md` contracts.
+ */
+export function runMotionDomainChecks({
+  kotlinFiles = [],
+  lottieFiles = [],
+  motionContracts = [],
+  inlineIgnoresEnabled = true,
+  collectStats = false,
+}) {
+  const rawFindings = [];
+  const rawCandidates = [];
+  const inlineSuppressed = [];
+
+  // Determine convention signals from the scanned file set + MOTION.md for taste severity auto-grading
+  const conventionContext = computeProjectConventions(kotlinFiles, motionContracts);
+
+  // 1. Contract structural lint (`MOTION.md` -> emitted in `contractDiagnostics[]`, never mixed into `findings[]`)
+  const contractDiagnostics = [];
+  for (const contract of motionContracts) {
+    for (const lf of contract.lintFindings || []) {
+      contractDiagnostics.push({
+        code: lf.rule,
+        domain: 'motion',
+        class: lf.class || 'contract',
+        severity: lf.severity || 'major',
+        file: contract.filePath,
+        lines: lf.lines,
+        title: lf.summary,
+        summary: lf.summary,
+        evidence: `Line ${lf.lines[0]}`,
+        remediation: lf.remediation,
+        docPath: lf.docPath || 'references/motion-md.md',
+      });
+    }
+  }
+
+  // 2. Kotlin static checks (collect scale-reading helpers across all scanned Kotlin files)
+  const scaleHelpers = new Set();
+  for (const kf of kotlinFiles) {
+    if (!kf.lexError) {
+      for (const h of findScaleReadingHelpers(kf)) scaleHelpers.add(h);
+    }
+  }
+
+  const lottieConsumers = [];
+  for (const kf of kotlinFiles) {
+    if (kf.lexError) {
+      // Syntax/unclosed comment: abstain per scanner contract
+      continue;
+    }
+
+    const fileMotionMd = selectNearestMotionContract(kf.filePath, motionContracts);
+
+    checkF001AndF008(kf, rawFindings, rawCandidates);
+    checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates);
+    checkF005(kf, scaleHelpers, rawFindings, rawCandidates);
+    checkF006(kf, rawFindings, rawCandidates);
+    checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidates);
+    checkT002(kf, conventionContext, fileMotionMd, rawFindings);
+    checkCandidatesMisc(kf, rawCandidates);
+    collectLottieConsumers(kf, lottieConsumers);
+  }
+
+  // 3. Lottie `.json` + consumer cross-reference (`O-002`)
+  checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates);
+
+  // 4. Apply `MOTION.md` project exception & `DECIDED` override stage on overridable `taste` findings
+  const afterExceptionsFindings = [];
+  const contractSuppressed = [];
+
+  for (const f of rawFindings) {
+    const meta = MOTION_RULE_BY_ID.get(f.rule);
+    if (meta && meta.class === 'taste' && meta.overridable) {
+      const fileMotionMd = selectNearestMotionContract(f.file, motionContracts);
+      const matchingDecided = findMatchingDecidedOverride(fileMotionMd, f.rule, f.symbolContext);
+      if (matchingDecided) {
+        rawCandidates.push({
+          ...f,
+          kind: 'candidate',
+          reasonCode: 'motion-md-override-unverifiable',
+          verificationHint: `MOTION.md (${path.basename(fileMotionMd.filePath)}:${matchingDecided.line}) has a DECIDED entry ("${matchingDecided.name}") referencing ${f.rule} or a bound symbol; confirm whether this call site implements or contradicts that DECIDED contract.`,
+        });
+        continue;
+      }
+      if (f.symbolContext) {
+        const matchingExc = findMatchingException(fileMotionMd, f.symbolContext, f.rule);
+        if (matchingExc) {
+          if (matchingExc.isConditional) {
+            rawCandidates.push({
+              ...f,
+              kind: 'candidate',
+              reasonCode: 'conditional-motion-md-exception',
+              exception: {
+                symbol: matchingExc.symbol,
+                reason: matchingExc.reason,
+                line: matchingExc.line,
+                file: fileMotionMd.filePath,
+              },
+              verificationHint: `MOTION.md (${path.basename(fileMotionMd.filePath)}:${matchingExc.line}) records a conditional exception on \`${matchingExc.symbol || f.rule}\` ("${matchingExc.reason}"). Check surrounding code to determine whether the stated condition still holds.`,
+            });
+            continue;
+          }
+          contractSuppressed.push({
+            ...f,
+            suppressedBy: 'MOTION.md',
+            suppressionReason: matchingExc.reason,
+            suppressionFile: fileMotionMd.filePath,
+            suppressionLine: matchingExc.line,
+          });
+          continue;
+        }
+      }
+    }
+    afterExceptionsFindings.push(f);
+  }
+
+  // 5. Apply inline `android-ux-disable*` comments (when enabled)
+  const kfByPath = new Map(kotlinFiles.map((k) => [k.filePath, k]));
+  const finalFindings = [];
+  for (const f of afterExceptionsFindings) {
+    if (inlineIgnoresEnabled) {
+      const kf = kfByPath.get(f.file);
+      if (kf) {
+        const allowFileMode = Boolean(MOTION_RULE_BY_ID.get(f.rule)?.overridable);
+        const hit = matchInlineIgnore(kf.inlineIgnores, f.rule, f.lines[0], f.lines[1], { allowFileMode });
+        if (hit) {
+          inlineSuppressed.push({
+            ...f,
+            suppressedBy: 'inline-comment',
+            suppressionReason: hit.reason,
+            suppressionLine: hit.commentLine,
+          });
+          continue;
+        }
+      }
+    }
+    finalFindings.push(stripInternalFields(f));
+  }
+
+  const finalCandidates = [];
+  for (const c of rawCandidates) {
+    if (inlineIgnoresEnabled) {
+      const kf = kfByPath.get(c.file);
+      if (kf) {
+        const allowFileMode = Boolean(MOTION_RULE_BY_ID.get(c.rule)?.overridable);
+        const hit = matchInlineIgnore(kf.inlineIgnores, c.rule, c.lines[0], c.lines[1], { allowFileMode });
+        if (hit) {
+          inlineSuppressed.push({
+            ...c,
+            suppressedBy: 'inline-comment',
+            suppressionReason: hit.reason,
+            suppressionLine: hit.commentLine,
+          });
+          continue;
+        }
+      }
+    }
+    finalCandidates.push(stripInternalFields(c));
+  }
+
+  const stats = collectStats ? buildMotionStats(kotlinFiles, motionContracts) : null;
+
+  return {
+    findings: finalFindings,
+    candidates: finalCandidates,
+    contractDiagnostics,
+    suppressed: [...contractSuppressed.map(stripInternalFields), ...inlineSuppressed.map(stripInternalFields)],
+    rawPreWaiverItems: [...afterExceptionsFindings.map(stripInternalFields), ...rawCandidates.map(stripInternalFields)],
+    stats,
+  };
+}
+
+function stripInternalFields(item) {
+  const clone = { ...item };
+  delete clone.symbolContext;
+  return clone;
+}
+
+function selectNearestMotionContract(filePath, motionContracts) {
+  if (!motionContracts || motionContracts.length === 0) return null;
+  const absFile = path.resolve(filePath);
+  let best = null;
+  let bestLen = -1;
+  for (const mc of motionContracts) {
+    const dir = path.dirname(path.resolve(mc.filePath));
+    if (absFile === dir || absFile.startsWith(dir + path.sep)) {
+      if (dir.length > bestLen) {
+        best = mc;
+        bestLen = dir.length;
+      }
+    }
+  }
+  return best;
+}
+
+function findMatchingException(motionMd, symbolNames, ruleId = null) {
+  if (!motionMd || !Array.isArray(motionMd.exceptions)) return null;
+  const syms = Array.isArray(symbolNames) ? symbolNames : [];
+  for (const exc of motionMd.exceptions) {
+    if (exc.symbol) {
+      const shortSym = exc.symbol.split('.').pop();
+      if (!syms.includes(exc.symbol) && !syms.includes(shortSym)) {
+        continue;
+      }
+      // If the exception explicitly names rule IDs, ensure either none are named or `ruleId` is named
+      const mentionedRules = [...String(exc.raw || '').toUpperCase().matchAll(/\b([FTOM]-\d{3})\b/g)].map((m) => m[1]);
+      if (mentionedRules.length > 0 && ruleId && !mentionedRules.includes(ruleId)) {
+        continue;
+      }
+      return exc;
+    }
+    if (ruleId && exc.raw && new RegExp(`\\b${ruleId}\\b`, 'i').test(exc.raw)) {
+      return exc;
+    }
+  }
+  return null;
+}
+
+function findMatchingDecidedOverride(motionMd, ruleId, symbolNames) {
+  if (!motionMd || !Array.isArray(motionMd.specs)) return null;
+  const syms = Array.isArray(symbolNames) ? symbolNames : [];
+  for (const spec of motionMd.specs) {
+    if (spec.status !== 'DECIDED') continue;
+    if (Array.isArray(spec.bindings) && spec.bindings.length > 0) {
+      if (syms.length === 0) continue;
+      const bindsSym = spec.bindings.some((b) => {
+        const shortB = b.split('.').pop();
+        return syms.includes(b) || syms.includes(shortB);
+      });
+      if (bindsSym) return spec;
+      continue;
+    }
+    const text = `${spec.name || ''} ${spec.intent || ''} ${spec.binding || ''}`;
+    if (ruleId && new RegExp(`\\b${ruleId}\\b`, 'i').test(text)) {
+      return spec;
+    }
+  }
+  return null;
+}
+
+const MOTION_TOKEN_HOLDER_NAME_RE = /(?:Motion(?:Tokens|Specs|Scheme|Defaults)|[A-Z][A-Za-z0-9]*Motion)$/;
+
+function computeProjectConventions(kotlinFiles, motionContracts) {
+  let usesMotionScheme = false;
+  let usesTokenObject = false;
+  let usesIdentityListKeys = false;
+
+  for (const kf of kotlinFiles) {
+    if (kf.lexError) continue;
+    for (const t of kf.tokens) {
+      if (t.type === 'Identifier' && t.value === 'motionScheme') {
+        usesMotionScheme = true;
+      }
+    }
+    for (const d of kf.declarations) {
+      if ((d.kind === 'object' || d.kind === 'class') && MOTION_TOKEN_HOLDER_NAME_RE.test(d.name)) {
+        usesTokenObject = true;
+      }
+    }
+    for (const c of kf.calls) {
+      if (SPEC_LITERAL_NAMES.has(c.name) && c.hasParens && isExemptSpecDefinitionSite(kf, c)) {
+        usesTokenObject = true;
+      }
+      if (c.receiver && MOTION_TOKEN_HOLDER_NAME_RE.test(c.receiver)) {
+        usesTokenObject = true;
+      }
+      if ((c.name === 'items' || c.name === 'itemsIndexed') && c.trailingLambda) {
+        const keyArg = getCallArg(c, 'key', 1);
+        if (keyArg && /\.\s*(id|key|uuid|code|isbn|slug)\b/i.test(keyArg.text)) {
+          usesIdentityListKeys = true;
+        }
+      }
+    }
+  }
+
+  const hasMotionMdSpecs = motionContracts.some(
+    (m) => (m.specs && m.specs.length > 0) || m.definesNavigationTransitions
+  );
+
+  return {
+    usesMotionScheme,
+    usesTokenObject,
+    hasMotionTokens: usesMotionScheme || usesTokenObject || hasMotionMdSpecs,
+    usesIdentityListKeys,
+    hasMotionMdSpecs,
+  };
+}
+
+function makeRuleFinding(ruleId, {
+  file,
+  lines,
+  severity = null,
+  severityBasis = null,
+  evidence,
+  remediation,
+  alsoAt = null,
+  symbolContext = null,
+}) {
+  const meta = MOTION_RULE_BY_ID.get(ruleId);
+  const out = {
+    rule: ruleId,
+    domain: 'motion',
+    class: meta.class,
+    severity: severity || meta.defaultSeverity,
+    tier: meta.hookTier || 'deferred',
+    file,
+    lines,
+    title: meta.title,
+    summary: meta.description,
+    evidence,
+    remediation,
+    docPath: 'references/standards.md',
+  };
+  if (severityBasis) out.severityBasis = severityBasis;
+  if (alsoAt && alsoAt.length > 0) out.alsoAt = alsoAt;
+  if (symbolContext) out.symbolContext = symbolContext;
+  return out;
+}
+
+function makeRuleCandidate(ruleId, {
+  file,
+  lines,
+  severity = null,
+  evidence,
+  verificationHint,
+}) {
+  const meta = MOTION_RULE_BY_ID.get(ruleId);
+  return {
+    kind: 'candidate',
+    rule: ruleId,
+    domain: 'motion',
+    class: meta.class,
+    severity: severity || meta.defaultSeverity,
+    file,
+    lines,
+    title: meta.title,
+    summary: meta.description,
+    evidence,
+    verificationHint,
+    docPath: 'references/standards.md',
+  };
+}
+
+function isInsidePhaseLambda(call, tokens) {
+  const callStart = tokens[call.nameTokIdx]?.start ?? -1;
+  const callEnd = tokens[call.endTokIdx]?.end ?? -1;
+
+  for (const enc of call.enclosingCalls) {
+    const isPhaseCall =
+      DRAW_OR_LAYOUT_SCOPES.has(enc.name) ||
+      enc.name === 'offset' ||
+      enc.name === 'absoluteOffset' ||
+      enc.name === 'graphicsLayer';
+    if (!isPhaseCall) continue;
+
+    if (enc.trailingLambda && call.nameTokIdx > enc.trailingLambda.openBraceIdx && call.endTokIdx < enc.trailingLambda.closeBraceIdx) {
+      return true;
+    }
+    // Also check named/positional lambda args like `Modifier.graphicsLayer(block = { ... })` or `Modifier.offset(offset = { ... })`
+    if (Array.isArray(enc.args)) {
+      for (const arg of enc.args) {
+        if (arg.tokens.length >= 2 && arg.tokens[0].value === '{' && arg.tokens[arg.tokens.length - 1].value === '}') {
+          if (callStart > arg.tokens[0].start && callEnd < arg.tokens[arg.tokens.length - 1].end) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function findEnclosingBraceScope(tokens, declTokIdx, fnStartIdx, fnEndIdx) {
+  let depth = 0;
+  let openIdx = fnStartIdx;
+  for (let i = declTokIdx - 1; i >= fnStartIdx; i -= 1) {
+    const t = tokens[i];
+    if (t.type === 'Punct') {
+      if (t.value === '}') depth += 1;
+      else if (t.value === '{') {
+        if (depth === 0) {
+          openIdx = i;
+          break;
+        }
+        depth -= 1;
+      }
+    }
+  }
+  const closeIdx = tokens[openIdx]?.value === '{'
+    ? findMatchingForward(tokens, openIdx, '{', '}')
+    : fnEndIdx;
+  return [openIdx, closeIdx !== -1 ? closeIdx : fnEndIdx];
+}
+
+function resolveScopedLocalKind(varName, atTokIdx, scopedBindings) {
+  let best = null;
+  for (const b of scopedBindings) {
+    if (b.name !== varName) continue;
+    if (atTokIdx <= b.declEndIdx || atTokIdx > b.scopeEndIdx || atTokIdx < b.scopeStartIdx) continue;
+    if (!best || b.scopeStartIdx >= best.scopeStartIdx) {
+      best = b;
+    }
+  }
+  return best ? best.kind : null;
+}
+
+function checkF001AndF008(kf, rawFindings, rawCandidates) {
+  const { tokens, declarations, calls } = kf;
+  const composableFuns = declarations.filter((d) => d.kind === 'fun' && d.isComposable);
+
+  for (const fn of composableFuns) {
+    const scopedBindings = [];
+    let hasAnyAnimated = false;
+
+    const localDecls = declarations.filter(
+      (d) => (d.kind === 'val' || d.kind === 'var') && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
+    );
+
+    for (const ld of localDecls) {
+      const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, ld.startTokIdx, fn.startTokIdx, fn.endTokIdx);
+      let kind = 'other';
+
+      if (ld.delegateIdx !== -1) {
+        const rhsCalls = calls.filter((c) => c.nameTokIdx >= ld.delegateIdx && c.endTokIdx <= ld.endTokIdx);
+        for (const rc of rhsCalls) {
+          if (FRAME_STATE_FACTORIES.has(rc.name) || (rc.receiver && TRANSITION_FRAME_METHODS.has(rc.name))) {
+            kind = 'frame';
+            hasAnyAnimated = true;
+          } else if (rc.name === 'animateColorAsState' || (rc.receiver && rc.name === 'animateColor')) {
+            kind = 'color';
+            hasAnyAnimated = true;
+          }
+        }
+      } else if (ld.rhsStartIdx !== -1) {
+        const rhsCalls = calls.filter((c) => c.nameTokIdx >= ld.rhsStartIdx && c.endTokIdx <= ld.endTokIdx);
+        if (rhsCalls.some((rc) => rc.name === 'Animatable')) {
+          kind = 'animatable';
+          hasAnyAnimated = true;
+        }
+      }
+
+      scopedBindings.push({
+        name: ld.name,
+        kind,
+        declStartIdx: ld.startTokIdx,
+        declEndIdx: ld.endTokIdx,
+        rhsStartIdx: ld.rhsStartIdx,
+        scopeStartIdx,
+        scopeEndIdx,
+      });
+    }
+
+    // Second pass over local vals for `lerp(..., <frameVar>)`
+    for (const b of scopedBindings) {
+      if (b.kind === 'other' && b.rhsStartIdx !== -1) {
+        const rhsCalls = calls.filter((c) => c.nameTokIdx >= b.rhsStartIdx && c.endTokIdx <= b.declEndIdx);
+        const lerpCall = rhsCalls.find((rc) => rc.name === 'lerp');
+        if (lerpCall) {
+          const usesFrameVar = lerpCall.args.some((a) =>
+            a.tokens.some((tok, idx) =>
+              tok.type === 'Identifier' &&
+              a.tokens[idx - 1]?.value !== '.' &&
+              resolveScopedLocalKind(tok.value, lerpCall.nameTokIdx, scopedBindings) === 'frame'
+            ) ||
+            Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
+          );
+          if (usesFrameVar) {
+            b.kind = 'derivedColor';
+            hasAnyAnimated = true;
+          }
+        }
+      }
+    }
+
+    if (!hasAnyAnimated) continue;
+
+    const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
+    for (const c of fnCalls) {
+      if (!c.hasParens || c.args.length === 0) continue;
+      if (!c.receiver) continue; // Must be a modifier chain method `.offset(...)`, `.alpha(...)`, etc.
+      if (isInsidePhaseLambda(c, tokens)) continue;
+
+      if (VALUE_MODIFIER_NAMES.has(c.name)) {
+        const hitVar = findScopedReferencedAnimatedVar(c.args, c.nameTokIdx, scopedBindings);
+        if (hitVar) {
+          const fixHint = c.name === 'offset' || c.name === 'absoluteOffset'
+            ? `Use the layout-phase lambda overload \`Modifier.${c.name} { IntOffset(...) }\` so \`${hitVar}\` is read during placement instead of composition.`
+            : `Use \`Modifier.graphicsLayer { ... }\` so \`${hitVar}\` is read in the draw phase instead of recomposing every frame.`;
+          rawFindings.push(
+            makeRuleFinding('F-001', {
+              file: kf.filePath,
+              lines: [c.startLine, c.headerEndLine],
+              evidence: `\`${c.snippet}\` reads animated state \`${hitVar}\` in composition.`,
+              remediation: fixHint,
+              symbolContext: [fn.name],
+            })
+          );
+        }
+      } else if (c.name === 'background') {
+        const firstArg = c.args[0];
+        if (firstArg) {
+          const hitColor =
+            findScopedSimpleVarRef(firstArg.tokens, c.nameTokIdx, scopedBindings, 'color') ||
+            findScopedSimpleVarRef(firstArg.tokens, c.nameTokIdx, scopedBindings, 'derivedColor');
+          if (hitColor) {
+            rawFindings.push(
+              makeRuleFinding('F-001', {
+                file: kf.filePath,
+                lines: [c.startLine, c.headerEndLine],
+                evidence: `\`${c.snippet}\` reads per-frame animated color \`${hitColor}\` in composition.`,
+                remediation: `Draw the animated color in the draw phase via \`Modifier.drawBehind { drawRect(${hitColor}) }\` (clipping first if needed) instead of \`Modifier.background(${hitColor})\`.`,
+                symbolContext: [fn.name],
+              })
+            );
+          }
+        }
+      } else if (LAYOUT_SIZE_MODIFIER_NAMES.has(c.name)) {
+        const hitVar = findScopedReferencedAnimatedVar(c.args, c.nameTokIdx, scopedBindings);
+        if (hitVar) {
+          rawCandidates.push(
+            makeRuleCandidate('F-008', {
+              file: kf.filePath,
+              lines: [c.startLine, c.headerEndLine],
+              evidence: `\`${c.snippet}\` animates layout property \`${c.name}\` via \`${hitVar}\` on every frame.`,
+              verificationHint: 'Check whether sibling reflow is genuinely required; if the element only shifts its own visual position or scale, replace animated padding/size with lambda `Modifier.offset { ... }` or `Modifier.graphicsLayer { ... }`.',
+            })
+          );
+        }
+      }
+    }
+  }
+}
+
+function findScopedReferencedAnimatedVar(args, atTokIdx, scopedBindings) {
+  for (const arg of args) {
+    const direct = findScopedSimpleVarRef(arg.tokens, atTokIdx, scopedBindings, 'frame');
+    if (direct) return direct;
+    const animVal = findScopedAnimatableRead(arg.tokens, atTokIdx, scopedBindings);
+    if (animVal) return `${animVal}.value`;
+  }
+  return null;
+}
+
+function findScopedSimpleVarRef(toks, atTokIdx, scopedBindings, expectedKind) {
+  let bDepth = 0;
+  for (let i = 0; i < toks.length; i += 1) {
+    const t = toks[i];
+    if (t.type === 'Punct') {
+      if (t.value === '{') {
+        bDepth += 1;
+        continue;
+      }
+      if (t.value === '}') {
+        bDepth = Math.max(0, bDepth - 1);
+        continue;
+      }
+    }
+    if (bDepth > 0) continue; // Deferred lambda body, not evaluated eagerly at call site
+    if (t.type === 'Identifier') {
+      const prev = toks[i - 1];
+      if (!prev || prev.type !== 'Punct' || (prev.value !== '.' && prev.value !== '?.')) {
+        if (resolveScopedLocalKind(t.value, atTokIdx, scopedBindings) === expectedKind) {
+          return t.value;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function findScopedAnimatableRead(toks, atTokIdx, scopedBindings) {
+  let bDepth = 0;
+  for (let i = 0; i < toks.length; i += 1) {
+    const t = toks[i];
+    if (t.type === 'Punct') {
+      if (t.value === '{') {
+        bDepth += 1;
+        continue;
+      }
+      if (t.value === '}') {
+        bDepth = Math.max(0, bDepth - 1);
+        continue;
+      }
+    }
+    if (bDepth > 0 || i + 2 >= toks.length) continue;
+    if (
+      toks[i].type === 'Identifier' &&
+      toks[i + 1].type === 'Punct' &&
+      (toks[i + 1].value === '.' || toks[i + 1].value === '?.') &&
+      toks[i + 2].type === 'Identifier' &&
+      toks[i + 2].value === 'value' &&
+      resolveScopedLocalKind(toks[i].value, atTokIdx, scopedBindings) === 'animatable'
+    ) {
+      return toks[i].value;
+    }
+  }
+  return null;
+}
+
+function checkF003AndT021(kf, conventionContext, rawFindings, rawCandidates) {
+  const { calls } = kf;
+  for (const c of calls) {
+    if ((c.name !== 'items' && c.name !== 'itemsIndexed') || !c.trailingLambda) continue;
+
+    // Look for `.animateItem(...)` whose nearest enclosing `items`/`itemsIndexed` is `c`
+    const animateItemCall = calls.find((inner) => {
+      if (inner.name !== 'animateItem' || !inner.receiver) return false;
+      if (inner.nameTokIdx <= c.trailingLambda.openBraceIdx || inner.endTokIdx >= c.trailingLambda.closeBraceIdx) return false;
+      const nearestItems = [...inner.enclosingCalls].reverse().find((ec) => ec.name === 'items' || ec.name === 'itemsIndexed');
+      return nearestItems === c;
+    });
+    if (!animateItemCall) continue;
+
+    const symNames = c.enclosingDeclarations.map((d) => d.name);
+    const keyArg = getCallArg(c, 'key', 1);
+
+    if (!keyArg || keyArg.text === 'null') {
+      rawFindings.push(
+        makeRuleFinding('F-003', {
+          file: kf.filePath,
+          lines: [c.startLine, c.endLine],
+          evidence: `\`${c.name}(...)\` uses \`Modifier.animateItem()\` (line ${animateItemCall.startLine}) without providing a \`key\`.`,
+          remediation: `Pass a stable, Bundle-compatible identity key on \`${c.name}(..., key = { item -> item.id })\`.`,
+          symbolContext: symNames,
+        })
+      );
+      continue;
+    }
+
+    // `key` is present: check T-021 (positional index used as key)
+    const hasIdentityTwinOrSpec = conventionContext.usesIdentityListKeys || conventionContext.hasMotionMdSpecs;
+    const keySeverity = hasIdentityTwinOrSpec ? 'major' : 'minor';
+    const keyBasis = conventionContext.usesIdentityListKeys
+      ? 'compliant-identity-key-in-scanned-set'
+      : conventionContext.hasMotionMdSpecs
+        ? 'motion-md-convention'
+        : 'no-established-convention-in-scanned-set';
+
+    if (c.name === 'itemsIndexed') {
+      const idxKeyClass = classifyItemsIndexedKey(kf, keyArg);
+      if (idxKeyClass === 'positional') {
+        rawFindings.push(
+          makeRuleFinding('T-021', {
+            file: kf.filePath,
+            lines: [c.startLine, c.endLine],
+            severity: keySeverity,
+            severityBasis: keyBasis,
+            evidence: `\`itemsIndexed(..., key = ${keyArg.text})\` keys \`animateItem()\` rows by list index instead of item identity.`,
+            remediation: 'Key items by a stable content identifier from the item parameter (for example `key = { _, item -> item.id }`).',
+            symbolContext: symNames,
+          })
+        );
+      } else if (idxKeyClass === 'subscript-lookup' && rawCandidates) {
+        rawCandidates.push(
+          makeRuleCandidate('T-021', {
+            file: kf.filePath,
+            lines: [c.startLine, c.endLine],
+            severity: keySeverity,
+            evidence: `\`itemsIndexed(..., key = ${keyArg.text})\` looks up a key by index subscript rather than reading the \`item\` lambda parameter directly.`,
+            verificationHint: 'Confirm the subscript expression resolves a stable item identity (prefer `key = { _, item -> item.id }` for clarity) rather than a positional row index.',
+          })
+        );
+      }
+    } else if (c.name === 'items') {
+      const firstArg = c.args[0];
+      if (firstArg && firstArg.name !== 'items' && isIdentityIndexLambda(kf, keyArg)) {
+        if (isProvableIntCountArg(kf, c, firstArg)) {
+          rawFindings.push(
+            makeRuleFinding('T-021', {
+              file: kf.filePath,
+              lines: [c.startLine, c.endLine],
+              severity: keySeverity,
+              severityBasis: keyBasis,
+              evidence: `\`items(${firstArg.text}, key = ${keyArg.text})\` passes a count overload with the index itself as \`key\` alongside \`animateItem()\`.`,
+              remediation: 'Pass the domain collection and key by stable item identity (`items(list, key = { it.id })`).',
+              symbolContext: symNames,
+            })
+          );
+        } else if (rawCandidates) {
+          rawCandidates.push(
+            makeRuleCandidate('T-021', {
+              file: kf.filePath,
+              lines: [c.startLine, c.endLine],
+              severity: keySeverity,
+              evidence: `\`items(${firstArg.text}, key = ${keyArg.text})\` uses \`animateItem()\` with identity lambda \`${keyArg.text}\`; type of \`${firstArg.text}\` (Int count vs List) is not locally declared.`,
+              verificationHint: `Check the declaration of \`${firstArg.text}\`: if \`Int\`, \`key = { it }\` keys by list index (T-021); if \`List<Scalar>\` with unique elements, \`{ it }\` is an identity key.`,
+            })
+          );
+        }
+      }
+    }
+  }
+}
+
+function classifyItemsIndexedKey(kf, keyArg) {
+  const toks = keyArg.tokens;
+  if (!toks.length || toks[0].value !== '{' || toks[toks.length - 1].value !== '}') return null;
+  // Find arrow `->` at top level of this lambda
+  let arrowPos = -1;
+  let depth = 0;
+  for (let i = 1; i < toks.length - 1; i += 1) {
+    const t = toks[i];
+    if (t.type === 'Punct') {
+      if (t.value === '{' || t.value === '(') depth += 1;
+      else if (t.value === '}' || t.value === ')') depth -= 1;
+      else if (t.value === '->' && depth === 0) {
+        arrowPos = i;
+        break;
+      }
+    }
+  }
+  if (arrowPos === -1) return null;
+  const headerToks = toks.slice(1, arrowPos);
+  const commaPos = headerToks.findIndex((t) => t.type === 'Punct' && t.value === ',');
+  if (commaPos === -1) return null;
+
+  const idxParamTok = headerToks.slice(0, commaPos).find((t) => t.type === 'Identifier');
+  const itemParamTok = headerToks.slice(commaPos + 1).find((t) => t.type === 'Identifier');
+  if (!idxParamTok) return null;
+  const idxName = idxParamTok.value;
+  const itemName = itemParamTok ? itemParamTok.value : '_';
+  if (idxName === '_') return null;
+
+  const bodyToks = toks.slice(arrowPos + 1, -1);
+  const usesIdx = bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === idxName && bodyToks[idx - 1]?.value !== '.');
+  const usesItem = itemName !== '_' && bodyToks.some((t, idx) => t.type === 'Identifier' && t.value === itemName && bodyToks[idx - 1]?.value !== '.');
+  void kf;
+  if (!usesIdx || usesItem) return null;
+
+  // Check if `idxName` is used as a collection subscript (`list[i]`, `list.get(i)`, `list.getOrNull(i)`)
+  for (let i = 0; i < bodyToks.length; i += 1) {
+    const t = bodyToks[i];
+    if (t.type === 'Identifier' && t.value === idxName && bodyToks[i - 1]?.value !== '.') {
+      const prev = bodyToks[i - 1];
+      const next = bodyToks[i + 1];
+      if (prev?.value === '[' && next?.value === ']') {
+        return 'subscript-lookup';
+      }
+      if (
+        prev?.value === '(' &&
+        bodyToks[i - 2]?.type === 'Identifier' &&
+        (bodyToks[i - 2].value === 'get' || bodyToks[i - 2].value === 'getOrNull' || bodyToks[i - 2].value === 'elementAt' || bodyToks[i - 2].value === 'elementAtOrNull')
+      ) {
+        return 'subscript-lookup';
+      }
+    }
+  }
+
+  return 'positional';
+}
+
+function isProvableIntCountArg(kf, call, firstArg) {
+  if (firstArg.name === 'count') return true;
+  const toks = firstArg.tokens;
+  if (toks.length === 1 && toks[0].type === 'NumberLiteral' && /^\d+$/.test(toks[0].value)) {
+    return true;
+  }
+  // `list.size` or `list.count()`
+  if (
+    toks.length >= 3 &&
+    toks[toks.length - 2]?.value === '.' &&
+    (toks[toks.length - 1]?.value === 'size' || toks[toks.length - 1]?.value === 'length')
+  ) {
+    return true;
+  }
+  // Parameter explicitly typed `: Int` on enclosing function
+  if (toks.length === 1 && toks[0].type === 'Identifier') {
+    const paramName = toks[0].value;
+    for (const d of call.enclosingDeclarations) {
+      if (d.paramRange) {
+        const paramSlice = kf.tokens.slice(d.paramRange[0] + 1, d.paramRange[1]);
+        for (let i = 0; i + 2 < paramSlice.length; i += 1) {
+          if (
+            paramSlice[i].type === 'Identifier' &&
+            paramSlice[i].value === paramName &&
+            paramSlice[i + 1].value === ':' &&
+            paramSlice[i + 2].value === 'Int'
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function isIdentityIndexLambda(kf, keyArg) {
+  void kf;
+  const text = keyArg.text.replace(/\s+/g, ' ').trim();
+  if (/^\{\s*it\s*\}$/.test(text)) return true;
+  const m = text.match(/^\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*->\s*\1\s*\}$/);
+  return Boolean(m);
+}
+
+function findScaleReadingHelpers(kf) {
+  const helpers = new Set();
+  for (const d of kf.declarations) {
+    if (d.kind !== 'fun' && d.kind !== 'val') continue;
+    const bodyToks = kf.tokens.slice(d.startTokIdx, d.endTokIdx + 1);
+    if (tokensReadDurationScale(bodyToks, kf.calls)) {
+      helpers.add(d.name);
+    }
+  }
+  return helpers;
+}
+
+function tokensReadDurationScale(toks, allCalls) {
+  if (toks.length === 0) return false;
+  const startOff = toks[0].start;
+  const endOff = toks[toks.length - 1].end;
+  const logSpans = allCalls
+    .filter((c) =>
+      (c.receiver === 'Log' || c.name === 'println' || c.name === 'print') &&
+      c.hasParens &&
+      kfTokenOffsetOverlap(c, startOff, endOff)
+    );
+
+  for (const t of toks) {
+    if (t.type === 'Identifier' && DURATION_SCALE_IDENTIFIERS.has(t.value)) {
+      const insideLogOnly = logSpans.some(
+        (lc) => t.start >= kfCallStartOffset(lc) && t.end <= kfCallEndOffset(lc)
+      );
+      if (!insideLogOnly) return true;
+    }
+  }
+  return false;
+}
+
+function kfTokenOffsetOverlap(call, startOff, endOff) {
+  const cStart = call.args[0]?.allTokens[0]?.start ?? -1;
+  const cEnd = call.args[call.args.length - 1]?.allTokens?.slice(-1)[0]?.end ?? -1;
+  return cStart >= startOff && cEnd <= endOff;
+}
+
+function kfCallStartOffset(call) {
+  return call.args[0]?.allTokens[0]?.start ?? Infinity;
+}
+
+function kfCallEndOffset(call) {
+  const lastArg = call.args[call.args.length - 1];
+  const lastTok = lastArg?.allTokens?.[lastArg.allTokens.length - 1];
+  return lastTok ? lastTok.end : -1;
+}
+
+function checkF005(kf, scaleHelpers, rawFindings, rawCandidates) {
+  const { tokens, declarations, calls } = kf;
+
+  for (const c of calls) {
+    // LottieAnimatable.animate(...) direct suspend call candidate
+    if (c.name === 'animate' && c.receiver && /lottie|animatable/i.test(c.receiver) && c.hasParens) {
+      rawCandidates.push(
+        makeRuleCandidate('F-005', {
+          file: kf.filePath,
+          lines: [c.startLine, c.headerEndLine],
+          evidence: `Direct \`${c.receiver}.animate(...)\` call detected.`,
+          verificationHint: '`LottieAnimatable.animate()` declares `ignoreSystemAnimationsDisabled` without reading system animator duration scale internally; verify whether reduced-motion scale `0f` snaps to a readable rest frame or use `animateLottieCompositionAsState`.',
+        })
+      );
+    }
+
+    if (c.name !== 'LaunchedEffect' || !c.trailingLambda) continue;
+    const bodyToks = c.trailingLambda.bodyTokens;
+    if (bodyToks.length === 0) continue;
+
+    const bodyStartIdx = c.trailingLambda.openBraceIdx + 1;
+    const bodyEndIdx = c.trailingLambda.closeBraceIdx;
+
+    // Look for a `while` loop or `repeat(...)` inside this `LaunchedEffect` that calls `withFrameNanos`
+    const loopWithFrameNanos = findLoopCallingWithFrameNanos(tokens, calls, bodyStartIdx, bodyEndIdx, c);
+    if (!loopWithFrameNanos) continue;
+
+    // 1. Direct scale read inside `LaunchedEffect` body?
+    if (tokensReadDurationScale(bodyToks, calls)) continue;
+
+    // 2. Same-file scale-reading helper called inside `LaunchedEffect` or feeding its keys/guards?
+    const enclosingFn = [...c.enclosingDeclarations].reverse().find((d) => d.kind === 'fun');
+    const localScaleDerivedVars = new Set();
+    const localKnownNonScaleVars = new Set(['Unit', 'true', 'false', 'isActive']);
+
+    if (enclosingFn) {
+      // Collect parameters of enclosing function
+      const fnParamTypes = extractFunctionParamTypes(tokens, enclosingFn);
+      for (const [pName, pType] of fnParamTypes.entries()) {
+        // Data/size/content parameters cannot carry animator duration scale (note: Float/Double CAN carry scaleFactor!)
+        if (/^(Int|Long|Dp|String|List|ImmutableList|Modifier)\b/.test(pType)) {
+          localKnownNonScaleVars.add(pName);
+        }
+      }
+
+      const localVals = declarations.filter(
+        (d) => (d.kind === 'val' || d.kind === 'var') && d.startTokIdx > enclosingFn.startTokIdx && d.endTokIdx <= enclosingFn.endTokIdx
+      );
+      for (const lv of localVals) {
+        const lvToks = tokens.slice(lv.startTokIdx, lv.endTokIdx + 1);
+        const lvCalls = calls.filter((ic) => ic.nameTokIdx >= lv.startTokIdx && ic.endTokIdx <= lv.endTokIdx);
+        if (tokensReadDurationScale(lvToks, calls) || lvCalls.some((ic) => scaleHelpers.has(ic.name))) {
+          localScaleDerivedVars.add(lv.name);
+        } else if (
+          lvCalls.some((ic) =>
+            ic.name === 'mutableStateOf' ||
+            ic.name === 'mutableFloatStateOf' ||
+            ic.name === 'mutableIntStateOf' ||
+            ic.name === 'mutableLongStateOf'
+          )
+        ) {
+          localKnownNonScaleVars.add(lv.name);
+        }
+      }
+    }
+
+    const bodyCalls = calls.filter((ic) => ic.nameTokIdx >= bodyStartIdx && ic.endTokIdx < bodyEndIdx);
+    if (bodyCalls.some((ic) => scaleHelpers.has(ic.name))) continue;
+
+    const keyIdents = c.args.flatMap((a) =>
+      a.tokens.filter((t) => t.type === 'Identifier').map((t) => t.value)
+    );
+    if (keyIdents.some((id) => localScaleDerivedVars.has(id) || scaleHelpers.has(id))) {
+      continue;
+    }
+
+    // Check if an unresolved external boolean/scale guard/key could be gating the effect or loop
+    const controlGuardSet = new Set(extractGuardIdentifiers(tokens, bodyStartIdx, bodyEndIdx));
+    const guardIdents = Array.from(new Set([...keyIdents, ...controlGuardSet])).filter(
+      (id) => !localKnownNonScaleVars.has(id)
+    );
+
+    const hasPotentialExternalBooleanGuard = guardIdents.some((id) =>
+      isPotentiallyExternalScaleGuard(id, enclosingFn, tokens, calls, bodyStartIdx, bodyEndIdx, controlGuardSet)
+    );
+
+    const symNames = c.enclosingDeclarations.map((d) => d.name);
+    if (hasPotentialExternalBooleanGuard) {
+      rawCandidates.push(
+        makeRuleCandidate('F-005', {
+          file: kf.filePath,
+          lines: [c.startLine, c.endLine],
+          evidence: `\`LaunchedEffect\` frame loop calls \`withFrameNanos\` without a local \`MotionDurationScale\` read, but references external guard/key (${guardIdents.join(', ')}).`,
+          verificationHint: 'Verify whether the external guard/key reads `MotionDurationScale` or `ANIMATOR_DURATION_SCALE` and stops the loop when duration scale is `0f`.',
+        })
+      );
+    } else {
+      rawFindings.push(
+        makeRuleFinding('F-005', {
+          file: kf.filePath,
+          lines: [c.startLine, c.endLine],
+          evidence: `\`LaunchedEffect\` runs a \`${loopWithFrameNanos.kind}\` loop calling \`withFrameNanos\` (line ${loopWithFrameNanos.frameLine}) without reading \`MotionDurationScale\` or \`ANIMATOR_DURATION_SCALE\`.`,
+          remediation: 'Read `coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f` inside the loop; when `scaleFactor == 0f`, settle/idle instead of requesting 60/120Hz frames.',
+          symbolContext: symNames,
+        })
+      );
+    }
+  }
+}
+
+function findLoopCallingWithFrameNanos(tokens, calls, startIdx, endIdx, launchedEffectCall) {
+  // Check `while (...) { ... withFrameNanos ... }`
+  for (let i = startIdx; i < endIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === 'Keyword' && t.value === 'while' && tokens[i + 1]?.value === '(') {
+      const closeCond = findMatchingForward(tokens, i + 1, '(', ')');
+      if (closeCond !== -1 && tokens[closeCond + 1]?.value === '{') {
+        const closeBody = findMatchingForward(tokens, closeCond + 1, '{', '}');
+        if (closeBody !== -1) {
+          const wfn = calls.find(
+            (fc) =>
+              fc.name === 'withFrameNanos' &&
+              fc.nameTokIdx > closeCond + 1 &&
+              fc.endTokIdx < closeBody &&
+              nearestLaunchedEffect(fc) === launchedEffectCall
+          );
+          if (wfn) return { kind: 'while', frameLine: wfn.startLine };
+        }
+      }
+    }
+  }
+  // Check `repeat(...) { ... withFrameNanos ... }`
+  for (const rc of calls) {
+    if (rc.name === 'repeat' && rc.trailingLambda && rc.nameTokIdx >= startIdx && rc.endTokIdx <= endIdx) {
+      const wfn = calls.find(
+        (fc) =>
+          fc.name === 'withFrameNanos' &&
+          fc.nameTokIdx > rc.trailingLambda.openBraceIdx &&
+          fc.endTokIdx < rc.trailingLambda.closeBraceIdx &&
+          nearestLaunchedEffect(fc) === launchedEffectCall
+      );
+      if (wfn) return { kind: 'repeat', frameLine: wfn.startLine };
+    }
+  }
+  return null;
+}
+
+function nearestLaunchedEffect(call) {
+  return [...call.enclosingCalls].reverse().find((ec) => ec.name === 'LaunchedEffect') || null;
+}
+
+function findMatchingForward(tokens, openIdx, openSym, closeSym) {
+  let depth = 0;
+  for (let i = openIdx; i < tokens.length; i += 1) {
+    if (tokens[i].type === 'Punct') {
+      if (tokens[i].value === openSym) depth += 1;
+      else if (tokens[i].value === closeSym) {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function extractFunctionParamTypes(tokens, fnDecl) {
+  const out = new Map();
+  if (!fnDecl.paramRange) return out;
+  const slice = tokens.slice(fnDecl.paramRange[0] + 1, fnDecl.paramRange[1]);
+  for (let i = 0; i + 2 < slice.length; i += 1) {
+    if (slice[i].type === 'Identifier' && slice[i + 1].value === ':' && slice[i + 2].type === 'Identifier') {
+      out.set(slice[i].value, slice[i + 2].value);
+    }
+  }
+  return out;
+}
+
+function extractGuardIdentifiers(tokens, startIdx, endIdx) {
+  const out = new Set();
+  for (let i = startIdx; i < endIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type === 'Keyword' && (t.value === 'if' || t.value === 'while') && tokens[i + 1]?.value === '(') {
+      const close = findMatchingForward(tokens, i + 1, '(', ')');
+      if (close !== -1) {
+        const afterCond = tokens.slice(close + 1, Math.min(endIdx, close + 6));
+        const gatesExecution =
+          t.value === 'while' ||
+          afterCond.some((at) => at.type === 'Keyword' && (at.value === 'return' || at.value === 'break' || at.value === 'continue'));
+        if (gatesExecution) {
+          for (let k = i + 2; k < close; k += 1) {
+            if (tokens[k].type === 'Identifier' && tokens[k - 1]?.value !== '.') {
+              out.add(tokens[k].value);
+            }
+          }
+        }
+      }
+    }
+  }
+  return Array.from(out);
+}
+
+function isPotentiallyExternalScaleGuard(ident, enclosingFn, tokens, calls, bodyStartIdx, bodyEndIdx, controlGuardSet = new Set()) {
+  // Boolean or scale-gating Float/Double parameter on the composable (`animationsEnabled: Boolean`, `durationScale: Float`, etc.)
+  if (enclosingFn) {
+    const paramTypes = extractFunctionParamTypes(tokens, enclosingFn);
+    const pType = paramTypes.get(ident);
+    if (pType === 'Boolean') return true;
+    if ((pType === 'Float' || pType === 'Double') && (controlGuardSet.has(ident) || /scale|duration|motion|anim/i.test(ident))) {
+      return true;
+    }
+  }
+  // Unresolved zero-receiver helper call inside the guard or enclosing function (`if (!shouldRunMotion()) return@LaunchedEffect`)
+  const helperCall = calls.find(
+    (c) =>
+      c.name === ident &&
+      !c.receiver &&
+      c.nameTokIdx >= (enclosingFn ? enclosingFn.startTokIdx : bodyStartIdx) &&
+      c.endTokIdx <= (enclosingFn ? enclosingFn.endTokIdx : bodyEndIdx)
+  );
+  if (helperCall && !['remember', 'mutableStateOf', 'withFrameNanos', 'delay'].includes(ident)) {
+    return true;
+  }
+  return false;
+}
+
+function checkF006(kf, rawFindings, rawCandidates) {
+  const { calls } = kf;
+  const reportedAnimateCalls = new Set();
+
+  // Pattern B: Elevated `Card` / `ElevatedCard` / `OutlinedCard` / `Surface` whose modifier has `.animateContentSize()`
+  for (const container of calls) {
+    if (!ELEVATED_CONTAINERS.has(container.name) || !container.hasParens) continue;
+
+    const modArg = findContainerModifierArg(container);
+    if (!modArg) continue;
+
+    const modFirstIdx = container.openParenIdx + 1;
+    const modLastIdx = container.closeParenIdx;
+    const animInMod = calls.find((c) => {
+      if (c.name !== 'animateContentSize' || !c.receiver) return false;
+      if (c.nameTokIdx < modFirstIdx || c.endTokIdx > modLastIdx) return false;
+      const firstModTok = modArg.tokens[0];
+      const lastModTok = modArg.tokens[modArg.tokens.length - 1];
+      return firstModTok && lastModTok && kf.tokens[c.nameTokIdx].start >= firstModTok.start && kf.tokens[c.nameTokIdx].end <= lastModTok.end;
+    });
+    if (!animInMod) continue;
+
+    if (hasNonZeroContainerElevation(container)) {
+      reportedAnimateCalls.add(animInMod);
+      rawFindings.push(
+        makeRuleFinding('F-006', {
+          file: kf.filePath,
+          lines: [container.startLine, container.endLine],
+          evidence: `\`${container.name}\` applies \`Modifier.animateContentSize()\` (line ${animInMod.startLine}) alongside non-zero elevation, clipping its shadow.`,
+          remediation: 'Apply shadow/elevation on an outer wrapper outside `animateContentSize()`, or animate size inside the elevated surface body.',
+          symbolContext: container.enclosingDeclarations.map((d) => d.name),
+        })
+      );
+    }
+  }
+
+  // Pattern A: Modifier chain combining non-zero `.shadow(...)` and `.animateContentSize(...)`
+  for (const animCall of calls) {
+    if (animCall.name !== 'animateContentSize' || !animCall.receiver) continue;
+    if (reportedAnimateCalls.has(animCall)) continue;
+
+    const chainCalls = findModifierChainCalls(kf.tokens, calls, animCall);
+    const animPos = chainCalls.indexOf(animCall);
+    const shadowCall = chainCalls.find((cc) => cc.name === 'shadow' && isNonZeroDpCall(cc));
+    if (!shadowCall) continue;
+
+    const shadowPos = chainCalls.indexOf(shadowCall);
+    if (animPos < shadowPos) {
+      // `.animateContentSize().shadow(8.dp)` -> outer `clipToBounds` provably clips inner `shadow`!
+      rawFindings.push(
+        makeRuleFinding('F-006', {
+          file: kf.filePath,
+          lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
+          evidence: `Modifier chain applies \`animateContentSize()\` outer to \`shadow(${shadowCall.args.map((a) => a.rawText).join(', ')})\`, clipping the drop shadow.`,
+          remediation: 'Move `Modifier.shadow(...)` outside `animateContentSize()` (for example onto an outer wrapper composable).',
+          symbolContext: animCall.enclosingDeclarations.map((d) => d.name),
+        })
+      );
+    } else if (shadowPos < animPos && rawCandidates) {
+      // `.shadow(8.dp).animateContentSize()` -> `shadow` layer sits outside `animateContentSize`'s `clipToBounds`,
+      // so do not emit a blocking finding; emit a candidate only when no padding separates them.
+      const separatedByPadding = chainCalls
+        .slice(shadowPos + 1, animPos)
+        .some((cc) => cc.name === 'padding' && isNonZeroDpCall(cc));
+      if (!separatedByPadding) {
+        rawCandidates.push(
+          makeRuleCandidate('F-006', {
+            file: kf.filePath,
+            lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
+            evidence: `Modifier chain combines \`shadow(${shadowCall.args.map((a) => a.rawText).join(', ')})\` and \`animateContentSize()\`.`,
+            verificationHint: 'Confirm `animateContentSize()` does not clip an inner elevated surface, ripple, or exiting child; if clipping occurs, separate `Modifier.shadow(...)` onto an outer wrapper.',
+          })
+        );
+      }
+    }
+  }
+}
+
+function findContainerModifierArg(container) {
+  const named = container.args.find((a) => a.name === 'modifier');
+  if (named) return named;
+  // In M3 `Card(modifier = ...)` / `Surface(modifier = ...)`, non-clickable overload has `modifier` at index 0;
+  // clickable overload `Card(onClick = ..., modifier = ...)` has `onClick` at index 0 and `modifier` at index 1.
+  const arg0 = container.args[0];
+  if (!arg0) return null;
+  if (arg0.name === null) {
+    const looksLikeModifier = arg0.tokens.some(
+      (t) => t.type === 'Identifier' && (t.value === 'Modifier' || t.value === 'modifier' || t.value === 'animateContentSize')
+    );
+    if (looksLikeModifier) return arg0;
+    const arg1 = container.args[1];
+    if (arg1 && arg1.name === null) return arg1;
+  }
+  return null;
+}
+
+function hasNonZeroContainerElevation(container) {
+  // Never confuse `tonalElevation` (color overlay, no shadow clip) with `elevation` / `shadowElevation`
+  const elevArg = container.args.find((a) => a.name === 'elevation' || a.name === 'shadowElevation');
+  if (!elevArg) {
+    // `ElevatedCard` has default non-zero elevation (1.dp); `Card`, `OutlinedCard`, `Surface` default to `0.dp`
+    return container.name === 'ElevatedCard';
+  }
+  return isProvablyNonZeroDpTokens(elevArg.tokens);
+}
+
+function isNonZeroDpCall(call) {
+  if (!call.hasParens || call.args.length === 0) return false;
+  const elevArg = getCallArg(call, 'elevation', 0) || call.args[0];
+  if (!elevArg) return false;
+  return isProvablyNonZeroDpTokens(elevArg.tokens);
+}
+
+function isProvablyNonZeroDpTokens(toks) {
+  const text = toks.map((t) => t.raw).join('').trim();
+  if (!text || text === 'null') return false;
+  const dpMatches = [...text.matchAll(/(\d+(?:\.\d+)?)f?\.dp\b/gi)];
+  if (dpMatches.length > 0) {
+    return dpMatches.some((m) => Number(m[1]) > 0);
+  }
+  // `CardDefaults.elevatedCardElevation()` with no args defaults to 1.dp (> 0)
+  if (/\belevatedCardElevation\s*\(/.test(text)) {
+    return true;
+  }
+  // Abstain on opaque variables or non-literal expressions
+  return false;
+}
+
+function findModifierChainCalls(tokens, calls, memberCall) {
+  const rootIdx = memberCall.chainRootIdx;
+  // All calls sharing the exact same chainRootIdx, sorted by token position
+  return calls
+    .filter((c) => c.chainRootIdx === rootIdx)
+    .sort((a, b) => a.nameTokIdx - b.nameTokIdx);
+}
+
+function isNonAndroidxNavSymbol(kf, symbolName) {
+  if (kf.declarations.some((d) => d.kind === 'fun' && d.name === symbolName)) {
+    return true;
+  }
+  const imports = kf.imports || [];
+  if (imports.length === 0) return false;
+  return !imports.some(
+    (imp) => imp.startsWith('androidx.navigation.') || imp.startsWith('androidx.navigation3.')
+  );
+}
+
+function checkT001(kf, conventionContext, fileMotionMd, rawFindings, rawCandidates) {
+  for (const c of kf.calls) {
+    if (c.name === 'NavHost' && c.hasParens && c.trailingLambda && c.args.length >= 2) {
+      if (isNonAndroidxNavSymbol(kf, 'NavHost')) continue;
+      const hasEnter = c.args.some((a) => a.name === 'enterTransition' && a.text !== 'null');
+      const hasExit = c.args.some((a) => a.name === 'exitTransition' && a.text !== 'null');
+      if (!hasEnter || !hasExit) {
+        const hasEstablishedConvention =
+          conventionContext.hasMotionTokens ||
+          Boolean(fileMotionMd && (fileMotionMd.definesNavigationTransitions || fileMotionMd.specs.length > 0));
+        const severity = hasEstablishedConvention ? 'major' : 'minor';
+        const severityBasis = hasEstablishedConvention
+          ? 'motion-tokens-or-contract-present'
+          : 'no-established-convention-in-scanned-set';
+        const missing = !hasEnter && !hasExit
+          ? '`enterTransition` and `exitTransition`'
+          : !hasEnter
+            ? '`enterTransition`'
+            : '`exitTransition`';
+
+        // Check if per-destination `composable(..., enterTransition = ...)` overrides exist inside this `NavHost` builder
+        const hasPerDestinationOverride = kf.calls.some(
+          (inner) =>
+            inner.name === 'composable' &&
+            inner.hasParens &&
+            inner.nameTokIdx > c.trailingLambda.openBraceIdx &&
+            inner.endTokIdx < c.trailingLambda.closeBraceIdx &&
+            inner.args.some((a) => (a.name === 'enterTransition' || a.name === 'exitTransition') && a.text !== 'null')
+        );
+
+        if (hasPerDestinationOverride && rawCandidates) {
+          rawCandidates.push(
+            makeRuleCandidate('T-001', {
+              file: kf.filePath,
+              lines: [c.startLine, c.endLine],
+              severity,
+              evidence: `\`NavHost\` omits host-level ${missing}; one or more inner \`composable(...)\` destinations supply per-route transitions.`,
+              verificationHint: 'Check whether every destination in this `NavHost` supplies explicit transitions or whether unconfigured routes still inherit the 700ms default crossfade.',
+            })
+          );
+          continue;
+        }
+
+        rawFindings.push(
+          makeRuleFinding('T-001', {
+            file: kf.filePath,
+            lines: [c.startLine, c.endLine],
+            severity,
+            severityBasis,
+            evidence: `\`NavHost\` omits ${missing} and inherits the 700ms default crossfade.`,
+            remediation: 'Specify explicit `enterTransition`, `exitTransition`, `popEnterTransition`, and `popExitTransition` bound to `MaterialTheme.motionScheme` or your project\'s `MOTION.md` specs.',
+            symbolContext: c.enclosingDeclarations.map((d) => d.name),
+          })
+        );
+      }
+    } else if (c.name === 'NavDisplay' && c.hasParens) {
+      if (isNonAndroidxNavSymbol(kf, 'NavDisplay')) continue;
+      const hasSpec = c.args.some((a) => a.name === 'transitionSpec' && a.text !== 'null');
+      if (!hasSpec) {
+        const hasEstablishedConvention =
+          conventionContext.hasMotionTokens ||
+          Boolean(fileMotionMd && (fileMotionMd.definesNavigationTransitions || fileMotionMd.specs.length > 0));
+        const severity = hasEstablishedConvention ? 'major' : 'minor';
+        const severityBasis = hasEstablishedConvention
+          ? 'motion-tokens-or-contract-present'
+          : 'no-established-convention-in-scanned-set';
+
+        // Check for per-entry `NavDisplay.transitionSpec` metadata inside `NavDisplay` args or trailing lambda
+        const hasPerEntryTransitionSpec = kf.calls.some(
+          (inner) =>
+            inner !== c &&
+            (inner.name === 'transitionSpec' || inner.name === 'popTransitionSpec' || inner.name === 'predictivePopTransitionSpec') &&
+            inner.nameTokIdx > c.nameTokIdx &&
+            inner.endTokIdx <= c.endTokIdx
+        );
+
+        if (hasPerEntryTransitionSpec && rawCandidates) {
+          rawCandidates.push(
+            makeRuleCandidate('T-001', {
+              file: kf.filePath,
+              lines: [c.startLine, c.endLine],
+              severity,
+              evidence: 'Navigation 3 `NavDisplay` omits top-level `transitionSpec`, while inner entry metadata defines per-entry `transitionSpec`.',
+              verificationHint: 'Check whether every destination entry overrides `NavDisplay.transitionSpec` or whether unconfigured entries still inherit the library default transition.',
+            })
+          );
+          continue;
+        }
+
+        rawFindings.push(
+          makeRuleFinding('T-001', {
+            file: kf.filePath,
+            lines: [c.startLine, c.endLine],
+            severity,
+            severityBasis,
+            evidence: 'Navigation 3 `NavDisplay` omits `transitionSpec` and falls back to the library default transition.',
+            remediation: 'Pass an explicit `transitionSpec` (and `popTransitionSpec` / `predictivePopTransitionSpec` where needed) resolved from `MaterialTheme.motionScheme` or your project\'s motion tokens.',
+            symbolContext: c.enclosingDeclarations.map((d) => d.name),
+          })
+        );
+      }
+    }
+  }
+}
+
+function checkT002(kf, conventionContext, fileMotionMd, rawFindings) {
+  for (const c of kf.calls) {
+    if (!SPEC_LITERAL_NAMES.has(c.name) || !c.hasParens) continue;
+    if (c.receiver && c.receiver !== 'core') continue;
+
+    if (isExemptSpecDefinitionSite(kf, c)) continue;
+
+    const hasEstablishedConvention =
+      conventionContext.hasMotionTokens ||
+      Boolean(fileMotionMd && fileMotionMd.specs.length > 0);
+    const severity = hasEstablishedConvention ? 'major' : 'minor';
+    const severityBasis = hasEstablishedConvention
+      ? 'motion-tokens-or-contract-present'
+      : 'no-established-convention-in-scanned-set';
+
+    // Anchor on enclosing animation consumer call if compact (e.g. `animateDpAsState(...)`), else on `c`
+    const nearestAnimConsumer = [...c.enclosingCalls]
+      .reverse()
+      .find((ec) => ANIMATION_CONSUMER_CALLS.has(ec.name) && (ec.headerEndLine - ec.startLine) <= 12);
+    const span = nearestAnimConsumer
+      ? [nearestAnimConsumer.startLine, nearestAnimConsumer.headerEndLine]
+      : [c.startLine, c.headerEndLine];
+
+    rawFindings.push(
+      makeRuleFinding('T-002', {
+        file: kf.filePath,
+        lines: span,
+        severity,
+        severityBasis,
+        evidence: `Inline \`${c.snippet}\` spec literal at call site (line ${c.startLine}).`,
+        remediation: 'Replace the inline spec literal with a `MaterialTheme.motionScheme` spec (`defaultSpatialSpec()`, `defaultEffectsSpec()`, etc.) or a named project token defined in one shared motion object.',
+        symbolContext: c.enclosingDeclarations.map((d) => d.name),
+      })
+    );
+  }
+}
+
+const SPEC_BUILDER_WRAPPERS = new Set([
+  'repeatable',
+  'infiniteRepeatable',
+  'fadeIn',
+  'fadeOut',
+  'slideIn',
+  'slideOut',
+  'slideInHorizontally',
+  'slideOutHorizontally',
+  'slideInVertically',
+  'slideOutVertically',
+  'scaleIn',
+  'scaleOut',
+  'expandIn',
+  'shrinkOut',
+  'expandHorizontally',
+  'shrinkHorizontally',
+  'expandVertically',
+  'shrinkVertically',
+  'togetherWith',
+  'SizeTransform',
+]);
+
+/**
+ * Exempt `tween(...)` / `spring(...)` / `keyframes(...)` ONLY when it is the direct
+ * spec-producing expression of a non-`@Composable` token `val` or `fun` (including
+ * `MotionScheme` class overrides, `object` tokens, or default parameters of non-`@Composable`
+ * helpers), and NOT nested inside any UI/animation consumer call.
+ */
+function isExemptSpecDefinitionSite(kf, specCall) {
+  // Never exempt if nested inside an animation/UI consumer (`fadeIn(tween(300))`, `animateDpAsState(..., tween(300))`, etc.),
+  // while permitting pure spec wrappers like `val pulse = infiniteRepeatable(tween(800))` on a token declaration!
+  if (specCall.enclosingCalls.some((ec) => ANIMATION_CONSUMER_CALLS.has(ec.name) && !SPEC_BUILDER_WRAPPERS.has(ec.name))) {
+    return false;
+  }
+
+  const innermostDecl = [...specCall.enclosingDeclarations]
+    .reverse()
+    .find((d) => d.kind === 'val' || d.kind === 'var' || d.kind === 'fun');
+  if (!innermostDecl) return false;
+
+  // Never exempt inside a `@Composable` function (neither expression body nor `@Composable` default param)
+  if (innermostDecl.isComposable) return false;
+  if (specCall.enclosingDeclarations.some((d) => d.kind === 'fun' && d.isComposable)) {
+    return false;
+  }
+
+  // Case 1: Non-`@Composable` `val` initializer (`val cardSpring = spring<Float>(...)`)
+  if ((innermostDecl.kind === 'val' || innermostDecl.kind === 'var') && innermostDecl.rhsStartIdx !== -1) {
+    return specCall.nameTokIdx >= innermostDecl.rhsStartIdx && specCall.endTokIdx <= innermostDecl.endTokIdx;
+  }
+
+  // Case 2: Non-`@Composable` expression-body `fun` (`fun <T> spineSlide() = tween<T>(...)`)
+  if (innermostDecl.kind === 'fun' && innermostDecl.isExpressionBody && innermostDecl.rhsStartIdx !== -1) {
+    return specCall.nameTokIdx >= innermostDecl.rhsStartIdx && specCall.endTokIdx <= innermostDecl.endTokIdx;
+  }
+
+  // Case 3: Non-`@Composable` block-body `fun` returning the spec directly (`return tween(...)`)
+  if (innermostDecl.kind === 'fun' && !innermostDecl.isExpressionBody) {
+    const prevTok = kf.tokens[specCall.nameTokIdx - 1];
+    if (prevTok && prevTok.type === 'Keyword' && prevTok.value === 'return') {
+      return true;
+    }
+    // Default parameter value of a non-`@Composable` helper `fun makeSpec(spec: AnimationSpec<Float> = spring())`
+    if (
+      innermostDecl.paramRange &&
+      specCall.nameTokIdx > innermostDecl.paramRange[0] &&
+      specCall.endTokIdx < innermostDecl.paramRange[1]
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function checkCandidatesMisc(kf, rawCandidates) {
+  const { calls, tokens, declarations } = kf;
+
+  // Identify local boolean vars mutated alongside `animateTo` / `animateDecay` (for T-012 input gating)
+  const animGatingVars = new Set();
+  for (const fn of declarations.filter((d) => d.kind === 'fun' && d.isComposable)) {
+    const localVars = declarations.filter(
+      (d) => d.kind === 'var' && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
+    );
+    const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
+    const hasSuspendAnim = fnCalls.some((c) => c.name === 'animateTo' || c.name === 'animateDecay');
+    if (hasSuspendAnim) {
+      for (const lv of localVars) {
+        // Check if `lv.name = false` appears inside a coroutine launch block that also runs `animateTo`/`animateDecay`
+        for (const lc of fnCalls) {
+          if (lc.trailingLambda && (lc.name === 'launch' || lc.name === 'LaunchedEffect')) {
+            const bToks = lc.trailingLambda.bodyTokens;
+            const hasAnimInBlock = fnCalls.some(
+              (ac) =>
+                (ac.name === 'animateTo' || ac.name === 'animateDecay') &&
+                ac.nameTokIdx > lc.trailingLambda.openBraceIdx &&
+                ac.endTokIdx < lc.trailingLambda.closeBraceIdx
+            );
+            const assignsVar = bToks.some(
+              (bt, idx) => bt.type === 'Identifier' && bt.value === lv.name && bToks[idx + 1]?.value === '='
+            );
+            if (hasAnimInBlock && assignsVar) {
+              animGatingVars.add(lv.name);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const c of calls) {
+    // F-004: `sharedElement` / `sharedBounds` inside `Dialog` / `ModalBottomSheet` / `Popup` / `AndroidView`
+    if (c.name === 'sharedElement' || c.name === 'sharedBounds') {
+      const container = [...c.enclosingCalls].reverse().find((ec) => VIEW_BACKED_CONTAINERS.has(ec.name));
+      if (container) {
+        rawCandidates.push(
+          makeRuleCandidate('F-004', {
+            file: kf.filePath,
+            lines: [container.startLine, container.endLine],
+            evidence: `\`${c.name}\` (line ${c.startLine}) is used inside View/window-backed \`${container.name}\`.`,
+            verificationHint: 'Confirm whether the other shared-element endpoint lives in the parent window; `sharedElement`/`sharedBounds` cannot animate across separate platform windows (`Dialog`, `ModalBottomSheet`, `Popup`, `AndroidView`).',
+          })
+        );
+      }
+    }
+
+    // O-003: `infiniteRepeatable(...)` or `basicMarquee(...)`
+    if (c.name === 'infiniteRepeatable' || c.name === 'basicMarquee') {
+      const chainCalls = c.receiver ? findModifierChainCalls(tokens, calls, c) : [];
+      const hasClickableOnChain = chainCalls.some((cc) => cc.name === 'clickable' || cc.name === 'combinedClickable' || cc.name === 'toggleable');
+      rawCandidates.push(
+        makeRuleCandidate('O-003', {
+          file: kf.filePath,
+          lines: [c.startLine, c.endLine],
+          evidence: `Endless animation API \`${c.name}\` detected${hasClickableOnChain ? ' (with clickable modifier on chain)' : ' (no clickable pause modifier on chain)'}.`,
+          verificationHint: 'Check whether this endless animation is decorative/informational and runs >5s without an essential real-time state role (e.g. active loading spinner), and if so whether the user has a direct pause/stop control.',
+        })
+      );
+    }
+
+    // T-008: `BackHandler { ... }` (non-predictive)
+    if (c.name === 'BackHandler' && c.trailingLambda) {
+      rawCandidates.push(
+        makeRuleCandidate('T-008', {
+          file: kf.filePath,
+          lines: [c.startLine, c.endLine],
+          evidence: 'Non-seekable `BackHandler` intercepts system back.',
+          verificationHint: 'Check whether `BackHandler` dismisses an animated surface/overlay that could support predictive back gesture progress via `PredictiveBackHandler` or `NavigationBackHandler`, or whether instant state dismissal is appropriate.',
+        })
+      );
+    }
+
+    // T-012: `enabled = !anim.isRunning`, `enabled = !isAnimating`, or `enabled = !turning` (mutated around animateTo)
+    if (c.hasParens) {
+      const enabledArg = c.args.find((a) => a.name === 'enabled');
+      if (enabledArg) {
+        const matchesBuiltin = /(\bisRunning\b|\bisAnimating\b|\bisTransitioning\b)/.test(enabledArg.text);
+        const matchesGatingVar = enabledArg.tokens.some((t) => t.type === 'Identifier' && animGatingVars.has(t.value));
+        if (matchesBuiltin || matchesGatingVar) {
+          rawCandidates.push(
+            makeRuleCandidate('T-012', {
+              file: kf.filePath,
+              lines: [c.startLine, c.endLine],
+              evidence: `\`${c.name}(..., enabled = ${enabledArg.text})\` gates user input on animation completion.`,
+              verificationHint: 'Verify whether disabling input during motion prevents normal interruption/retargeting (violating T-012) or protects a non-idempotent destructive commit.',
+            })
+          );
+        }
+      }
+    }
+  }
+
+  // O-003: `LottieConstants.IterateForever`
+  for (let i = 0; i + 2 < tokens.length; i += 1) {
+    if (
+      tokens[i].value === 'LottieConstants' &&
+      tokens[i + 1].value === '.' &&
+      tokens[i + 2].value === 'IterateForever'
+    ) {
+      rawCandidates.push(
+        makeRuleCandidate('O-003', {
+          file: kf.filePath,
+          lines: [tokens[i].line, tokens[i + 2].endLine],
+          evidence: '`LottieConstants.IterateForever` runs indefinitely.',
+          verificationHint: 'Verify whether the user has a pause/stop control if this animation is not an indeterminate loading indicator.',
+        })
+      );
+    }
+  }
+
+  // T-018: `LocalOverscrollFactory provides null` / `LocalOverscrollConfiguration provides null` / `overscrollEffect = null`
+  for (let i = 0; i + 2 < tokens.length; i += 1) {
+    if (
+      (tokens[i].value === 'LocalOverscrollFactory' || tokens[i].value === 'LocalOverscrollConfiguration') &&
+      tokens[i + 1].value === 'provides' &&
+      tokens[i + 2].value === 'null'
+    ) {
+      rawCandidates.push(
+        makeRuleCandidate('T-018', {
+          file: kf.filePath,
+          lines: [tokens[i].line, tokens[i + 2].endLine],
+          evidence: `\`${tokens[i].value} provides null\` disables platform stretch overscroll.`,
+          verificationHint: 'Check scope: disabling overscroll app-wide violates T-018, whereas scoping it locally around a looping pager or custom gesture replacement is compliant.',
+        })
+      );
+    }
+  }
+  for (const c of calls) {
+    const overArg = c.args?.find((a) => a.name === 'overscrollEffect' && a.text === 'null');
+    if (overArg) {
+      rawCandidates.push(
+        makeRuleCandidate('T-018', {
+          file: kf.filePath,
+          lines: [c.startLine, c.headerEndLine],
+          evidence: `\`${c.name}(..., overscrollEffect = null)\` disables platform overscroll.`,
+          verificationHint: 'Verify whether a custom gesture or looping pager deliberately replaces platform overscroll here.',
+        })
+      );
+    }
+  }
+}
+
+function collectLottieConsumers(kf, outConsumers) {
+  const { declarations, calls, tokens } = kf;
+  const composableFuns = declarations.filter((d) => d.kind === 'fun' && d.isComposable);
+
+  for (const fn of composableFuns) {
+    // Map `composition` var -> `{ kind: 'raw'|'asset', baseName, assetRelPath }`
+    const compVarToAsset = new Map();
+    const stateVarToProgressOpts = new Map();
+
+    const localDecls = declarations.filter(
+      (d) => (d.kind === 'val' || d.kind === 'var') && d.startTokIdx > fn.startTokIdx && d.endTokIdx <= fn.endTokIdx
+    );
+
+    for (const ld of localDecls) {
+      const declToks = tokens.slice(ld.startTokIdx, ld.endTokIdx + 1);
+      const assetRef = extractLottieAssetFromTokens(declToks);
+      if (assetRef) {
+        compVarToAsset.set(ld.name, assetRef);
+      }
+      const animStateCall = calls.find(
+        (c) => c.name === 'animateLottieCompositionAsState' && c.nameTokIdx >= ld.startTokIdx && c.endTokIdx <= ld.endTokIdx
+      );
+      if (animStateCall) {
+        const compArg = getCallArg(animStateCall, 'composition', 0);
+        const compIdent = compArg?.tokens.find((t) => t.type === 'Identifier')?.value;
+        const hasClipSpec = animStateCall.args.some((a) => a.name === 'clipSpec' && a.text !== 'null');
+        const speedArg = animStateCall.args.find((a) => a.name === 'speed');
+        const isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
+        stateVarToProgressOpts.set(ld.name, {
+          compIdent,
+          hasClipSpec,
+          isNegativeSpeed,
+        });
+      }
+    }
+
+    const fnCalls = calls.filter((c) => c.nameTokIdx > fn.startTokIdx && c.endTokIdx <= fn.endTokIdx);
+    for (const c of fnCalls) {
+      if (c.name !== 'LottieAnimation' || !c.hasParens) continue;
+      const compArg = getCallArg(c, 'composition', 0);
+      if (!compArg) continue;
+
+      let assetRef = extractLottieAssetFromTokens(compArg.tokens);
+      if (!assetRef) {
+        for (const t of compArg.tokens) {
+          if (t.type === 'Identifier' && compVarToAsset.has(t.value)) {
+            assetRef = compVarToAsset.get(t.value);
+            break;
+          }
+        }
+      }
+      if (!assetRef) continue;
+
+      let hasClipSpec = c.args.some((a) => a.name === 'clipSpec' && a.text !== 'null');
+      const speedArg = c.args.find((a) => a.name === 'speed');
+      let isNegativeSpeed = speedArg ? /^-\s*[0-9.]/.test(speedArg.text) : false;
+
+      // Determine `progress` provenance (`default-forward` vs `animated-state` vs `constant-*` vs `custom-progress`)
+      const progressArg = getCallArg(c, 'progress', 1);
+      let progressKind = 'default-forward';
+      if (progressArg && (progressArg.name === 'progress' || progressArg.text.startsWith('{') || /^[0-9.]/.test(progressArg.text))) {
+        let matchedAnimState = false;
+        for (const t of progressArg.tokens) {
+          if (t.type === 'Identifier' && stateVarToProgressOpts.has(t.value)) {
+            const st = stateVarToProgressOpts.get(t.value);
+            if (st.hasClipSpec) hasClipSpec = true;
+            if (st.isNegativeSpeed) isNegativeSpeed = true;
+            matchedAnimState = true;
+          }
+        }
+        if (matchedAnimState) {
+          progressKind = 'animated-state';
+        } else {
+          progressKind = classifyExplicitLottieProgress(progressArg.text);
+        }
+      }
+
+      outConsumers.push({
+        filePath: kf.filePath,
+        composableName: fn.name,
+        composableLines: [fn.startLine, fn.endLine],
+        callLines: [c.startLine, c.endLine],
+        assetBaseName: assetRef.baseName,
+        assetKind: assetRef.kind,
+        assetRelPath: assetRef.assetRelPath,
+        hasClipSpec,
+        isNegativeSpeed,
+        progressKind,
+      });
+    }
+  }
+}
+
+function classifyExplicitLottieProgress(rawExpr) {
+  let inner = String(rawExpr || '').trim();
+  if (inner.startsWith('{') && inner.endsWith('}')) {
+    inner = inner.slice(1, -1).trim();
+    const arrowIdx = inner.indexOf('->');
+    if (arrowIdx !== -1) {
+      inner = inner.slice(arrowIdx + 2).trim();
+    }
+  }
+  const numMatch = inner.match(/^([0-9]+(?:\.[0-9]+)?)[fF]?$/);
+  if (numMatch) {
+    const val = Number(numMatch[1]);
+    if (val === 1) return 'constant-end';
+    if (val === 0) return 'constant-start';
+    if (val > 0 && val < 1) return 'constant-mid';
+  }
+  return 'custom-progress';
+}
+
+function extractLottieAssetFromTokens(toks) {
+  // Match `R.raw.<name>`
+  for (let i = 0; i + 4 < toks.length; i += 1) {
+    if (
+      toks[i].value === 'R' &&
+      toks[i + 1].value === '.' &&
+      toks[i + 2].value === 'raw' &&
+      toks[i + 3].value === '.' &&
+      toks[i + 4].type === 'Identifier'
+    ) {
+      return { kind: 'raw', baseName: toks[i + 4].value, assetRelPath: null };
+    }
+  }
+  // Match string `"foo/bar/sync_complete.json"` or raw string `"""sync_complete.json"""`
+  for (const t of toks) {
+    if (t.type === 'StringLiteral' && /\.json$/i.test(t.value.trim())) {
+      const cleanRel = t.value.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+      const base = cleanRel.split('/').pop() || '';
+      return {
+        kind: 'asset',
+        baseName: base.replace(/\.json$/i, ''),
+        assetRelPath: cleanRel,
+      };
+    }
+  }
+  return null;
+}
+
+function doesConsumerMatchLottieFile(cons, lf) {
+  if (cons.assetBaseName !== lf.assetBaseName) return false;
+  const lfNorm = String(lf.filePath).replace(/\\/g, '/');
+  const inResRaw = /(?:^|\/)res\/raw(?:-[A-Za-z0-9_-]+)?\//.test(lfNorm);
+  const inAssetsDir = /(?:^|\/)assets\//.test(lfNorm);
+
+  if (cons.assetKind === 'raw' && inAssetsDir) return false;
+  if (cons.assetKind === 'asset' && inResRaw) return false;
+
+  if (cons.assetKind === 'asset' && cons.assetRelPath && cons.assetRelPath.includes('/') && inAssetsDir) {
+    return lfNorm.endsWith(`/assets/${cons.assetRelPath}`) || lfNorm.endsWith(`/${cons.assetRelPath}`);
+  }
+  return true;
+}
+
+function checkO002(lottieFiles, lottieConsumers, rawFindings, rawCandidates) {
+  const validLottieFiles = lottieFiles.filter((lf) => lf.isLottie);
+
+  for (const lf of validLottieFiles) {
+    if (lf.hasReducedMotionMarker) continue;
+
+    const matchingConsumers = lottieConsumers.filter((c) => doesConsumerMatchLottieFile(c, lf));
+
+    if (lf.hasComplexFeatures || lf.anyUnknownAtEnd) {
+      if (lf.allBlankAtEnd || lf.anyUnknownAtEnd) {
+        rawCandidates.push(
+          makeRuleCandidate('O-002', {
+            file: lf.filePath,
+            lines: [1, lf.lineCount],
+            evidence: `Lottie asset \`${path.basename(lf.filePath)}\` has no \`reduced motion\` marker and uses precomps/mattes/expressions that require visual rest-frame inspection.`,
+            verificationHint: 'Render or inspect frame `op` (or the active `LottieClipSpec` end frame) at animator duration scale `0f` to confirm the icon/illustration remains legible.',
+          })
+        );
+      }
+      continue;
+    }
+
+    if (!lf.allBlankAtEnd && !lf.allBlankAtStart) {
+      continue; // End and start frames have visible top-level layer(s) -> clean!
+    }
+
+    if (matchingConsumers.length === 0) {
+      // Asset-only scan: cannot prove whether caller passes a compliant `LottieClipSpec` or reverse `speed`
+      if (lf.allBlankAtEnd) {
+        rawCandidates.push(
+          makeRuleCandidate('O-002', {
+            file: lf.filePath,
+            lines: [1, lf.lineCount],
+            evidence: `All ${lf.layerCount} top-level layer(s) in \`${path.basename(lf.filePath)}\` evaluate to 0% opacity (or end before \`op = ${lf.op}\`) with no \`reduced motion\` marker.`,
+            verificationHint: 'Check all `LottieAnimation` / `animateLottieCompositionAsState` call sites for this asset: without a `reduced motion` marker or a readable `LottieClipSpec` endpoint, reduced-motion users see an empty frame.',
+          })
+        );
+      }
+      continue;
+    }
+
+    for (const cons of matchingConsumers) {
+      // If multiple scanned Lottie files ambiguously match this consumer, abstain to `candidates[]`
+      const candidateAssetsForConsumer = validLottieFiles.filter((other) => doesConsumerMatchLottieFile(cons, other));
+      if (candidateAssetsForConsumer.length > 1) {
+        if (lf.allBlankAtEnd || lf.allBlankAtStart) {
+          rawCandidates.push(
+            makeRuleCandidate('O-002', {
+              file: cons.filePath,
+              lines: cons.composableLines,
+              evidence: `\`${cons.composableName}\` references \`${cons.assetBaseName}\`, which matches ${candidateAssetsForConsumer.length} Lottie JSON files in the scanned scope.`,
+              verificationHint: 'Disambiguate which Lottie asset is bound at runtime and verify its reduced-motion rest frame.',
+            })
+          );
+        }
+        continue;
+      }
+
+      if (cons.progressKind === 'constant-mid') {
+        // Explicit static interior frame (`progress = { 0.5f }`): never settles on `op` or `ip`
+        continue;
+      }
+
+      if (cons.progressKind === 'custom-progress') {
+        if (lf.allBlankAtEnd || lf.allBlankAtStart) {
+          rawCandidates.push(
+            makeRuleCandidate('O-002', {
+              file: cons.filePath,
+              lines: cons.composableLines,
+              evidence: `\`${cons.composableName}\` drives \`${path.basename(lf.filePath)}\` (no \`reduced motion\` marker) via an explicit custom \`progress\` lambda.`,
+              verificationHint: 'Verify what progress value is supplied when system animations are disabled (`scaleFactor == 0f`) and confirm that frame is visually legible.',
+            })
+          );
+        }
+        continue;
+      }
+
+      if (cons.hasClipSpec) {
+        rawCandidates.push(
+          makeRuleCandidate('O-002', {
+            file: cons.filePath,
+            lines: cons.composableLines,
+            evidence: `\`${cons.composableName}\` plays \`${path.basename(lf.filePath)}\` (blank at \`op = ${lf.op}\`, no \`reduced motion\` marker) with a custom \`clipSpec\`.`,
+            verificationHint: 'Verify that the `LottieClipSpec` max/end frame lands on a visible, meaningful rest frame when animations are disabled.',
+          })
+        );
+        continue;
+      }
+
+      if (cons.isNegativeSpeed || cons.progressKind === 'constant-start') {
+        if (lf.allBlankAtStart) {
+          rawFindings.push(
+            makeRuleFinding('O-002', {
+              file: cons.filePath,
+              lines: cons.composableLines,
+              evidence: `\`${cons.composableName}\` renders \`${path.basename(lf.filePath)}\` at start frame \`ip = ${lf.ip}\` with no \`reduced motion\` marker, where all layers are transparent.`,
+              remediation: 'Add a `reduced motion` marker in the Lottie JSON on a legible frame or pass a `LottieClipSpec` with a visible endpoint.',
+              alsoAt: [{ file: lf.filePath, lines: [1, lf.lineCount] }],
+              symbolContext: [cons.composableName],
+            })
+          );
+        }
+        continue;
+      }
+
+      if (lf.allBlankAtEnd) {
+        rawFindings.push(
+          makeRuleFinding('O-002', {
+            file: cons.filePath,
+            lines: cons.composableLines,
+            evidence: `\`${cons.composableName}\` plays \`${path.basename(lf.filePath)}\` with default forward playback, no \`reduced motion\` marker, and 0% layer opacity at final frame \`op = ${lf.op}\`.`,
+            remediation: 'Add a `reduced motion` marker on a visible peak frame in the Lottie asset, pass a `LottieClipSpec` ending on a visible frame, or render a static `Icon` when animator duration scale is `0f`.',
+            alsoAt: [{ file: lf.filePath, lines: [1, lf.lineCount] }],
+            symbolContext: [cons.composableName],
+          })
+        );
+      }
+    }
+  }
+}
+
+function buildMotionStats(kotlinFiles, motionContracts) {
+  const rawSpecs = {
+    tween: 0,
+    spring: 0,
+    keyframes: 0,
+    snap: 0,
+    repeatable: 0,
+    infiniteRepeatable: 0,
+    totalCallSiteLiterals: 0,
+    samples: [],
+  };
+  const tokenDefinitions = { count: 0, symbols: [] };
+  const motionSchemeReads = { count: 0, bySpec: {} };
+  const namedTokenReferences = { count: 0, bySymbol: {} };
+  const navigationHosts = {
+    navHostTotal: 0,
+    navHostWithExplicitTransitions: 0,
+    navHostDefaultOnly: 0,
+    navDisplayTotal: 0,
+    navDisplayWithTransitionSpec: 0,
+  };
+  const unresolvedSpecSites = { count: 0, samples: [] };
+
+  for (const kf of kotlinFiles) {
+    if (kf.lexError) continue;
+    for (const c of kf.calls) {
+      if (['tween', 'spring', 'keyframes', 'snap', 'repeatable', 'infiniteRepeatable'].includes(c.name) && c.hasParens && !c.receiver) {
+        if (SPEC_LITERAL_NAMES.has(c.name) && isExemptSpecDefinitionSite(kf, c)) {
+          const decl = [...c.enclosingDeclarations].reverse().find((d) => d.kind === 'val' || d.kind === 'fun');
+          tokenDefinitions.count += 1;
+          if (decl && tokenDefinitions.symbols.length < 50) {
+            tokenDefinitions.symbols.push({ file: kf.filePath, line: c.startLine, name: decl.name, spec: c.name });
+          }
+        } else {
+          rawSpecs[c.name] = (rawSpecs[c.name] || 0) + 1;
+          if (SPEC_LITERAL_NAMES.has(c.name)) {
+            rawSpecs.totalCallSiteLiterals += 1;
+            if (rawSpecs.samples.length < 25) {
+              rawSpecs.samples.push({ file: kf.filePath, line: c.startLine, snippet: c.snippet });
+            }
+          }
+        }
+      }
+
+      if (c.receiver === 'motionScheme' || c.chainSegments.includes('motionScheme')) {
+        motionSchemeReads.count += 1;
+        motionSchemeReads.bySpec[c.name] = (motionSchemeReads.bySpec[c.name] || 0) + 1;
+      } else if (c.receiver && /Motion$/i.test(c.receiver)) {
+        const key = `${c.receiver}.${c.name}`;
+        namedTokenReferences.count += 1;
+        namedTokenReferences.bySymbol[key] = (namedTokenReferences.bySymbol[key] || 0) + 1;
+      }
+
+      if (c.name === 'NavHost' && c.hasParens) {
+        navigationHosts.navHostTotal += 1;
+        const hasEnter = c.args.some((a) => a.name === 'enterTransition' && a.text !== 'null');
+        const hasExit = c.args.some((a) => a.name === 'exitTransition' && a.text !== 'null');
+        if (hasEnter && hasExit) navigationHosts.navHostWithExplicitTransitions += 1;
+        else navigationHosts.navHostDefaultOnly += 1;
+      } else if (c.name === 'NavDisplay' && c.hasParens) {
+        navigationHosts.navDisplayTotal += 1;
+        const hasSpec = c.args.some((a) => a.name === 'transitionSpec' && a.text !== 'null');
+        if (hasSpec) navigationHosts.navDisplayWithTransitionSpec += 1;
+      }
+
+      // Track animation consumers whose `animationSpec` argument is an opaque variable/call
+      const specArg = c.args?.find((a) => a.name === 'animationSpec');
+      if (specArg) {
+        const txt = specArg.text;
+        const isKnown =
+          /\b(tween|spring|keyframes|snap|repeatable|infiniteRepeatable|motionScheme)\b/.test(txt) ||
+          /\b[A-Za-z0-9_]*Motion\./.test(txt);
+        if (!isKnown) {
+          unresolvedSpecSites.count += 1;
+          if (unresolvedSpecSites.samples.length < 20) {
+            unresolvedSpecSites.samples.push({ file: kf.filePath, line: specArg.startLine, expr: txt });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    scannedKotlinFiles: kotlinFiles.length,
+    motionContractsFound: motionContracts.map((m) => ({
+      file: m.filePath,
+      lineCount: m.lineCount,
+      counts: m.counts,
+    })),
+    rawSpecs,
+    tokenDefinitions,
+    motionSchemeReads,
+    namedTokenReferences,
+    navigationHosts,
+    unresolvedSpecSites,
+  };
+}
+
+export const MOTION_DOMAIN_PACK = Object.freeze({
+  id: 'motion',
+  description: 'Android Jetpack Compose motion floor, accessibility obligations, and taste rules (STANDARDS.md).',
+  rules: MOTION_RULE_CATALOG,
+  run: runMotionDomainChecks,
+});

@@ -367,6 +367,32 @@ check("a case with a failed repeat is left out of every repeat, and says so",
       "with-skill: floor 0–0  obligation 0–0  taste 1–1  FPs 0–1  (1 case(s) with a failed "
       "repeat left out)" in out, out)
 
+print("pioneer 0.4.6+ fixture flattening")
+import json
+import tempfile
+with tempfile.TemporaryDirectory() as td:
+    arm_dir = Path(td)
+    (arm_dir / "fixtures" / "c10").mkdir(parents=True)
+    (arm_dir / "fixtures" / "m1").mkdir(parents=True)
+    (arm_dir / "fixtures" / "c10" / "AppNavigation.kt").write_text("package demo\n")
+    (arm_dir / "fixtures" / "m1" / "MOTION.md").write_text("# Motion\n")
+    (arm_dir / "case.json").write_text(json.dumps({
+        "id": 10,
+        "prompt": "Review the motion in this screen. File: fixtures/c10/AppNavigation.kt",
+        "source_prompt": "Review the motion in this screen. File: AppNavigation.kt",
+        "fixtures_dir": "fixtures",
+        "files": ["fixtures/c10/AppNavigation.kt", "fixtures/m1/MOTION.md"],
+    }))
+    ev._flatten_staged_fixtures(arm_dir)
+    check("flattens staged files to arm root",
+          (arm_dir / "AppNavigation.kt").is_file() and (arm_dir / "MOTION.md").is_file())
+    check("removes nested fixtures/ dir so files are not duplicated",
+          not (arm_dir / "fixtures").exists())
+    meta_after = json.loads((arm_dir / "case.json").read_text())
+    check("scrubs subdir names from case.json",
+          meta_after["files"] == ["AppNavigation.kt", "MOTION.md"]
+          and "fixtures/" not in meta_after["prompt"])
+
 print()
 if failures:
     print(f"{len(failures)} failed: {', '.join(failures)}")

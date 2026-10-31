@@ -20,3 +20,8 @@ __pycache__/
 
 # Temporary one-case specs written by ad-hoc eval runs.
 skills/*/evals/tmp-*.json
+
+# Node devDependencies & local tarballs
+/node_modules/
+/*.tgz
+.android-ux/config.local.json

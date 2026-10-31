@@ -14,6 +14,7 @@ exclude = [
     # Review records are verbatim artefacts of someone else's output. Reformatting one to
     # satisfy a linter would falsify the record of what was actually said.
     "reviews/",
+    "node_modules/",
 ]
 
 [MD013]

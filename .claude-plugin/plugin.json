@@ -2,7 +2,7 @@
   "name": "android-ux-skills",
   "displayName": "Android UX Skills",
   "version": "1.0.0",
-  "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language into a MOTION.md, and review motion adversarially.",
+  "description": "Agent skills for Android motion and design-engineering craft: add motion that belongs, map a codebase's motion language into a MOTION.md, review motion adversarially, and eliminate transition and GPU jank.",
   "author": {
     "name": "Sebastiano Poggi",
     "url": "https://github.com/rock3r"

@@ -685,6 +685,36 @@ def work_root() -> Path:
     return root if "ANDROID_UX_SKILLS_WORK_DIR" in os.environ else root / "android-ux-skills"
 
 
+def _flatten_staged_fixtures(arm_dir: Path) -> None:
+    """Materialise staged fixtures at `<arm_dir>/<basename>` for Pioneer 0.4.6+.
+
+    Pioneer 0.4.6+ nests staged files under `fixtures/<subdir>/<name>` instead of
+    flattening to `<arm_dir>/<name>`. Every battery prompt in this repo names files
+    at the working-directory root (`File: AppNavigation.kt` alongside `MOTION.md`),
+    and `validate()` guarantees unique basenames per case. Flattening and removing
+    `fixtures/` avoids duplicate files and prevents fixture folder names (`c10`, `m1`)
+    from leaking case metadata.
+    """
+    case_meta_path = arm_dir / "case.json"
+    fixtures_dir = arm_dir / "fixtures"
+    if not case_meta_path.is_file() or not fixtures_dir.is_dir():
+        return
+    meta = json.loads(case_meta_path.read_text())
+    flat_names = []
+    for rel in meta.get("files", []):
+        src = arm_dir / rel
+        name = Path(rel).name
+        dst = arm_dir / name
+        if src.is_file() and not dst.exists():
+            shutil.copy2(src, dst)
+        flat_names.append(name)
+    shutil.rmtree(fixtures_dir, ignore_errors=True)
+    meta["prompt"] = meta.get("source_prompt", meta.get("prompt", ""))
+    meta["files"] = flat_names
+    meta.pop("fixtures_dir", None)
+    case_meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+
+
 def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
                 work_dir: Path | None = None, actor_command: str = "pi",
                 tag: str = "", thinking: str = "") -> dict:
@@ -737,6 +767,8 @@ def run_battery(spec_path, skill_dir, skill, model, timeout_ms, dry, runs=1,
         # the process output. They are also the input any later qualitative pass needs.
         transcripts = battery / "transcripts" / f"eval-{cid}"
         if not dry:
+            for arm in ("baseline", "with-skill"):
+                _flatten_staged_fixtures(case_dir / arm)
             transcripts.mkdir(parents=True, exist_ok=True)
             (transcripts / "prompt.md").write_text(prompt)
 

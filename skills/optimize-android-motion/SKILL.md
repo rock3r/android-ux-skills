@@ -87,17 +87,24 @@ Route other questions to the matching skill:
 1. **Capture three baseline traces.** Build a release APK with an isolated
    `applicationId`, drive the interaction with `adb shell input`, and pull three
    `.perfetto-trace` files per `references/perfetto-workflow.md`.
-2. **Analyze UI-thread and `RenderThread` slices.** Run `scripts/analyze_motion_trace.py`
-   on the baseline traces to get the over-budget frame count, worst
-   `Choreographer#doFrame`, worst `DrawFrames`, and dominant child slices.
+2. **Analyze UI-thread and `RenderThread` slices.** Run `sh
+   "<skill-dir>/scripts/android-ux" trace` on the baseline traces (checking host readiness
+   with `sh "<skill-dir>/scripts/android-ux" doctor --for trace` if needed) to get the
+   over-budget frame count, worst `Choreographer#doFrame`, worst `DrawFrames`,
+   `FrameTimeline` jank, and dominant child slices. On source-only prompts without a
+   trace, you may run `sh "<skill-dir>/scripts/android-ux" detect <target>` once for
+   mechanical phase-read checks (`F-001`, `F-005`, `F-006`, `F-008`); if script execution
+   is blocked by a sandbox, do not retry and never read `scripts/android-ux.mjs` — inspect
+   the source files directly.
 3. **Fix the root cause before reaching for workarounds.** Address data-pipeline work and
    standard composition/phase-deferral issues first. If the trace still shows frame drops
    caused by first-time mount, layout, or GPU compilation side effects, apply the matching
    pattern in `references/transition-and-layout-patterns.md` or
    `references/gpu-and-canvas-pipeline.md`.
-4. **Verify with three post-fix traces and screenshot tests.** Run the same trace script
-   three times on the updated release APK and compare the median and worst frames against
-   baseline. Run unit and screenshot tests to confirm visual and accessibility parity.
+4. **Verify with three post-fix traces and screenshot tests.** Run `sh
+   "<skill-dir>/scripts/android-ux" trace --compare <before...> -- <after...>` across the
+   three baseline and three updated release runs to compare matched interaction windows.
+   Run unit and screenshot tests to confirm visual and accessibility parity.
 
 ## Diagnose from the trace signature
 
@@ -164,5 +171,7 @@ root cause and select the simplest effective fix:
   `DrawFrames`, `saveLayer`, `CreateGraphicsPipeline`, `ModalBottomSheet`, or `Canvas`.
 - Read `references/standards.md` when checking the shared floor, obligation, and taste
   rules (`F-001` through `F-010`, `O-001` through `O-003`).
-- Run `scripts/analyze_motion_trace.py` on `.perfetto-trace` files to summarize
-  `Choreographer#doFrame` and `RenderThread` slices across transition time windows.
+- Run `sh "<skill-dir>/scripts/android-ux" trace` on `.perfetto-trace` files (and
+  `--compare <before...> -- <after...>` for A/B verification) to summarize
+  `Choreographer#doFrame`, `RenderThread`, and `FrameTimeline` slices across transition
+  time windows.

@@ -60,6 +60,16 @@ Prefer shipping no animation over shipping the wrong one:
 
 ## Resolving the project's motion standard
 
+Before reading files manually, you may run `sh "<skill-dir>/scripts/android-ux" context
+--json` once to read `MOTION.md` bindings, Gradle Material 3 / Navigation facts, and hook
+status. After editing `.kt`, Lottie `.json`, or `MOTION.md` files, if `nextRequiredAction`
+in `context` is `"MANUAL_DETECTOR_REQUIRED"`, run `sh "<skill-dir>/scripts/android-ux"
+detect <edited-files>` once to verify mechanical floor, obligation, and token rules. If
+spawning the script fails or is blocked by a sandbox (`EPERM`, `Operation not permitted`,
+or missing Node), do not retry, do not ask the user to install Node, and never read
+`scripts/android-ux.mjs` — fall back immediately to reading `MOTION.md`, Gradle files, and
+`references/standards.md` directly.
+
 Read `MOTION.md` first if the repository has one. Resolve each motion decision
 independently down this ladder, stopping at the first rung that answers the question:
 
