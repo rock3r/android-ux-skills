@@ -1,0 +1,9 @@
+# Enforce LF on POSIX launchers, shell scripts, and ESM sources across Windows core.autocrlf
+* text=auto
+*.sh text eol=lf
+*.mjs text eol=lf
+cli/launcher/android-ux text eol=lf
+skills/*/scripts/android-ux text eol=lf
+
+# Enforce CRLF on Windows batch launchers
+*.cmd text eol=crlf

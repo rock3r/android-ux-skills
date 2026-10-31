@@ -1,0 +1,166 @@
+#!/bin/sh
+# android-ux launcher (POSIX /bin/sh).
+# Resolves Node >=20 (respecting $ANDROID_UX_NODE and common GUI PATH locations)
+# and executes the bundled standalone android-ux.mjs (in skills/*/scripts/) or
+# repo cli/bin/android-ux.mjs.
+#
+# Fail-open guarantee: when invoked as `android-ux hook` and Node >=20 or the
+# bundle is unavailable, writes `{}` on stdout, records a one-time notice stamp
+# in the user cache dir, and exits 0 so agent harnesses are never blocked.
+set -eu
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+: "${ANDROID_UX_SKILL_DIR:=$(CDPATH= cd -- "$dir/.." && pwd)}"
+: "${ANDROID_UX_SELF:=$0}"
+export ANDROID_UX_SKILL_DIR ANDROID_UX_SELF
+
+is_hook=0
+if [ "${1:-}" = "hook" ]; then
+  is_hook=1
+fi
+
+resolve_cache_dir() {
+  if [ -n "${ANDROID_UX_CACHE_DIR:-}" ]; then
+    printf '%s' "$ANDROID_UX_CACHE_DIR"
+    return 0
+  fi
+  if [ -n "${XDG_CACHE_HOME:-}" ]; then
+    printf '%s/android-ux' "$XDG_CACHE_HOME"
+    return 0
+  fi
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin)
+      if [ -n "${HOME:-}" ]; then
+        printf '%s/Library/Caches/android-ux' "$HOME"
+        return 0
+      fi
+      ;;
+  esac
+  if [ -n "${HOME:-}" ]; then
+    printf '%s/.cache/android-ux' "$HOME"
+    return 0
+  fi
+  printf ''
+}
+
+fail_open_hook() {
+  reason=$1
+  cache_dir=$(resolve_cache_dir)
+  if [ -n "$cache_dir" ]; then
+    stamp="$cache_dir/node-unsupported"
+    if [ ! -f "$stamp" ]; then
+      mkdir -p "$cache_dir" 2>/dev/null || true
+      printf '%s\n' "$reason" > "$stamp" 2>/dev/null || true
+    fi
+  fi
+  printf '{}'
+  exit 0
+}
+
+entry=""
+if [ -f "$dir/android-ux.mjs" ]; then
+  entry="$dir/android-ux.mjs"
+elif [ -f "$dir/../bin/android-ux.mjs" ]; then
+  entry="$dir/../bin/android-ux.mjs"
+fi
+
+if [ -z "$entry" ]; then
+  if [ "$is_hook" = "1" ]; then
+    fail_open_hook "bundle-missing"
+  fi
+  cat >&2 <<EOF
+[ERROR AUX-ENV-002] Bundled android-ux CLI entrypoint (android-ux.mjs) was not found.
+  Searched: $dir/android-ux.mjs, $dir/../bin/android-ux.mjs
+  Impact:   Cannot run android-ux commands from this launcher.
+  Fix:      In a repo checkout, run ./scripts/sync-references.sh. Otherwise reinstall with npx android-ux install.
+  Docs:     references/standards.md
+EOF
+  exit 1
+fi
+
+check_node() {
+  candidate=$1
+  [ -n "$candidate" ] || return 1
+  if [ -x "$candidate" ]; then
+    "$candidate" -e 'process.exit(parseInt(process.versions.node,10)>=20?0:1)' >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  return 1
+}
+
+node_bin=""
+
+if [ -n "${ANDROID_UX_NODE:-}" ]; then
+  if check_node "$ANDROID_UX_NODE"; then
+    node_bin="$ANDROID_UX_NODE"
+  else
+    if [ "$is_hook" = "1" ]; then
+      fail_open_hook "ANDROID_UX_NODE-invalid"
+    fi
+    cat >&2 <<EOF
+[ERROR AUX-ENV-001] ANDROID_UX_NODE does not point to an executable Node.js >=20 binary.
+  Searched: ANDROID_UX_NODE=$ANDROID_UX_NODE
+  Impact:   Deterministic CLI commands cannot run; skill workflows can fall back to direct file reading.
+  Fix:      Install Node.js >=20 (for example: brew install node, fnm install 22, or nvm install 22) or unset/update ANDROID_UX_NODE.
+  Docs:     references/standards.md
+EOF
+    exit 1
+  fi
+fi
+
+if [ -z "$node_bin" ] && command -v node >/dev/null 2>&1; then
+  path_node=$(command -v node)
+  if check_node "$path_node"; then
+    node_bin="$path_node"
+  fi
+fi
+
+if [ -z "$node_bin" ]; then
+  for candidate in \
+    /opt/homebrew/bin/node \
+    /usr/local/bin/node \
+    "${HOME:-}/.nvm/current/bin/node" \
+    "${HOME:-}/.fnm/aliases/default/bin/node" \
+    "${HOME:-}/.volta/bin/node" \
+    "${HOME:-}/.asdf/shims/node" \
+    "${HOME:-}/.local/share/mise/shims/node"
+  do
+    if check_node "$candidate"; then
+      node_bin="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$node_bin" ]; then
+  if [ "$is_hook" = "1" ]; then
+    fail_open_hook "node-missing-or-lt-20"
+  fi
+  found_ver="not found"
+  if command -v node >/dev/null 2>&1; then
+    found_ver=$(node -v 2>/dev/null || echo "unusable")
+  fi
+  cat >&2 <<EOF
+[ERROR AUX-ENV-001] Node.js >=20 is required to run android-ux (detected: $found_ver).
+  Searched: ANDROID_UX_NODE, PATH, /opt/homebrew/bin/node, /usr/local/bin/node, ~/.nvm, ~/.fnm, ~/.volta, ~/.asdf, ~/.local/share/mise
+  Impact:   Deterministic CLI commands cannot run; skill workflows can still proceed by reading files directly.
+  Fix:      Install Node.js >=20 (macOS: brew install node; Linux: fnm install 22 or distro package; or set ANDROID_UX_NODE=/abs/path/to/node).
+  Docs:     references/standards.md
+EOF
+  exit 1
+fi
+
+if [ "$is_hook" = "1" ]; then
+  set +e
+  hook_out=$("$node_bin" "$entry" "$@" 2>/dev/null)
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ] && [ -n "$hook_out" ]; then
+    printf '%s\n' "$hook_out"
+  else
+    printf '{}'
+  fi
+  exit 0
+fi
+
+exec "$node_bin" "$entry" "$@"

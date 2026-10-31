@@ -1,0 +1,23 @@
+{
+  "android-ux": {
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|notebook_edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"./skills/animate-compose/scripts/android-ux\" hook || \"skills\\\\animate-compose\\\\scripts\\\\android-ux.cmd\" hook || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "\"./skills/animate-compose/scripts/android-ux\" hook || \"skills\\\\animate-compose\\\\scripts\\\\android-ux.cmd\" hook || echo {}",
+        "timeout": 10
+      }
+    ]
+  }
+}
