@@ -2818,21 +2818,25 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
     );
     for (const ld of localDecls) {
       const [scopeStartIdx, scopeEndIdx] = findEnclosingBraceScope(tokens, ld.startTokIdx, fn.startTokIdx, fn.endTokIdx);
+      const isReassignedVar = isLocalVarReassignedInFn(tokens, ld, fn);
       let kind = "other";
-      if (ld.delegateIdx !== -1) {
-        const rhsCalls = calls.filter((c) => c.nameTokIdx >= ld.delegateIdx && c.endTokIdx <= ld.endTokIdx);
-        for (const rc of rhsCalls) {
-          if (FRAME_STATE_FACTORIES.has(rc.name) || rc.receiver && TRANSITION_FRAME_METHODS.has(rc.name)) {
+      if (!isReassignedVar && ld.delegateIdx !== -1) {
+        const delToks = tokens.slice(ld.delegateIdx, ld.endTokIdx + 1);
+        const topCall = findDirectTopLevelCall(tokens, calls, delToks);
+        if (topCall) {
+          const isUnqualifiedFactory = isTopLevelOrAndroidxQualifiedCall(tokens, topCall) && topCall.hasParens;
+          const isTransitionExt = Boolean(topCall.receiver) && !hasSafeCallInReceiverChain(tokens, topCall);
+          if (isUnqualifiedFactory && FRAME_STATE_FACTORIES.has(topCall.name) || isTransitionExt && TRANSITION_FRAME_METHODS.has(topCall.name)) {
             kind = "frame";
             hasAnyAnimated = true;
-          } else if (rc.name === "animateColorAsState" || rc.receiver && rc.name === "animateColor") {
+          } else if (isUnqualifiedFactory && topCall.name === "animateColorAsState" || isTransitionExt && topCall.name === "animateColor") {
             kind = "color";
             hasAnyAnimated = true;
           }
         }
-      } else if (ld.rhsStartIdx !== -1) {
-        const rhsCalls = calls.filter((c) => c.nameTokIdx >= ld.rhsStartIdx && c.endTokIdx <= ld.endTokIdx);
-        if (rhsCalls.some((rc) => rc.name === "Animatable")) {
+      } else if (!isReassignedVar && ld.rhsStartIdx !== -1) {
+        const rhsToks = tokens.slice(ld.rhsStartIdx, ld.endTokIdx + 1);
+        if (extractDirectAnimatableInitCall(tokens, calls, rhsToks)) {
           kind = "animatable";
           hasAnyAnimated = true;
         }
@@ -2840,6 +2844,7 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
       scopedBindings.push({
         name: ld.name,
         kind,
+        isReassignedVar,
         declStartIdx: ld.startTokIdx,
         declEndIdx: ld.endTokIdx,
         rhsStartIdx: ld.rhsStartIdx,
@@ -2850,10 +2855,10 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
     if (!hasAnyAnimated) continue;
     collectShadowingScopeBindings(tokens, declarations, fn, scopedBindings);
     for (const b of scopedBindings) {
-      if (b.kind === "other" && b.rhsStartIdx !== -1) {
-        const rhsCalls = calls.filter((c) => c.nameTokIdx >= b.rhsStartIdx && c.endTokIdx <= b.declEndIdx);
-        const lerpCall = rhsCalls.find((rc) => rc.name === "lerp");
-        if (lerpCall) {
+      if (b.kind === "other" && !b.isReassignedVar && b.rhsStartIdx !== -1) {
+        const rhsToks = tokens.slice(b.rhsStartIdx, b.declEndIdx + 1);
+        const lerpCall = findDirectTopLevelCall(tokens, calls, rhsToks);
+        if (lerpCall && isTopLevelOrAndroidxQualifiedCall(tokens, lerpCall) && lerpCall.name === "lerp" && lerpCall.hasParens && !lerpCall.trailingLambda) {
           const usesFrameVar = lerpCall.args.some(
             (a) => Boolean(findScopedSimpleVarRef(a.tokens, lerpCall.nameTokIdx, scopedBindings, "frame")) || Boolean(findScopedAnimatableRead(a.tokens, lerpCall.nameTokIdx, scopedBindings))
           );
@@ -2937,6 +2942,166 @@ function checkF001AndF008(kf, rawFindings, rawCandidates) {
       }
     }
   }
+}
+function findDirectTopLevelCall(tokens, calls, rawToks) {
+  const stripped = stripOuterParensTokens(rawToks);
+  if (stripped.length === 0) return null;
+  const firstTok = stripped[0];
+  const lastTok = stripped[stripped.length - 1];
+  return calls.find(
+    (c) => (tokens[c.chainRootIdx] === firstTok || tokens[c.nameTokIdx] === firstTok) && tokens[c.endTokIdx] === lastTok
+  ) || null;
+}
+function isTopLevelOrAndroidxQualifiedCall(tokens, call) {
+  if (!call) return false;
+  if (!call.receiver && call.chainRootIdx === call.nameTokIdx) return true;
+  const prefix = tokens.slice(call.chainRootIdx, call.nameTokIdx);
+  if (prefix.length < 2 || prefix[0].type !== "Identifier" || prefix[0].value !== "androidx") {
+    return false;
+  }
+  return prefix.every(
+    (t, idx) => idx % 2 === 0 ? t.type === "Identifier" : t.type === "Punct" && t.value === "."
+  );
+}
+function hasSafeCallInReceiverChain(tokens, call) {
+  for (let i = call.chainRootIdx; i < call.nameTokIdx; i += 1) {
+    if (tokens[i].type === "Punct" && tokens[i].value === "?.") return true;
+  }
+  return false;
+}
+function isLocalVarReassignedInFn(tokens, ld, fn) {
+  if (ld.kind !== "var") return false;
+  for (let i = ld.endTokIdx + 1; i <= fn.endTokIdx; i += 1) {
+    const t = tokens[i];
+    if (t.type !== "Identifier" || t.value !== ld.name) continue;
+    const prev = tokens[i - 1];
+    if (prev && prev.type === "Punct" && (prev.value === "." || prev.value === "?." || prev.value === "::")) {
+      continue;
+    }
+    if (prev && prev.type === "Punct" && (prev.value === "++" || prev.value === "--")) {
+      return true;
+    }
+    const next = tokens[i + 1];
+    if (next && next.type === "Punct" && (next.value === "=" || next.value === "+=" || next.value === "-=" || next.value === "*=" || next.value === "/=" || next.value === "%=" || next.value === "++" || next.value === "--")) {
+      return true;
+    }
+  }
+  return false;
+}
+function findNamedLambdaArgBraces(tokens, call, paramName) {
+  if (!call?.hasParens || !Array.isArray(call.args)) return null;
+  const arg = call.args.find((a) => a.name === paramName);
+  if (!arg) return null;
+  const stripped = stripOuterParensTokens(arg.tokens);
+  if (stripped.length >= 2 && stripped[0].type === "Punct" && stripped[0].value === "{" && stripped[stripped.length - 1].type === "Punct" && stripped[stripped.length - 1].value === "}") {
+    const openBraceIdx = tokens.indexOf(stripped[0]);
+    const closeBraceIdx = tokens.indexOf(stripped[stripped.length - 1]);
+    if (openBraceIdx !== -1 && closeBraceIdx > openBraceIdx) {
+      return { openBraceIdx, closeBraceIdx };
+    }
+  }
+  return null;
+}
+function hasTopLevelLambdaArrow(bodyToks) {
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  for (const t of bodyToks) {
+    if (t.type === "Punct") {
+      if (t.value === "(") pDepth += 1;
+      else if (t.value === ")") pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === "{") bDepth += 1;
+      else if (t.value === "}") bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === "[") kDepth += 1;
+      else if (t.value === "]") kDepth = Math.max(0, kDepth - 1);
+      else if (pDepth === 0 && bDepth === 0 && kDepth === 0 && t.value === "->") return true;
+    }
+  }
+  return false;
+}
+function canTokenEndExpression(tok) {
+  if (!tok) return false;
+  if (tok.type === "Identifier" || tok.type === "NumberLiteral" || tok.type === "StringLiteral" || tok.type === "CharLiteral") {
+    return true;
+  }
+  if (tok.type === "Keyword" && (tok.value === "true" || tok.value === "false" || tok.value === "null" || tok.value === "this" || tok.value === "super")) {
+    return true;
+  }
+  if (tok.type === "Punct" && (tok.value === ")" || tok.value === "}" || tok.value === "]")) {
+    return true;
+  }
+  return false;
+}
+function splitTopLevelStatements(bodyToks) {
+  const stmts = [];
+  let curStart = 0;
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  for (let i = 0; i < bodyToks.length; i += 1) {
+    const t = bodyToks[i];
+    if (t.type === "Punct") {
+      if (t.value === "(") pDepth += 1;
+      else if (t.value === ")") pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === "{") bDepth += 1;
+      else if (t.value === "}") bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === "[") kDepth += 1;
+      else if (t.value === "]") kDepth = Math.max(0, kDepth - 1);
+      else if (t.value === ";" && pDepth === 0 && bDepth === 0 && kDepth === 0) {
+        if (i > curStart) stmts.push(bodyToks.slice(curStart, i));
+        curStart = i + 1;
+        continue;
+      }
+    }
+    const next = bodyToks[i + 1];
+    if (!next) break;
+    if (pDepth === 0 && bDepth === 0 && kDepth === 0 && next.line > t.endLine) {
+      let closesControlHeader = false;
+      if (t.type === "Punct" && t.value === ")") {
+        const openP = findMatchingBackward2(bodyToks, i, "(", ")");
+        const kw = openP > curStart ? bodyToks[openP - 1] : null;
+        if (kw?.type === "Keyword" && (kw.value === "if" || kw.value === "while" || kw.value === "for" || kw.value === "catch" || kw.value === "when")) {
+          closesControlHeader = true;
+        }
+      }
+      const prevInStmt = i > curStart ? bodyToks[i - 1] : null;
+      const isInfixIdent = t.type === "Identifier" && canTokenEndExpression(prevInStmt);
+      const curContinues = closesControlHeader || isInfixIdent || t.type === "Punct" && [".", "?.", "?:", "=", "+", "-", "*", "/", "%", "&&", "||", "==", "!=", "===", "!==", "<", ">", "<=", ">=", "..", "..<", "->", ":"].includes(t.value) || t.type === "Keyword" && ["else", "by", "in", "is", "as", "if", "when", "try", "catch", "finally", "while", "for", "do", "return", "throw"].includes(t.value);
+      const nextContinues = next.type === "Punct" && [".", "?.", "?:", "+", "*", "/", "%", "&&", "||", "==", "!=", "===", "!==", "<", ">", "<=", ">=", "..", "..<", "{", "->"].includes(next.value) || next.type === "Keyword" && ["else", "catch", "finally", "in", "is", "as"].includes(next.value);
+      if (!curContinues && !nextContinues) {
+        if (i + 1 > curStart) stmts.push(bodyToks.slice(curStart, i + 1));
+        curStart = i + 1;
+      }
+    }
+  }
+  if (curStart < bodyToks.length) {
+    stmts.push(bodyToks.slice(curStart));
+  }
+  return stmts;
+}
+function extractDirectAnimatableInitCall(tokens, calls, rhsToks) {
+  const topCall = findDirectTopLevelCall(tokens, calls, rhsToks);
+  if (!topCall) return null;
+  if (isTopLevelOrAndroidxQualifiedCall(tokens, topCall) && topCall.name === "Animatable" && topCall.hasParens && !topCall.trailingLambda) {
+    return topCall;
+  }
+  if (isTopLevelOrAndroidxQualifiedCall(tokens, topCall) && (topCall.name === "remember" || topCall.name === "rememberSaveable")) {
+    const calcLambda = topCall.trailingLambda || findNamedLambdaArgBraces(tokens, topCall, "calculation");
+    if (!calcLambda) return null;
+    const bodyToks = tokens.slice(calcLambda.openBraceIdx + 1, calcLambda.closeBraceIdx);
+    if (bodyToks.length === 0 || hasTopLevelLambdaArrow(bodyToks)) return null;
+    if (bodyToks.some((t) => t.type === "Keyword" && (t.value === "return" || t.value === "throw"))) {
+      return null;
+    }
+    const stmts = splitTopLevelStatements(bodyToks);
+    if (stmts.length === 0) return null;
+    const lastStmt = stmts[stmts.length - 1];
+    const innerTop = findDirectTopLevelCall(tokens, calls, lastStmt);
+    if (innerTop && isTopLevelOrAndroidxQualifiedCall(tokens, innerTop) && innerTop.name === "Animatable" && innerTop.hasParens && !innerTop.trailingLambda) {
+      return innerTop;
+    }
+  }
+  return null;
 }
 var NON_COMPOSITION_CALL_NAMES = /* @__PURE__ */ new Set([
   "remember",
@@ -3935,64 +4100,98 @@ function collectF005GatingConditions(tokens, calls, scanStartIdx, scanEndIdx, ef
   return slices;
 }
 function checkF006(kf, rawFindings, rawCandidates) {
-  const { calls } = kf;
+  const { tokens, calls, declarations } = kf;
   const reportedAnimateCalls = /* @__PURE__ */ new Set();
   for (const container of calls) {
     if (!ELEVATED_CONTAINERS.has(container.name) || !container.hasParens) continue;
+    if (!isTopLevelOrAndroidxQualifiedCall(tokens, container)) continue;
+    if (declarations.some((d) => d.kind === "fun" && d.name === container.name)) continue;
     const modArg = findContainerModifierArg(container);
     if (!modArg) continue;
-    const modFirstIdx = container.openParenIdx + 1;
-    const modLastIdx = container.closeParenIdx;
-    const animInMod = calls.find((c) => {
-      if (c.name !== "animateContentSize" || !c.receiver) return false;
-      if (c.nameTokIdx < modFirstIdx || c.endTokIdx > modLastIdx) return false;
-      const firstModTok = modArg.tokens[0];
-      const lastModTok = modArg.tokens[modArg.tokens.length - 1];
-      return firstModTok && lastModTok && kf.tokens[c.nameTokIdx].start >= firstModTok.start && kf.tokens[c.nameTokIdx].end <= lastModTok.end;
-    });
-    if (!animInMod) continue;
-    if (hasNonZeroContainerElevation(container)) {
-      reportedAnimateCalls.add(animInMod);
+    const modCheck = findAnimateContentSizeInModifierExpr(tokens, calls, modArg.tokens);
+    if (!modCheck.proven && !modCheck.candidate) continue;
+    const elevClass = classifyContainerElevation(tokens, calls, container);
+    if (elevClass === "zero") continue;
+    if (elevClass === "nonzero" && modCheck.proven) {
+      reportedAnimateCalls.add(modCheck.proven);
       rawFindings.push(
         makeRuleFinding("F-006", {
           file: kf.filePath,
           lines: [container.startLine, container.endLine],
-          evidence: `\`${container.name}\` applies \`Modifier.animateContentSize()\` (line ${animInMod.startLine}) alongside non-zero elevation, clipping its shadow.`,
+          evidence: `\`${container.name}\` applies \`Modifier.animateContentSize()\` (line ${modCheck.proven.startLine}) alongside non-zero elevation, clipping its shadow.`,
           remediation: "Apply shadow/elevation on an outer wrapper outside `animateContentSize()`, or animate size inside the elevated surface body.",
           symbolContext: container.enclosingDeclarations.map((d) => d.name)
         })
       );
+    } else {
+      const animRef = modCheck.proven || modCheck.candidate;
+      reportedAnimateCalls.add(animRef);
+      if (rawCandidates) {
+        rawCandidates.push(
+          makeRuleCandidate("F-006", {
+            file: kf.filePath,
+            lines: [container.startLine, container.endLine],
+            evidence: `\`${container.name}\` combines \`animateContentSize()\` (line ${animRef.startLine}) with conditional or unresolved elevation.`,
+            verificationHint: "Check whether this container has non-zero shadow elevation while `animateContentSize()` runs; if so, move elevation outside `animateContentSize()`."
+          })
+        );
+      }
     }
   }
   for (const animCall of calls) {
-    if (animCall.name !== "animateContentSize" || !animCall.receiver) continue;
+    if (animCall.name !== "animateContentSize" || !animCall.receiver || !animCall.hasParens) continue;
     if (reportedAnimateCalls.has(animCall)) continue;
-    const chainCalls = findModifierChainCalls(kf.tokens, calls, animCall);
+    const chainCalls = findModifierChainCalls(tokens, calls, animCall);
     const animPos = chainCalls.indexOf(animCall);
-    const shadowCall = chainCalls.find((cc) => cc.name === "shadow" && isNonZeroDpCall(cc));
-    if (!shadowCall) continue;
-    const shadowPos = chainCalls.indexOf(shadowCall);
-    if (animPos < shadowPos) {
-      rawFindings.push(
-        makeRuleFinding("F-006", {
-          file: kf.filePath,
-          lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
-          evidence: `Modifier chain applies \`animateContentSize()\` outer to \`shadow(${shadowCall.args.map((a) => a.rawText).join(", ")})\`, clipping the drop shadow.`,
-          remediation: "Move `Modifier.shadow(...)` outside `animateContentSize()` (for example onto an outer wrapper composable).",
-          symbolContext: animCall.enclosingDeclarations.map((d) => d.name)
-        })
-      );
-    } else if (shadowPos < animPos && rawCandidates) {
-      const separatedByPadding = chainCalls.slice(shadowPos + 1, animPos).some((cc) => cc.name === "padding" && isNonZeroDpCall(cc));
-      if (!separatedByPadding) {
+    const shadowCalls = chainCalls.filter((cc) => cc.name === "shadow" && cc.receiver && cc.hasParens);
+    if (shadowCalls.length === 0) continue;
+    let emittedFinding = false;
+    for (const shadowCall of shadowCalls) {
+      const shadowPos = chainCalls.indexOf(shadowCall);
+      if (animPos >= shadowPos) continue;
+      const elevClass = classifyShadowCallElevation(tokens, calls, shadowCall);
+      if (elevClass === "nonzero" && !hasSafeCallInReceiverChain(tokens, shadowCall)) {
+        rawFindings.push(
+          makeRuleFinding("F-006", {
+            file: kf.filePath,
+            lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
+            evidence: `Modifier chain applies \`animateContentSize()\` outer to \`shadow(${shadowCall.args.map((a) => a.rawText).join(", ")})\`, clipping the drop shadow.`,
+            remediation: "Move `Modifier.shadow(...)` outside `animateContentSize()` (for example onto an outer wrapper composable).",
+            symbolContext: animCall.enclosingDeclarations.map((d) => d.name)
+          })
+        );
+        emittedFinding = true;
+        break;
+      }
+    }
+    if (emittedFinding || !rawCandidates) continue;
+    for (const shadowCall of shadowCalls) {
+      const elevClass = classifyShadowCallElevation(tokens, calls, shadowCall);
+      if (elevClass === "zero") continue;
+      const shadowPos = chainCalls.indexOf(shadowCall);
+      if (animPos < shadowPos) {
         rawCandidates.push(
           makeRuleCandidate("F-006", {
             file: kf.filePath,
             lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
-            evidence: `Modifier chain combines \`shadow(${shadowCall.args.map((a) => a.rawText).join(", ")})\` and \`animateContentSize()\`.`,
-            verificationHint: "Confirm `animateContentSize()` does not clip an inner elevated surface, ripple, or exiting child; if clipping occurs, separate `Modifier.shadow(...)` onto an outer wrapper."
+            evidence: `Modifier chain applies \`animateContentSize()\` outer to \`shadow(${shadowCall.args.map((a) => a.rawText).join(", ")})\` with unresolved or conditional elevation.`,
+            verificationHint: "Check whether the `shadow(...)` elevation can be greater than `0.dp`; if so, move `Modifier.shadow(...)` outside `animateContentSize()`."
           })
         );
+        break;
+      } else if (shadowPos < animPos) {
+        const separatedByPadding = chainCalls.slice(shadowPos + 1, animPos).some((cc) => cc.name === "padding" && isProvenAllSidesNonZeroPadding(tokens, calls, cc));
+        if (!separatedByPadding) {
+          rawCandidates.push(
+            makeRuleCandidate("F-006", {
+              file: kf.filePath,
+              lines: [chainCalls[0].chainStartLine, chainCalls[chainCalls.length - 1].endLine],
+              evidence: `Modifier chain combines \`shadow(${shadowCall.args.map((a) => a.rawText).join(", ")})\` and \`animateContentSize()\`.`,
+              verificationHint: "Confirm `animateContentSize()` does not clip an inner elevated surface, ripple, or exiting child; if clipping occurs, separate `Modifier.shadow(...)` onto an outer wrapper."
+            })
+          );
+          break;
+        }
       }
     }
   }
@@ -4003,39 +4202,253 @@ function findContainerModifierArg(container) {
   const arg0 = container.args[0];
   if (!arg0) return null;
   if (arg0.name === null) {
-    const looksLikeModifier = arg0.tokens.some(
-      (t) => t.type === "Identifier" && (t.value === "Modifier" || t.value === "modifier" || t.value === "animateContentSize")
-    );
-    if (looksLikeModifier) return arg0;
+    const stripped0 = stripOuterParensTokens(arg0.tokens);
+    const isLambda0 = stripped0[0]?.type === "Punct" && stripped0[0].value === "{";
+    if (!isLambda0) {
+      const looksLikeModifier = stripped0.some(
+        (t) => t.type === "Identifier" && (t.value === "Modifier" || t.value === "modifier" || t.value === "animateContentSize")
+      );
+      if (looksLikeModifier) return arg0;
+    }
     const arg1 = container.args[1];
-    if (arg1 && arg1.name === null) return arg1;
+    if (arg1 && arg1.name === null) {
+      const stripped1 = stripOuterParensTokens(arg1.tokens);
+      if (!(stripped1[0]?.type === "Punct" && stripped1[0].value === "{")) {
+        return arg1;
+      }
+    }
   }
   return null;
 }
-function hasNonZeroContainerElevation(container) {
-  const elevArg = container.args.find((a) => a.name === "elevation" || a.name === "shadowElevation");
+function findAnimateContentSizeInModifierExpr(tokens, calls, modToks) {
+  const stripped = stripOuterParensTokens(modToks);
+  if (stripped.length === 0) return { proven: null, candidate: null };
+  const provenCall = findProvenAnimateContentSizeOnChain(tokens, calls, stripped);
+  if (provenCall) return { proven: provenCall, candidate: null };
+  const firstTok = stripped[0];
+  const lastTok = stripped[stripped.length - 1];
+  const fallback = calls.find(
+    (c) => c.name === "animateContentSize" && c.receiver && c.hasParens && tokens[c.nameTokIdx].start >= firstTok.start && tokens[c.endTokIdx].end <= lastTok.end
+  ) || null;
+  return { proven: null, candidate: fallback };
+}
+function findProvenAnimateContentSizeOnChain(tokens, calls, rawToks) {
+  const topCall = findDirectTopLevelCall(tokens, calls, rawToks);
+  if (!topCall || hasSafeCallInReceiverChain(tokens, topCall)) return null;
+  const chainCalls = findModifierChainCalls(tokens, calls, topCall);
+  for (const cc of chainCalls) {
+    if (cc.name === "animateContentSize" && cc.receiver && cc.hasParens) {
+      return cc;
+    }
+    if (cc.name === "then" && cc.receiver && cc.hasParens && cc.args.length === 1 && !cc.trailingLambda) {
+      const nested = findProvenAnimateContentSizeOnChain(tokens, calls, cc.args[0].tokens);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+var CARD_ELEVATION_FACTORY_NAMES = /* @__PURE__ */ new Set([
+  "elevatedCardElevation",
+  "cardElevation",
+  "outlinedCardElevation"
+]);
+function isCardDefaultsOrUnqualifiedCall(tokens, call) {
+  if (!call) return false;
+  if (!call.receiver && call.chainRootIdx === call.nameTokIdx) return true;
+  const prefix = tokens.slice(call.chainRootIdx, call.nameTokIdx);
+  if (prefix.length < 2) return false;
+  const isDotChain = prefix.every(
+    (t, idx) => idx % 2 === 0 ? t.type === "Identifier" : t.type === "Punct" && t.value === "."
+  );
+  if (!isDotChain) return false;
+  const lastReceiver = prefix[prefix.length - 2];
+  return lastReceiver?.type === "Identifier" && lastReceiver.value === "CardDefaults";
+}
+function classifyContainerElevation(tokens, calls, container) {
+  let elevArg = container.args.find((a) => a.name === "elevation" || a.name === "shadowElevation");
   if (!elevArg) {
-    return container.name === "ElevatedCard";
+    elevArg = container.args.find((a) => {
+      if (a.name !== null) return false;
+      const top = findDirectTopLevelCall(tokens, calls, a.tokens);
+      return Boolean(top && CARD_ELEVATION_FACTORY_NAMES.has(top.name) && isCardDefaultsOrUnqualifiedCall(tokens, top));
+    });
   }
-  return isProvablyNonZeroDpTokens(elevArg.tokens);
+  if (!elevArg) {
+    return container.name === "ElevatedCard" ? "nonzero" : "zero";
+  }
+  let elevClass = classifyElevationExpr(tokens, calls, elevArg.tokens);
+  if (elevClass === "nonzero") {
+    const enabledArg = container.args.find((a) => a.name === "enabled");
+    if (enabledArg) {
+      const strippedEnabled = stripOuterParensTokens(enabledArg.tokens);
+      const isLiteralTrue = strippedEnabled.length === 1 && strippedEnabled[0].type === "Keyword" && strippedEnabled[0].value === "true";
+      if (!isLiteralTrue) {
+        const topElevCall = findDirectTopLevelCall(tokens, calls, elevArg.tokens);
+        const disabledArg = topElevCall ? getCallArg(topElevCall, "disabledElevation", 5) : null;
+        if (disabledArg && classifyElevationExpr(tokens, calls, disabledArg.tokens) !== "nonzero") {
+          elevClass = "unknown";
+        }
+      }
+    }
+  }
+  return elevClass;
 }
-function isNonZeroDpCall(call) {
+function classifyShadowCallElevation(tokens, calls, call) {
+  if (!call.hasParens || call.args.length === 0) return "unknown";
+  const elevArg = getCallArg(call, "elevation", 0);
+  if (!elevArg) return "unknown";
+  return classifyElevationExpr(tokens, calls, elevArg.tokens);
+}
+function isProvenAllSidesNonZeroPadding(tokens, calls, call) {
   if (!call.hasParens || call.args.length === 0) return false;
-  const elevArg = getCallArg(call, "elevation", 0) || call.args[0];
-  if (!elevArg) return false;
-  return isProvablyNonZeroDpTokens(elevArg.tokens);
-}
-function isProvablyNonZeroDpTokens(toks) {
-  const text = toks.map((t) => t.raw).join("").trim();
-  if (!text || text === "null") return false;
-  const dpMatches = [...text.matchAll(/(\d+(?:\.\d+)?)f?\.dp\b/gi)];
-  if (dpMatches.length > 0) {
-    return dpMatches.some((m) => Number(m[1]) > 0);
+  const allArg = getCallArg(call, "all", 0);
+  if (allArg && call.args.length === 1) {
+    return classifyElevationExpr(tokens, calls, allArg.tokens) === "nonzero";
   }
-  if (/\belevatedCardElevation\s*\(/.test(text)) {
-    return true;
+  const hArg = call.args.find((a) => a.name === "horizontal");
+  const vArg = call.args.find((a) => a.name === "vertical");
+  if (hArg && vArg) {
+    return classifyElevationExpr(tokens, calls, hArg.tokens) === "nonzero" && classifyElevationExpr(tokens, calls, vArg.tokens) === "nonzero";
+  }
+  const sideNames = ["start", "top", "end", "bottom"];
+  if (sideNames.every((n) => call.args.some((a) => a.name === n))) {
+    return sideNames.every((n) => {
+      const arg = call.args.find((a) => a.name === n);
+      return arg && classifyElevationExpr(tokens, calls, arg.tokens) === "nonzero";
+    });
   }
   return false;
+}
+function parseKotlinNumericLiteral(numTok) {
+  if (!numTok || numTok.type !== "NumberLiteral") return null;
+  const raw = String(numTok.raw || "").replace(/_/g, "");
+  if (!raw) return null;
+  let cleaned = raw;
+  if (/^0[xX][0-9a-fA-F]+[uUlL]*$/.test(raw) || /^0[bB][01]+[uUlL]*$/.test(raw)) {
+    cleaned = raw.replace(/[uUlL]+$/, "");
+  } else {
+    cleaned = raw.replace(/[fFdDuUlL]+$/, "");
+  }
+  if (!cleaned) return null;
+  const val = Number(cleaned);
+  return Number.isFinite(val) ? val : null;
+}
+function evalConstantDpExpr(tokens, calls, rawToks) {
+  const stripped = stripOuterParensTokens(rawToks);
+  if (stripped.length === 0) return null;
+  let pDepth = 0;
+  let bDepth = 0;
+  let kDepth = 0;
+  for (let i = stripped.length - 1; i >= 0; i -= 1) {
+    const t = stripped[i];
+    if (t.type === "Punct") {
+      if (t.value === ")") pDepth += 1;
+      else if (t.value === "(") pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === "}") bDepth += 1;
+      else if (t.value === "{") bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === "]") kDepth += 1;
+      else if (t.value === "[") kDepth = Math.max(0, kDepth - 1);
+      else if (pDepth === 0 && bDepth === 0 && kDepth === 0 && i > 0 && (t.value === "+" || t.value === "-")) {
+        const prev = stripped[i - 1];
+        const isBinary = canTokenEndExpression(prev);
+        if (isBinary) {
+          const left = evalConstantDpExpr(tokens, calls, stripped.slice(0, i));
+          const right = evalConstantDpExpr(tokens, calls, stripped.slice(i + 1));
+          if (!left || !right || left.kind !== right.kind) return null;
+          const value = t.value === "+" ? left.value + right.value : left.value - right.value;
+          return Number.isFinite(value) ? { kind: left.kind, value } : null;
+        }
+      }
+    }
+  }
+  pDepth = 0;
+  bDepth = 0;
+  kDepth = 0;
+  for (let i = stripped.length - 1; i >= 0; i -= 1) {
+    const t = stripped[i];
+    if (t.type === "Punct") {
+      if (t.value === ")") pDepth += 1;
+      else if (t.value === "(") pDepth = Math.max(0, pDepth - 1);
+      else if (t.value === "}") bDepth += 1;
+      else if (t.value === "{") bDepth = Math.max(0, bDepth - 1);
+      else if (t.value === "]") kDepth += 1;
+      else if (t.value === "[") kDepth = Math.max(0, kDepth - 1);
+      else if (pDepth === 0 && bDepth === 0 && kDepth === 0 && i > 0 && (t.value === "*" || t.value === "/")) {
+        const left = evalConstantDpExpr(tokens, calls, stripped.slice(0, i));
+        const right = evalConstantDpExpr(tokens, calls, stripped.slice(i + 1));
+        if (!left || !right) return null;
+        if (t.value === "*") {
+          if (left.kind === "dp" && right.kind === "scalar") {
+            const value = left.value * right.value;
+            return Number.isFinite(value) ? { kind: "dp", value } : null;
+          }
+          if (left.kind === "scalar" && right.kind === "dp") {
+            const value = left.value * right.value;
+            return Number.isFinite(value) ? { kind: "dp", value } : null;
+          }
+          if (left.kind === "scalar" && right.kind === "scalar") {
+            const value = left.value * right.value;
+            return Number.isFinite(value) ? { kind: "scalar", value } : null;
+          }
+          return null;
+        }
+        if (t.value === "/" && right.kind === "scalar" && right.value !== 0) {
+          const value = left.value / right.value;
+          return Number.isFinite(value) ? { kind: left.kind, value } : null;
+        }
+        return null;
+      }
+    }
+  }
+  if (stripped.length >= 2 && stripped[0].type === "Punct" && (stripped[0].value === "+" || stripped[0].value === "-")) {
+    const inner = evalConstantDpExpr(tokens, calls, stripped.slice(1));
+    if (!inner) return null;
+    const value = stripped[0].value === "-" ? -inner.value : inner.value;
+    return Number.isFinite(value) ? { kind: inner.kind, value } : null;
+  }
+  if (stripped.length === 1 && stripped[0].type === "NumberLiteral") {
+    const val = parseKotlinNumericLiteral(stripped[0]);
+    return val !== null ? { kind: "scalar", value: val } : null;
+  }
+  if (stripped.length === 3 && stripped[0].type === "NumberLiteral" && stripped[1].type === "Punct" && stripped[1].value === "." && stripped[2].type === "Identifier" && stripped[2].value === "dp") {
+    const val = parseKotlinNumericLiteral(stripped[0]);
+    return val !== null ? { kind: "dp", value: val } : null;
+  }
+  if (stripped.length === 3 && stripped[0].type === "Identifier" && stripped[0].value === "Dp" && stripped[1].type === "Punct" && stripped[1].value === "." && stripped[2].type === "Identifier") {
+    if (stripped[2].value === "Zero" || stripped[2].value === "Unspecified" || stripped[2].value === "Hairline") {
+      return { kind: "dp", value: 0 };
+    }
+  }
+  const topCall = findDirectTopLevelCall(tokens, calls, stripped);
+  if (topCall && topCall.name === "Dp" && isTopLevelOrAndroidxQualifiedCall(tokens, topCall) && topCall.hasParens && !topCall.trailingLambda && topCall.args.length === 1 && topCall.args[0].name === null) {
+    const inner = evalConstantDpExpr(tokens, calls, topCall.args[0].tokens);
+    if (inner?.kind === "scalar") {
+      return { kind: "dp", value: inner.value };
+    }
+  }
+  return null;
+}
+function classifyElevationExpr(tokens, calls, rawToks) {
+  const stripped = stripOuterParensTokens(rawToks);
+  if (stripped.length === 0) return "unknown";
+  const constEval = evalConstantDpExpr(tokens, calls, stripped);
+  if (constEval?.kind === "dp") {
+    return constEval.value > 0 ? "nonzero" : "zero";
+  }
+  const topCall = findDirectTopLevelCall(tokens, calls, stripped);
+  if (topCall && topCall.hasParens && !topCall.trailingLambda && CARD_ELEVATION_FACTORY_NAMES.has(topCall.name) && isCardDefaultsOrUnqualifiedCall(tokens, topCall)) {
+    const defArg = getCallArg(topCall, "defaultElevation", 0);
+    const defaultFallback = topCall.name === "elevatedCardElevation" ? "nonzero" : "zero";
+    const defClass = defArg ? classifyElevationExpr(tokens, calls, defArg.tokens) : defaultFallback;
+    if (defClass === "zero") {
+      const anyInteractiveNonZeroOrUnknown = topCall.args.some(
+        (a) => a !== defArg && classifyElevationExpr(tokens, calls, a.tokens) !== "zero"
+      );
+      return anyInteractiveNonZeroOrUnknown ? "unknown" : "zero";
+    }
+    return defClass;
+  }
+  return "unknown";
 }
 function findModifierChainCalls(tokens, calls, memberCall) {
   const rootIdx = memberCall.chainRootIdx;

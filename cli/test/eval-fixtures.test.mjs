@@ -1028,6 +1028,123 @@ fun UnconditionalBlankBadge() {
       2,
       `Expected 2 O-002 candidates for the 2 conditional/fallback Lottie consumers, got: ${JSON.stringify(condO002Cands)}`
     );
+
+    // 12a. `F-001` must resolve top-level initializer/delegate expressions before classifying bindings as `Animatable` / `derivedColor`!
+    const f001InitFile = path.join(tmpDir, 'F001Initializers.kt');
+    fs.writeFileSync(
+      f001InitFile,
+      `package demo
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+
+@Composable
+fun MutableStateSnapshotFromAnimatable() {
+    val state = remember { mutableStateOf(Animatable(0f).value) }
+    Box(Modifier.alpha(state.value))
+}
+
+@Composable
+fun RememberedFloatSnapshotFromAnimatable() {
+    val snap = remember { Animatable(0f).value }
+    Box(Modifier.alpha(snap))
+}
+
+@Composable
+fun KeyedRememberLerpColor(themeKey: Int, active: Boolean) {
+    val progress by animateFloatAsState(if (active) 1f else 0f)
+    val cachedColor = remember(themeKey) { lerp(Color.Red, Color.Blue, progress) }
+    Box(Modifier.background(cachedColor))
+}
+
+@Composable
+fun RealRememberedAnimatable() {
+    val anim = remember { Animatable(0f) }
+    Box(Modifier.alpha(anim.value))
+}
+`,
+      'utf8'
+    );
+    const f001InitRes = runStaticScan({ targets: [f001InitFile], cwd: tmpDir });
+    const f001InitFindings = f001InitRes.findings.filter((f) => f.rule === 'F-001');
+    assert.equal(
+      f001InitFindings.length,
+      1,
+      `Expected only RealRememberedAnimatable to emit proven F-001, got: ${JSON.stringify(f001InitFindings)}`
+    );
+    assert.match(f001InitFindings[0].evidence, /anim\.value/);
+
+    // 12b. `F-006` must evaluate elevation expressions rather than regex-scanning `.dp` tokens!
+    const f006ElevFile = path.join(tmpDir, 'F006Elevations.kt');
+    fs.writeFileSync(
+      f006ElevFile,
+      `package demo
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun ZeroArithmeticShadow() {
+    Box(Modifier.animateContentSize().shadow(8.dp * 0))
+}
+
+@Composable
+fun ConditionalShadow(raised: Boolean) {
+    Box(Modifier.animateContentSize().shadow(if (raised) 8.dp else 0.dp))
+}
+
+@Composable
+fun PressedOnlyCardElevation() {
+    Card(
+        elevation = CardDefaults.cardElevation(pressedElevation = 8.dp),
+        modifier = Modifier.animateContentSize()
+    ) {}
+}
+
+@Composable
+fun ZeroDefaultCardElevation() {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.animateContentSize()
+    ) {}
+}
+
+@Composable
+fun NonZeroDefaultCardElevation() {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        modifier = Modifier.animateContentSize()
+    ) {}
+}
+`,
+      'utf8'
+    );
+    const f006ElevRes = runStaticScan({ targets: [f006ElevFile], cwd: tmpDir });
+    const f006ElevFindings = f006ElevRes.findings.filter((f) => f.rule === 'F-006');
+    assert.equal(
+      f006ElevFindings.length,
+      1,
+      `Expected only NonZeroDefaultCardElevation to emit proven F-006, got: ${JSON.stringify(f006ElevFindings)}`
+    );
+    assert.equal(f006ElevFindings[0].lines[0] >= 37, true, 'Proven F-006 must point to NonZeroDefaultCardElevation');
+
+    const f006ElevCands = f006ElevRes.candidates.filter((c) => c.rule === 'F-006');
+    assert.equal(
+      f006ElevCands.length,
+      2,
+      `Expected 2 F-006 candidates (ConditionalShadow + PressedOnlyCardElevation; 0 for 8.dp * 0 and 0.dp), got: ${JSON.stringify(f006ElevCands)}`
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
