@@ -5902,11 +5902,11 @@ function resolveTraceProcessor({ explicitPath = null, env = process.env, platfor
     } catch {
     }
   }
-  const pathSep = platform === "win32" ? ";" : ":";
-  const pathDirs = String(env.PATH || "").split(pathSep).filter(Boolean);
+  const rawPath = String(env.PATH ?? env.Path ?? "");
+  const pathDirs = platform === "win32" || rawPath.includes(";") ? rawPath.split(";").filter(Boolean) : rawPath.split(/:(?![\\/])/).filter(Boolean);
   const binNames = platform === "win32" ? ["trace_processor_shell.exe", "trace_processor.exe", "trace_processor_shell", "trace_processor"] : ["trace_processor_shell", "trace_processor"];
-  const joiner = platform === "win32" ? path7.win32.join : path7.posix.join;
   for (const dir of pathDirs) {
+    const joiner = platform === "win32" || dir.includes("\\") || /^[A-Za-z]:[\\/]/.test(dir) ? path7.win32.join : path7.posix.join;
     for (const bin of binNames) {
       const full = joiner(dir, bin);
       const nativeBin = checkCandidate(full);
@@ -6946,8 +6946,8 @@ function detectHostProfile({
   };
 }
 function findBinaryOnPath(binName, env = process.env, platform = process.platform, exists = (p) => fs8.existsSync(p)) {
-  const pathSep = platform === "win32" ? ";" : ":";
-  const dirs = String(env.PATH || "").split(pathSep).filter(Boolean);
+  const rawPath = String(env.PATH ?? env.Path ?? "");
+  const dirs = platform === "win32" || rawPath.includes(";") ? rawPath.split(";").filter(Boolean) : rawPath.split(/:(?![\\/])/).filter(Boolean);
   if (platform === "win32") {
     const home = env.USERPROFILE || env.HOME || "";
     const localAppData = env.LOCALAPPDATA || "";
@@ -6955,8 +6955,8 @@ function findBinaryOnPath(binName, env = process.env, platform = process.platfor
     if (localAppData) dirs.push(path9.win32.join(localAppData, "Microsoft", "WinGet", "Links"));
   }
   const exts = platform === "win32" ? /\.(exe|cmd|bat)$/i.test(binName) ? [""] : [".exe", ".cmd", ".bat", ""] : [""];
-  const joiner = platform === "win32" ? path9.win32.join : path9.posix.join;
   for (const dir of dirs) {
+    const joiner = platform === "win32" || dir.includes("\\") || /^[A-Za-z]:[\\/]/.test(dir) ? path9.win32.join : path9.posix.join;
     for (const ext of exts) {
       const candidate = joiner(dir, `${binName}${ext}`);
       try {
@@ -8005,24 +8005,14 @@ function isPrimaryHookFinding(f) {
 }
 function tryReadGitHeadPreimage(absFile, _projectRoot, env = process.env) {
   try {
-    const resolvedFile = path10.resolve(absFile);
+    const realpathFn = fs9.realpathSync.native || fs9.realpathSync;
+    const realFile = realpathFn(path10.resolve(absFile));
+    const fileDir = path10.dirname(realFile);
+    const fileName = path10.basename(realFile);
+    if (!fileName || fileName.includes("/") || fileName.includes("\\")) return null;
     const gitEnv = { ...env, ANDROID_UX_HOOK_DEPTH: "1", GIT_OPTIONAL_LOCKS: "0" };
-    const topProc = spawnSync4("git", ["rev-parse", "--show-toplevel"], {
-      cwd: path10.dirname(resolvedFile),
-      env: gitEnv,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1500
-    });
-    if (topProc.status !== 0 || typeof topProc.stdout !== "string" || !topProc.stdout.trim()) {
-      return null;
-    }
-    const repoTopLevel = fs9.realpathSync(path10.resolve(topProc.stdout.trim()));
-    const realFile = fs9.realpathSync(resolvedFile);
-    const relPosix = normalizePosixPath(path10.relative(repoTopLevel, realFile));
-    if (!relPosix || relPosix.startsWith("..") || path10.isAbsolute(relPosix)) return null;
-    const proc = spawnSync4("git", ["show", `HEAD:${relPosix}`], {
-      cwd: repoTopLevel,
+    const proc = spawnSync4("git", ["show", `HEAD:./${fileName}`], {
+      cwd: fileDir,
       env: gitEnv,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],

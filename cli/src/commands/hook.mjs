@@ -355,24 +355,14 @@ function isPrimaryHookFinding(f) {
 
 function tryReadGitHeadPreimage(absFile, _projectRoot, env = process.env) {
   try {
-    const resolvedFile = path.resolve(absFile);
+    const realpathFn = fs.realpathSync.native || fs.realpathSync;
+    const realFile = realpathFn(path.resolve(absFile));
+    const fileDir = path.dirname(realFile);
+    const fileName = path.basename(realFile);
+    if (!fileName || fileName.includes('/') || fileName.includes('\\')) return null;
     const gitEnv = { ...env, ANDROID_UX_HOOK_DEPTH: '1', GIT_OPTIONAL_LOCKS: '0' };
-    const topProc = spawnSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd: path.dirname(resolvedFile),
-      env: gitEnv,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 1500,
-    });
-    if (topProc.status !== 0 || typeof topProc.stdout !== 'string' || !topProc.stdout.trim()) {
-      return null;
-    }
-    const repoTopLevel = fs.realpathSync(path.resolve(topProc.stdout.trim()));
-    const realFile = fs.realpathSync(resolvedFile);
-    const relPosix = normalizePosixPath(path.relative(repoTopLevel, realFile));
-    if (!relPosix || relPosix.startsWith('..') || path.isAbsolute(relPosix)) return null;
-    const proc = spawnSync('git', ['show', `HEAD:${relPosix}`], {
-      cwd: repoTopLevel,
+    const proc = spawnSync('git', ['show', `HEAD:./${fileName}`], {
+      cwd: fileDir,
       env: gitEnv,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],

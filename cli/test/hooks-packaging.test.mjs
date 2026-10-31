@@ -52,6 +52,7 @@ test('hook protocol: fail-open exit 0, loop guards, multi-harness envelopes, git
     execFileSync('git', ['init', '-q'], { cwd: repoDir });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoDir });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoDir });
+    execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: repoDir });
 
     const screenPath = path.join(repoDir, 'Screen.kt');
     const legacyCode = `package app.ui
@@ -251,11 +252,17 @@ test('install, hooks toggle, npm pack tarball allowlist, and isolated single-ski
     // 3. `npm pack` allowlist & standalone unpacked tarball execution without `node_modules`
     const packDir = path.join(tmpDir, 'pack');
     fs.mkdirSync(packDir, { recursive: true });
-    const packProc = spawnSync('npm', ['pack', '--json', '--pack-destination', packDir], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    });
-    assert.equal(packProc.status, 0, `npm pack failed: ${packProc.stderr}`);
+    const packProc = process.platform === 'win32'
+      ? spawnSync(`npm.cmd pack --json --pack-destination "${packDir}"`, {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          shell: true,
+        })
+      : spawnSync('npm', ['pack', '--json', '--pack-destination', packDir], {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+        });
+    assert.equal(packProc.status, 0, `npm pack failed: ${packProc.stderr || packProc.error?.message}`);
     const packInfo = JSON.parse(packProc.stdout)[0];
     const packedPaths = packInfo.files.map((f) => f.path);
 
@@ -267,7 +274,7 @@ test('install, hooks toggle, npm pack tarball allowlist, and isolated single-ski
 
     const extractDir = path.join(tmpDir, 'extracted');
     fs.mkdirSync(extractDir, { recursive: true });
-    execFileSync('tar', ['-xzf', path.join(packDir, packInfo.filename), '-C', extractDir]);
+    execFileSync('tar', ['-xzf', path.posix.join('..', 'pack', packInfo.filename)], { cwd: extractDir });
     const pkgBin = path.join(extractDir, 'package', 'cli', 'bin', 'android-ux.mjs');
     const binRes = spawnSync(process.execPath, [pkgBin, 'detect', '--list-rules', '--quiet'], {
       cwd: targetProject,

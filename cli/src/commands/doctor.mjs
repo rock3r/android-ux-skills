@@ -112,8 +112,10 @@ export function detectHostProfile({
 }
 
 export function findBinaryOnPath(binName, env = process.env, platform = process.platform, exists = (p) => fs.existsSync(p)) {
-  const pathSep = platform === 'win32' ? ';' : ':';
-  const dirs = String(env.PATH || '').split(pathSep).filter(Boolean);
+  const rawPath = String(env.PATH ?? env.Path ?? '');
+  const dirs = (platform === 'win32' || rawPath.includes(';'))
+    ? rawPath.split(';').filter(Boolean)
+    : rawPath.split(/:(?![\\/])/).filter(Boolean);
   if (platform === 'win32') {
     const home = env.USERPROFILE || env.HOME || '';
     const localAppData = env.LOCALAPPDATA || '';
@@ -123,9 +125,12 @@ export function findBinaryOnPath(binName, env = process.env, platform = process.
   const exts = platform === 'win32'
     ? (/\.(exe|cmd|bat)$/i.test(binName) ? [''] : ['.exe', '.cmd', '.bat', ''])
     : [''];
-  const joiner = platform === 'win32' ? path.win32.join : path.posix.join;
 
   for (const dir of dirs) {
+    const joiner =
+      platform === 'win32' || dir.includes('\\') || /^[A-Za-z]:[\\/]/.test(dir)
+        ? path.win32.join
+        : path.posix.join;
     for (const ext of exts) {
       const candidate = joiner(dir, `${binName}${ext}`);
       try {

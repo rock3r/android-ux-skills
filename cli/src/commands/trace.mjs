@@ -237,14 +237,19 @@ export function resolveTraceProcessor({ explicitPath = null, env = process.env, 
     }
   }
 
-  const pathSep = platform === 'win32' ? ';' : ':';
-  const pathDirs = String(env.PATH || '').split(pathSep).filter(Boolean);
+  const rawPath = String(env.PATH ?? env.Path ?? '');
+  const pathDirs = (platform === 'win32' || rawPath.includes(';'))
+    ? rawPath.split(';').filter(Boolean)
+    : rawPath.split(/:(?![\\/])/).filter(Boolean);
   const binNames = platform === 'win32'
     ? ['trace_processor_shell.exe', 'trace_processor.exe', 'trace_processor_shell', 'trace_processor']
     : ['trace_processor_shell', 'trace_processor'];
-  const joiner = platform === 'win32' ? path.win32.join : path.posix.join;
 
   for (const dir of pathDirs) {
+    const joiner =
+      platform === 'win32' || dir.includes('\\') || /^[A-Za-z]:[\\/]/.test(dir)
+        ? path.win32.join
+        : path.posix.join;
     for (const bin of binNames) {
       const full = joiner(dir, bin);
       const nativeBin = checkCandidate(full);
